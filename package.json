@@ -1,0 +1,78 @@
+{
+  "name": "saveaction-recorder",
+  "version": "1.0.0",
+  "description": "A cross-browser extension to record user interactions on web pages and export them as JSON files for automated testing",
+  "author": "SaveAction Team",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "build:chrome": "tsc && vite build --mode chrome",
+    "build:firefox": "tsc && vite build --mode firefox",
+    "build:safari": "tsc && vite build --mode safari",
+    "build:all": "npm run build:chrome && npm run build:firefox && npm run build:safari",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
+    "format": "prettier --write \"src/**/*.{ts,tsx,json,css,html}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,json,css,html}\"",
+    "typecheck": "tsc --noEmit",
+    "prepare": "husky install"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.258",
+    "@types/node": "^20.10.5",
+    "@types/webextension-polyfill": "^0.10.7",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
+    "@vitest/coverage-v8": "^1.0.4",
+    "@vitest/ui": "^1.0.4",
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.0.1",
+    "husky": "^8.0.3",
+    "jsdom": "^23.0.1",
+    "lint-staged": "^15.2.0",
+    "prettier": "^3.1.1",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.8",
+    "vite-plugin-web-extension": "^4.1.0",
+    "vitest": "^1.0.4",
+    "web-ext": "^7.9.0"
+  },
+  "dependencies": {
+    "webextension-polyfill": "^0.10.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,css,html,md}": [
+      "prettier --write"
+    ]
+  },
+  "keywords": [
+    "browser-extension",
+    "chrome-extension",
+    "firefox-addon",
+    "test-automation",
+    "e2e-testing",
+    "web-testing",
+    "user-actions",
+    "recorder",
+    "saveaction"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/saveaction/saveaction-recorder"
+  },
+  "bugs": {
+    "url": "https://github.com/saveaction/saveaction-recorder/issues"
+  },
+  "homepage": "https://github.com/saveaction/saveaction-recorder#readme"
+}

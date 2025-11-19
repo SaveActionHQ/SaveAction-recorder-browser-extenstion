@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Icon Generator</title>
+</head>
+<body>
+  <h1>SaveAction Recorder Icon Generator</h1>
+  <p>This page generates placeholder PNG icons for development.</p>
+  
+  <canvas id="canvas16" width="16" height="16"></canvas>
+  <canvas id="canvas48" width="48" height="48"></canvas>
+  <canvas id="canvas128" width="128" height="128"></canvas>
+  
+  <div>
+    <a id="download16" download="icon-16.png">Download 16x16</a><br>
+    <a id="download48" download="icon-48.png">Download 48x48</a><br>
+    <a id="download128" download="icon-128.png">Download 128x128</a>
+  </div>
+
+  <script>
+    function drawIcon(canvas) {
+      const ctx = canvas.getContext('2d');
+      const size = canvas.width;
+      const scale = size / 128;
+      
+      // Background
+      ctx.fillStyle = '#6366f1';
+      ctx.beginPath();
+      ctx.roundRect(0, 0, size, size, 24 * scale);
+      ctx.fill();
+      
+      // Person (white circle for head)
+      ctx.fillStyle = 'white';
+      ctx.beginPath();
+      ctx.arc(64 * scale, 44 * scale, 20 * scale, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Person body (triangle)
+      ctx.beginPath();
+      ctx.moveTo(64 * scale, 70 * scale);
+      ctx.lineTo(40 * scale, 100 * scale);
+      ctx.lineTo(88 * scale, 100 * scale);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Recording dot
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(64 * scale, 44 * scale, 8 * scale, 0, Math.PI * 2);
+      ctx.fill();
+      
+      return canvas.toDataURL('image/png');
+    }
+    
+    ['16', '48', '128'].forEach(size => {
+      const canvas = document.getElementById('canvas' + size);
+      const dataUrl = drawIcon(canvas);
+      document.getElementById('download' + size).href = dataUrl;
+    });
+  </script>
+</body>
+</html>

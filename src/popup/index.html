@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SaveAction Recorder</title>
+  <link rel="icon" type="image/png" sizes="16x16" href="../icons/icon-16.png">
+  <link rel="icon" type="image/png" sizes="48x48" href="../icons/icon-48.png">
+  <link rel="icon" type="image/png" sizes="128x128" href="../icons/icon-128.png">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+          <circle cx="12" cy="12" r="3" fill="currentColor"/>
+        </svg>
+        <h1>SaveAction</h1>
+      </div>
+      <div class="status-badge" id="statusBadge">
+        <span class="status-dot"></span>
+        <span class="status-text">Idle</span>
+      </div>
+    </header>
+
+    <!-- Test Name Input Section -->
+    <section class="section test-name-section" id="testNameSection">
+      <label for="testNameInput" class="label">Test Name</label>
+      <div class="input-group">
+        <input 
+          type="text" 
+          id="testNameInput" 
+          class="input" 
+          placeholder="e.g., Login Flow Test"
+          maxlength="100"
+        />
+        <span class="input-hint">Required before recording</span>
+      </div>
+    </section>
+
+    <!-- Recording Info Section (shown when recording) -->
+    <section class="section recording-info" id="recordingInfo" style="display: none;">
+      <div class="info-card">
+        <div class="info-row">
+          <span class="info-label">Test Name:</span>
+          <span class="info-value" id="currentTestName">-</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Actions:</span>
+          <span class="info-value" id="actionCount">0</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Duration:</span>
+          <span class="info-value" id="duration">00:00</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Control Buttons -->
+    <section class="section controls">
+      <!-- Start Button -->
+      <button class="btn btn-primary" id="startBtn">
+        <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <circle cx="8" cy="8" r="6" fill="currentColor"/>
+        </svg>
+        Start Recording
+      </button>
+
+      <!-- Pause/Resume Button -->
+      <button class="btn btn-secondary" id="pauseBtn" style="display: none;">
+        <svg class="btn-icon pause-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <rect x="5" y="4" width="2" height="8" fill="currentColor"/>
+          <rect x="9" y="4" width="2" height="8" fill="currentColor"/>
+        </svg>
+        <svg class="btn-icon resume-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" style="display: none;">
+          <path d="M6 4L12 8L6 12V4Z" fill="currentColor"/>
+        </svg>
+        <span id="pauseBtnText">Pause</span>
+      </button>
+
+      <!-- Stop Button -->
+      <button class="btn btn-danger" id="stopBtn" style="display: none;">
+        <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <rect x="5" y="5" width="6" height="6" fill="currentColor"/>
+        </svg>
+        Stop & Download
+      </button>
+    </section>
+
+    <!-- Error Message -->
+    <div class="error-message" id="errorMessage" style="display: none;">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M8 4V9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <circle cx="8" cy="11.5" r="0.5" fill="currentColor"/>
+      </svg>
+      <span id="errorText"></span>
+    </div>
+
+    <!-- Success Message -->
+    <div class="success-message" id="successMessage" style="display: none;">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M5 8L7 10L11 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span id="successText"></span>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <a href="https://github.com/rezwanahmedsami/SaveAction-recorder-browser-extenstion" target="_blank" class="footer-link">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+        GitHub
+      </a>
+      <span class="footer-divider">•</span>
+      <span class="footer-text">v1.0.0</span>
+    </footer>
+  </div>
+
+  <script type="module" src="popup.ts"></script>
+</body>
+</html>
