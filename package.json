@@ -69,10 +69,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/saveaction/saveaction-recorder"
+    "url": "https://github.com/rezwanahmedsami/SaveAction-recorder-browser-extenstion"
   },
   "bugs": {
-    "url": "https://github.com/saveaction/saveaction-recorder/issues"
+    "url": "https://github.com/rezwanahmedsami/SaveAction-recorder-browser-extenstion/issues"
   },
-  "homepage": "https://github.com/saveaction/saveaction-recorder#readme"
+  "homepage": "https://github.com/rezwanahmedsami/SaveAction-recorder-browser-extenstion#readme"
 }
