@@ -33,6 +33,7 @@ SaveAction Recorder is a powerful browser extension designed to capture user int
 ### For Users
 
 #### Chrome/Edge
+
 1. Download the latest release from [GitHub Releases](https://github.com/rezwanahmedsami/SaveAction-recorder-browser-extenstion/releases)
 2. Unzip the `saveaction-recorder-chrome.zip` file
 3. Open Chrome/Edge and navigate to `chrome://extensions` or `edge://extensions`
@@ -40,6 +41,7 @@ SaveAction Recorder is a powerful browser extension designed to capture user int
 5. Click "Load unpacked" and select the unzipped folder
 
 #### Firefox
+
 1. Download the latest release from [GitHub Releases](https://github.com/rezwanahmedsami/SaveAction-recorder-browser-extenstion/releases)
 2. Open Firefox and navigate to `about:addons`
 3. Click the gear icon and select "Install Add-on From File"
@@ -103,6 +105,7 @@ npm run test:coverage
 ### Multi-Page Recording
 
 The extension automatically tracks actions across:
+
 - Page navigations (clicking links)
 - Form submissions that redirect
 - Page reloads (F5 or Ctrl+R)
@@ -156,6 +159,7 @@ npm run format          # Format code with Prettier
 ### CI/CD
 
 The project includes a comprehensive GitHub Actions workflow that:
+
 - Tests on Node.js 18.x, 20.x, and 22.x
 - Runs type checking and linting
 - Generates code coverage reports (Codecov integration)
@@ -164,7 +168,30 @@ The project includes a comprehensive GitHub Actions workflow that:
 
 All tests must pass and coverage is tracked on every commit.
 
-## 📄 JSON Output Format## 📄 JSON Output Format
+### Git Hooks (Husky)
+
+The project uses [Husky](https://typicode.github.io/husky/) for Git hooks to maintain code quality:
+
+**Pre-commit:**
+
+- Auto-formats code with Prettier
+- Lints with ESLint
+- Only checks staged files (via lint-staged)
+
+**Commit-msg:**
+
+- Enforces [Conventional Commits](https://www.conventionalcommits.org/) format
+- Valid types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
+- Example: `feat: add recording pause functionality`
+
+**Pre-push:**
+
+- Runs TypeScript type checking
+- Executes all 164 unit tests
+
+See [docs/HUSKY_SETUP.md](./docs/HUSKY_SETUP.md) for detailed documentation.
+
+## 📄 JSON Output Format
 
 The recorder exports a structured JSON file with complete action metadata:
 
