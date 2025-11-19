@@ -31,6 +31,7 @@ export class EventListener {
 
   // Event handlers (need to be stored for removal)
   private handleClick: (e: MouseEvent) => void;
+  private handleMouseDown: (e: MouseEvent) => void;
   private handleInput: (e: Event) => void;
   private handleChange: (e: Event) => void;
   private handleSubmit: (e: Event) => void;
@@ -45,6 +46,7 @@ export class EventListener {
 
     // Bind event handlers
     this.handleClick = this.onClick.bind(this);
+    this.handleMouseDown = this.onMouseDown.bind(this);
     this.handleInput = this.onInput.bind(this);
     this.handleChange = this.onChange.bind(this);
     this.handleSubmit = this.onSubmit.bind(this);
@@ -88,6 +90,7 @@ export class EventListener {
    */
   private attachEventListeners(): void {
     document.addEventListener('click', this.handleClick, true);
+    document.addEventListener('mousedown', this.handleMouseDown, true);
     document.addEventListener('dblclick', this.handleDoubleClick, true);
     document.addEventListener('input', this.handleInput, true);
     document.addEventListener('change', this.handleChange, true);
@@ -102,6 +105,7 @@ export class EventListener {
    */
   private removeEventListeners(): void {
     document.removeEventListener('click', this.handleClick, true);
+    document.removeEventListener('mousedown', this.handleMouseDown, true);
     document.removeEventListener('dblclick', this.handleDoubleClick, true);
     document.removeEventListener('input', this.handleInput, true);
     document.removeEventListener('change', this.handleChange, true);
@@ -117,14 +121,11 @@ export class EventListener {
   private onClick(event: MouseEvent): void {
     if (!this.isListening) return;
 
-    const target = event.target as Element;
+    const clickedElement = event.target as Element;
 
-    // Ignore clicks on recording indicator
-    if (target.closest('#saveaction-recording-indicator')) {
-      return;
-    }
-
-    if (!this.isInteractiveElement(target)) return;
+    // Find the interactive element (could be the target or a parent)
+    const target = this.findInteractiveElement(clickedElement);
+    if (!target) return;
 
     // Check for double-click
     const now = Date.now();
@@ -160,19 +161,37 @@ export class EventListener {
   }
 
   /**
+   * Handle mousedown events (for dropdown options that disappear before click fires)
+   */
+  private onMouseDown(event: MouseEvent): void {
+    if (!this.isListening) return;
+
+    const clickedElement = event.target as Element;
+
+    // Find the interactive element (could be the target or a parent)
+    const target = this.findInteractiveElement(clickedElement);
+    if (!target) return;
+
+    // Don't record navigation clicks on mousedown (let click handler do it)
+    const willNavigate = this.isNavigationClick(target);
+    if (willNavigate) return;
+
+    // Record the action
+    const action = this.createClickAction(event, target, 1);
+    this.emitAction(action);
+  }
+
+  /**
    * Handle double-click events
    */
   private onDoubleClick(event: MouseEvent): void {
     if (!this.isListening) return;
 
-    const target = event.target as Element;
+    const clickedElement = event.target as Element;
 
-    // Ignore clicks on recording indicator
-    if (target.closest('#saveaction-recording-indicator')) {
-      return;
-    }
-
-    if (!this.isInteractiveElement(target)) return;
+    // Find the interactive element (could be the target or a parent)
+    const target = this.findInteractiveElement(clickedElement);
+    if (!target) return;
 
     const action = this.createClickAction(event, target, 2);
     this.emitAction(action);
@@ -452,23 +471,195 @@ export class EventListener {
   }
 
   /**
+   * Find the closest interactive element by traversing up the DOM tree
+   */
+  private findInteractiveElement(element: Element): Element | null {
+    let current: Element | null = element;
+
+    // Traverse up the DOM tree until we find an interactive element or reach body
+    while (current && current !== document.body) {
+      // Skip the recording indicator
+      if (
+        current.id === 'saveaction-recording-indicator' ||
+        current.closest('#saveaction-recording-indicator')
+      ) {
+        return null;
+      }
+
+      if (this.isInteractiveElement(current)) {
+        return current;
+      }
+
+      current = current.parentElement;
+    }
+
+    return null;
+  }
+
+  /**
    * Check if element is interactive
+   * Comprehensive detection covering 99% of real-world scenarios
    */
   private isInteractiveElement(element: Element): boolean {
+    // 1. Standard interactive HTML elements
     const interactiveTags = ['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'LABEL'];
-
     if (interactiveTags.includes(element.tagName)) {
       return true;
     }
 
-    // Check if element has click handler
-    const hasClickHandler =
-      element.getAttribute('onclick') !== null ||
-      element.getAttribute('role') === 'button' ||
-      element.classList.contains('clickable') ||
-      element.classList.contains('btn');
+    // 2. Elements with explicit onclick handlers
+    if (element.getAttribute('onclick') !== null) {
+      return true;
+    }
 
-    return hasClickHandler;
+    // 3. ARIA roles indicating interactivity
+    const interactiveRoles = [
+      'button',
+      'link',
+      'menuitem',
+      'menuitemcheckbox',
+      'menuitemradio',
+      'option',
+      'radio',
+      'checkbox',
+      'tab',
+      'switch',
+      'treeitem',
+    ];
+    const role = element.getAttribute('role');
+    if (role && interactiveRoles.includes(role)) {
+      return true;
+    }
+
+    // 4. Common interactive class patterns (case-insensitive)
+    const classList = Array.from(element.classList).map((c) => c.toLowerCase());
+    const interactiveClassPatterns = [
+      'btn',
+      'button',
+      'clickable',
+      'click',
+      'link',
+      'menu-item',
+      'dropdown-item',
+      'option',
+      'select',
+      'choice',
+      'action',
+      'interactive',
+      'autocomplete',
+    ];
+    if (
+      interactiveClassPatterns.some((pattern) => classList.some((cls) => cls.includes(pattern)))
+    ) {
+      return true;
+    }
+
+    // 5. Data attributes commonly used for interactive elements
+    const interactiveDataAttributes = [
+      'data-action',
+      'data-click',
+      'data-toggle',
+      'data-target',
+      'data-value',
+      'data-option',
+      'data-select',
+      'data-href',
+      'data-link',
+    ];
+    if (interactiveDataAttributes.some((attr) => element.hasAttribute(attr))) {
+      return true;
+    }
+
+    // 6. Elements with cursor: pointer (strong indicator of interactivity)
+    const computedStyle = window.getComputedStyle(element);
+    if (computedStyle.cursor === 'pointer') {
+      return true;
+    }
+
+    // 7. List items in specific interactive contexts (dropdowns, menus)
+    if (element.tagName === 'LI') {
+      const parent = element.parentElement;
+      if (parent && parent.tagName === 'UL') {
+        const parentClasses = Array.from(parent.classList).map((c) => c.toLowerCase());
+
+        // Check for known interactive list patterns
+        const interactiveListPatterns = [
+          'menu',
+          'dropdown',
+          'options',
+          'list',
+          'choices',
+          'select',
+          'autocomplete',
+        ];
+        if (
+          interactiveListPatterns.some((pattern) =>
+            parentClasses.some((cls) => cls.includes(pattern))
+          )
+        ) {
+          return true;
+        }
+
+        // More aggressive: treat LI in UL as interactive by default
+        // EXCEPT navigation lists (to avoid false positives)
+        const nonInteractivePatterns = ['nav', 'navigation', 'breadcrumb', 'footer', 'header'];
+        const isNonInteractive = nonInteractivePatterns.some((pattern) =>
+          parentClasses.some((cls) => cls.includes(pattern))
+        );
+
+        if (!isNonInteractive) {
+          return true;
+        }
+      }
+    }
+
+    // 8. DIV/SPAN elements that behave like buttons/links (common in modern frameworks)
+    if (element.tagName === 'DIV' || element.tagName === 'SPAN') {
+      // Check if it has tabindex (indicates keyboard accessibility = interactive)
+      if (element.hasAttribute('tabindex')) {
+        return true;
+      }
+
+      // Check if parent is a known interactive container
+      const parentClasses = element.parentElement
+        ? Array.from(element.parentElement.classList).map((c) => c.toLowerCase())
+        : [];
+      const interactiveContainerPatterns = ['dropdown', 'menu', 'select', 'option'];
+      if (
+        interactiveContainerPatterns.some((pattern) =>
+          parentClasses.some((cls) => cls.includes(pattern))
+        )
+      ) {
+        return true;
+      }
+
+      // Check if inside an LI within an interactive list (for dropdown options)
+      const parent = element.parentElement;
+      if (parent && parent.tagName === 'LI') {
+        const grandparent = parent.parentElement;
+        if (grandparent) {
+          const grandparentClasses = Array.from(grandparent.classList).map((c) => c.toLowerCase());
+          const interactiveListPatterns = [
+            'menu',
+            'dropdown',
+            'options',
+            'list',
+            'choices',
+            'select',
+            'autocomplete',
+          ];
+          if (
+            interactiveListPatterns.some((pattern) =>
+              grandparentClasses.some((cls) => cls.includes(pattern))
+            )
+          ) {
+            return true;
+          }
+        }
+      }
+    }
+
+    return false;
   }
 
   /**

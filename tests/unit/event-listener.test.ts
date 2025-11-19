@@ -10,7 +10,7 @@ describe('EventListener', () => {
   beforeEach(() => {
     // Mock window.scrollTo to silence jsdom warnings
     window.scrollTo = vi.fn() as any;
-    
+
     capturedActions = [];
     mockCallback = vi.fn((action: Action) => {
       capturedActions.push(action);
@@ -43,7 +43,7 @@ describe('EventListener', () => {
       expect(capturedActions).toHaveLength(1);
       const action = capturedActions[0];
       expect(action?.type).toBe('click');
-      
+
       if (action?.type === 'click') {
         expect(action.button).toBe('left');
         expect(action.clickCount).toBe(1);
@@ -77,7 +77,7 @@ describe('EventListener', () => {
 
       expect(capturedActions).toHaveLength(1);
       const action = capturedActions[0];
-      
+
       if (action?.type === 'click') {
         expect(action.coordinatesRelativeTo).toBe('element');
         // Coordinates should be relative to element
@@ -103,7 +103,7 @@ describe('EventListener', () => {
 
       expect(capturedActions).toHaveLength(1);
       const action = capturedActions[0];
-      
+
       if (action?.type === 'click') {
         expect(action.modifiers).toContain('ctrl');
         expect(action.modifiers).toContain('shift');
@@ -120,11 +120,13 @@ describe('EventListener', () => {
 
       // First click
       button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      
+
       // Second click (within double-click threshold)
       button.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
 
-      const doubleClickAction = capturedActions.find((a) => a.type === 'click' && 'clickCount' in a && a.clickCount === 2);
+      const doubleClickAction = capturedActions.find(
+        (a) => a.type === 'click' && 'clickCount' in a && a.clickCount === 2
+      );
       expect(doubleClickAction).toBeDefined();
 
       document.body.removeChild(button);
@@ -144,7 +146,7 @@ describe('EventListener', () => {
 
       expect(capturedActions).toHaveLength(1);
       const action = capturedActions[0];
-      
+
       if (action?.type === 'click') {
         expect(action.button).toBe('right');
       }
@@ -184,7 +186,7 @@ describe('EventListener', () => {
 
       expect(capturedActions).toHaveLength(1);
       const action = capturedActions[0];
-      
+
       if (action?.type === 'input') {
         expect(action.value).toBe('testuser');
         expect(action.inputType).toBe('text');
@@ -205,13 +207,13 @@ describe('EventListener', () => {
       // Simulate rapid typing
       input.value = 't';
       input.dispatchEvent(new Event('input', { bubbles: true }));
-      
+
       input.value = 'te';
       input.dispatchEvent(new Event('input', { bubbles: true }));
-      
+
       input.value = 'tes';
       input.dispatchEvent(new Event('input', { bubbles: true }));
-      
+
       input.value = 'test';
       input.dispatchEvent(new Event('input', { bubbles: true }));
 
@@ -221,7 +223,7 @@ describe('EventListener', () => {
       // Should only capture one final input action
       const inputActions = capturedActions.filter((a) => a.type === 'input');
       expect(inputActions.length).toBeLessThanOrEqual(1);
-      
+
       if (inputActions[0]?.type === 'input') {
         expect(inputActions[0].value).toBe('test');
       }
@@ -241,7 +243,7 @@ describe('EventListener', () => {
       await new Promise((resolve) => setTimeout(resolve, 600));
 
       const action = capturedActions.find((a) => a.type === 'input');
-      
+
       if (action?.type === 'input') {
         expect(action.typingDelay).toBeDefined();
         expect(action.typingDelay).toBeGreaterThanOrEqual(0);
@@ -264,7 +266,7 @@ describe('EventListener', () => {
       // Wait for debounce
       setTimeout(() => {
         const action = capturedActions.find((a) => a.type === 'input');
-        
+
         if (action?.type === 'input') {
           expect(action.isSensitive).toBe(true);
         }
@@ -283,7 +285,7 @@ describe('EventListener', () => {
       const option2 = document.createElement('option');
       option2.value = 'value2';
       option2.textContent = 'Option 2';
-      
+
       select.appendChild(option1);
       select.appendChild(option2);
       document.body.appendChild(select);
@@ -295,7 +297,7 @@ describe('EventListener', () => {
 
       expect(capturedActions).toHaveLength(1);
       const action = capturedActions[0];
-      
+
       if (action?.type === 'select') {
         expect(action.selectedValue).toBe('value2');
         expect(action.selectedText).toBe('Option 2');
@@ -311,13 +313,13 @@ describe('EventListener', () => {
       eventListener.start();
 
       const beforeUrl = window.location.href;
-      
+
       // Simulate navigation
       window.history.pushState({}, '', '/new-page');
       window.dispatchEvent(new PopStateEvent('popstate'));
 
       const action = capturedActions.find((a) => a.type === 'navigation');
-      
+
       if (action?.type === 'navigation') {
         expect(action.from).toBeDefined();
         expect(action.to).toContain('/new-page');
@@ -330,14 +332,14 @@ describe('EventListener', () => {
 
     it('should capture navigation duration', async () => {
       eventListener.start();
-      
+
       window.history.pushState({}, '', '/test-page');
       window.dispatchEvent(new PopStateEvent('popstate'));
 
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       const action = capturedActions.find((a) => a.type === 'navigation');
-      
+
       if (action?.type === 'navigation') {
         expect(action.duration).toBeDefined();
         expect(action.duration).toBeGreaterThanOrEqual(0);
@@ -384,7 +386,7 @@ describe('EventListener', () => {
       input.dispatchEvent(keyEvent);
 
       const action = capturedActions.find((a) => a.type === 'keypress');
-      
+
       if (action?.type === 'keypress') {
         expect(action.key).toBe('Enter');
         expect(action.code).toBe('Enter');
@@ -402,10 +404,10 @@ describe('EventListener', () => {
       // Simulate multiple scroll events
       window.scrollTo(0, 100);
       window.dispatchEvent(new Event('scroll'));
-      
+
       window.scrollTo(0, 200);
       window.dispatchEvent(new Event('scroll'));
-      
+
       window.scrollTo(0, 300);
       window.dispatchEvent(new Event('scroll'));
 
@@ -413,7 +415,7 @@ describe('EventListener', () => {
       await new Promise((resolve) => setTimeout(resolve, 300));
 
       const scrollActions = capturedActions.filter((a) => a.type === 'scroll');
-      
+
       // Should capture only final position after debounce
       expect(scrollActions.length).toBeLessThanOrEqual(1);
     });
@@ -453,6 +455,153 @@ describe('EventListener', () => {
     });
   });
 
+  describe('MouseDown Events', () => {
+    it('should capture mousedown events on interactive elements', () => {
+      const button = document.createElement('button');
+      button.type = 'button'; // Explicitly set type to avoid submit button behavior
+      button.textContent = 'Test Button';
+      document.body.appendChild(button);
+
+      eventListener.start();
+
+      const mouseDownEvent = new MouseEvent('mousedown', {
+        bubbles: true,
+        clientX: 100,
+        clientY: 200,
+        button: 0,
+      });
+      button.dispatchEvent(mouseDownEvent);
+
+      expect(capturedActions).toHaveLength(1);
+      const action = capturedActions[0];
+      expect(action?.type).toBe('click');
+
+      if (action?.type === 'click') {
+        expect(action.button).toBe('left');
+        expect(action.text).toBe('Test Button');
+      }
+
+      document.body.removeChild(button);
+    });
+
+    it('should capture mousedown on nested elements in dropdown lists', () => {
+      const ul = document.createElement('ul');
+      ul.className = 'form__autocomplete';
+      const li = document.createElement('li');
+      const span = document.createElement('span');
+      span.textContent = 'Dropdown Option';
+      li.appendChild(span);
+      ul.appendChild(li);
+      document.body.appendChild(ul);
+
+      eventListener.start();
+
+      const mouseDownEvent = new MouseEvent('mousedown', {
+        bubbles: true,
+        clientX: 50,
+        clientY: 50,
+        button: 0,
+      });
+      span.dispatchEvent(mouseDownEvent);
+
+      expect(capturedActions).toHaveLength(1);
+      const action = capturedActions[0];
+      expect(action?.type).toBe('click');
+
+      if (action?.type === 'click') {
+        // Span itself is detected as interactive (inside LI in autocomplete list)
+        // This matches real-world behavior - we want to capture the clicked element
+        expect(['li', 'span']).toContain(action.tagName);
+        expect(action.text).toBe('Dropdown Option');
+      }
+
+      document.body.removeChild(ul);
+    });
+
+    it('should skip mousedown on navigation links to avoid duplicates', () => {
+      const link = document.createElement('a');
+      link.href = 'https://example.com';
+      link.textContent = 'Navigate';
+      document.body.appendChild(link);
+
+      eventListener.start();
+
+      const mouseDownEvent = new MouseEvent('mousedown', {
+        bubbles: true,
+        button: 0,
+      });
+      link.dispatchEvent(mouseDownEvent);
+
+      // Should not capture mousedown on links (will be captured on click instead)
+      expect(capturedActions).toHaveLength(0);
+
+      document.body.removeChild(link);
+    });
+
+    it('should not capture mousedown when not listening', () => {
+      const button = document.createElement('button');
+      document.body.appendChild(button);
+
+      const mouseDownEvent = new MouseEvent('mousedown', {
+        bubbles: true,
+        button: 0,
+      });
+      button.dispatchEvent(mouseDownEvent);
+
+      expect(capturedActions).toHaveLength(0);
+
+      document.body.removeChild(button);
+    });
+
+    it('should capture mousedown on list items', () => {
+      const ul = document.createElement('ul');
+      const li = document.createElement('li');
+      li.textContent = 'List Item';
+      ul.appendChild(li);
+      document.body.appendChild(ul);
+
+      eventListener.start();
+
+      const mouseDownEvent = new MouseEvent('mousedown', {
+        bubbles: true,
+        button: 0,
+      });
+      li.dispatchEvent(mouseDownEvent);
+
+      expect(capturedActions).toHaveLength(1);
+      const action = capturedActions[0];
+      expect(action?.type).toBe('click');
+
+      if (action?.type === 'click') {
+        expect(action.tagName).toBe('li');
+        expect(action.text).toBe('List Item');
+      }
+
+      document.body.removeChild(ul);
+    });
+
+    it('should handle mousedown on elements with onclick handlers', () => {
+      const div = document.createElement('div');
+      div.setAttribute('onclick', 'return false;');
+      div.textContent = 'Clickable Div';
+      document.body.appendChild(div);
+
+      eventListener.start();
+
+      const mouseDownEvent = new MouseEvent('mousedown', {
+        bubbles: true,
+        button: 0,
+      });
+      div.dispatchEvent(mouseDownEvent);
+
+      expect(capturedActions).toHaveLength(1);
+      const action = capturedActions[0];
+      expect(action?.type).toBe('click');
+
+      document.body.removeChild(div);
+    });
+  });
+
   describe('Lifecycle', () => {
     it('should start and stop listening', () => {
       const button = document.createElement('button');
@@ -460,7 +609,7 @@ describe('EventListener', () => {
 
       eventListener.start();
       button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      
+
       const countAfterStart = capturedActions.length;
       expect(countAfterStart).toBeGreaterThan(0);
 
