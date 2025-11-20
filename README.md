@@ -7,6 +7,11 @@
   
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
   [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)](https://www.typescriptlang.org/)
+  
+  ---
+  
+  > **⚠️ Development Status**: This extension is currently under active development and experimental. The main [SaveAction platform](https://github.com/SaveActionHQ/SaveAction) is still being built, so this recorder extension is not yet fully functional for production use. We appreciate your interest and encourage you to ⭐ star the repository to follow our progress!
+  
 </div>
 
 ## 🎯 Overview
