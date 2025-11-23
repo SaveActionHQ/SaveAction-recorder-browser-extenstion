@@ -17,6 +17,7 @@ interface BackgroundState {
   testName: string | null;
   currentTabId: number | null;
   startTime: number | null; // Changed to number (timestamp)
+  initialUrl: string | null; // Store the starting URL where recording began
   metadata: RecordingMetadata | null;
   accumulatedActions: any[]; // Store actions across page navigations
   actionCache: any[]; // Cache of last known actions from content script
@@ -33,6 +34,7 @@ let state: BackgroundState = {
   testName: null,
   currentTabId: null,
   startTime: null,
+  initialUrl: null,
   metadata: null,
   accumulatedActions: [],
   actionCache: [],
@@ -224,6 +226,7 @@ async function handleStartRecording(
   }
 
   const startTime = Date.now();
+  const initialUrl = tabs[0]?.url || ''; // Capture initial URL where recording starts
 
   // Update state
   state.isRecording = true;
@@ -231,6 +234,7 @@ async function handleStartRecording(
   state.testName = testName;
   state.currentTabId = tabId;
   state.startTime = startTime;
+  state.initialUrl = initialUrl; // Store initial URL
   state.metadata = null; // Will be populated from content script
 
   // Send message to content script to start recording
@@ -359,25 +363,16 @@ async function handleStopRecording(
     // Build recording from background state
     console.log('[Background] Building recording from background state');
 
-    if (!state.testName || !state.startTime) {
+    if (!state.testName || !state.startTime || !state.initialUrl) {
       throw new Error('Missing recording metadata');
     }
 
-    // Get current tab URL
-    let currentUrl = '';
-    try {
-      const tab = await chrome.tabs.get(tabId);
-      currentUrl = tab.url || '';
-    } catch (error) {
-      console.error('[Background] Could not get tab URL:', error);
-      currentUrl = 'unknown';
-    }
-
+    // Use the initial URL where recording started, not the current page URL
     const recording: Recording = {
       id: `rec_${Date.now()}`,
       version: '1.0.0',
       testName: state.testName,
-      url: currentUrl,
+      url: state.initialUrl, // Use stored initial URL
       startTime: new Date(state.startTime).toISOString(),
       endTime: new Date().toISOString(),
       viewport: {
@@ -524,12 +519,19 @@ function handleGetStatus(): StatusResponse {
   // Calculate total action count (accumulated + current page cache)
   const totalActions = state.accumulatedActions.length + state.actionCache.length;
 
-  // Include basic metadata even without RecordingMetadata object
+  // Include complete metadata for restoration (preserves initial URL)
   const metadata =
-    state.isRecording && state.testName && state.startTime
+    state.isRecording && state.testName && state.startTime && state.initialUrl
       ? {
+          id: `rec_${state.startTime}`,
           testName: state.testName,
-          startTime: state.startTime,
+          url: state.initialUrl, // Use initial URL, not current page URL
+          startTime: new Date(state.startTime).toISOString(),
+          viewport: {
+            width: 1920,
+            height: 1080,
+          },
+          userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           actionCount: totalActions,
         }
       : undefined;
@@ -702,6 +704,7 @@ function resetState(): void {
     testName: null,
     currentTabId: null,
     startTime: null,
+    initialUrl: null,
     metadata: null,
     accumulatedActions: [],
     actionCache: [],

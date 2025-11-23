@@ -80,6 +80,29 @@ export class ActionRecorder {
   }
 
   /**
+   * Restore recording state after page navigation
+   * This preserves the original metadata (including initial URL) from background
+   */
+  public restoreRecording(metadata: RecordingMetadata): void {
+    if (this.state === 'recording') {
+      console.log('[ActionRecorder] Already recording, skipping restoration');
+      return;
+    }
+
+    // Restore metadata without modifying it (preserves initial URL)
+    this.metadata = { ...metadata };
+
+    // Start fresh actions (will be synced from background)
+    this.actions = [];
+
+    // Start capturing events
+    this.state = 'recording';
+    this.eventListener.start();
+
+    console.log('[ActionRecorder] Recording restored with original metadata:', this.metadata);
+  }
+
+  /**
    * Pause recording (stop capturing but keep session)
    */
   public pauseRecording(): void {

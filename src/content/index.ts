@@ -282,13 +282,11 @@ if (window.self !== window.top) {
         // Restore recording in the recorder
         if (recorder && metadata?.testName) {
           try {
+            // Use restoreRecording to preserve original metadata (including initial URL)
+            console.log('[Content] Calling recorder.restoreRecording with metadata:', metadata);
+            recorder.restoreRecording(metadata);
             console.log(
-              '[Content] Calling recorder.startRecording with testName:',
-              metadata.testName
-            );
-            recorder.startRecording(metadata.testName);
-            console.log(
-              '[Content] recorder.startRecording completed, isRecording:',
+              '[Content] recorder.restoreRecording completed, isRecording:',
               recorder.isRecording()
             );
 
