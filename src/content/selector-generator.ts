@@ -32,9 +32,17 @@ export class SelectorGenerator {
   }
 
   /**
-   * Generate all possible selectors for an element
+   * Generate all possible selectors for an element with uniqueness validation
    */
   public generateSelectors(element: Element): SelectorStrategy {
+    const strategy = this.generateAllSelectors(element);
+    return this.enhanceForUniqueness(element, strategy);
+  }
+
+  /**
+   * Generate all possible selectors for an element (internal)
+   */
+  private generateAllSelectors(element: Element): SelectorStrategy {
     const selectors: Partial<SelectorStrategy> = {};
     const priority: SelectorType[] = [];
 
@@ -206,7 +214,7 @@ export class SelectorGenerator {
   }
 
   /**
-   * Generate CSS selector
+   * Generate CSS selector with nth-child support for uniqueness
    */
   private generateCssSelector(element: Element): string {
     const parts: string[] = [];
@@ -250,6 +258,33 @@ export class SelectorGenerator {
   }
 
   /**
+   * Generate CSS selector with nth-child for disambiguation
+   */
+  private generateCssSelectorWithNthChild(element: Element): string {
+    const baseCss = this.generateCssSelector(element);
+
+    // Add nth-child for common ambiguous elements
+    if (element.parentElement && this.shouldUseNthChild(element)) {
+      const siblings = Array.from(element.parentElement.children);
+      const index = siblings.indexOf(element) + 1;
+
+      // Add nth-child to the last part of the selector
+      return `${baseCss}:nth-child(${index})`;
+    }
+
+    return baseCss;
+  }
+
+  /**
+   * Check if element should use nth-child (list items, options, etc.)
+   */
+  private shouldUseNthChild(element: Element): boolean {
+    const tagName = element.tagName.toLowerCase();
+    const ambiguousTags = ['li', 'option', 'tr', 'td', 'th'];
+    return ambiguousTags.includes(tagName);
+  }
+
+  /**
    * Generate text-based selector
    */
   private generateTextSelector(element: Element): {
@@ -269,10 +304,11 @@ export class SelectorGenerator {
   }
 
   /**
-   * Generate relative XPath
+   * Generate relative XPath with text content for better uniqueness
    */
   private generateRelativeXPath(element: Element): string {
     const tagName = element.tagName.toLowerCase();
+    const text = element.textContent?.trim();
 
     // Try ID-based XPath first
     if (element.id && !this.isDynamicId(element.id)) {
@@ -288,6 +324,23 @@ export class SelectorGenerator {
     // Try name attribute
     if (element instanceof HTMLInputElement && element.name) {
       return `//${tagName}[@name="${element.name}"]`;
+    }
+
+    // Try text-based XPath for specific elements (list items, links, buttons)
+    if (text && text.length > 0 && text.length < 100) {
+      const shouldUseText = ['li', 'a', 'button', 'option', 'span'].includes(tagName);
+      if (shouldUseText && element.parentElement) {
+        const escapedText = text.replace(/'/g, "'");
+        const parentClasses = Array.from(element.parentElement.classList)
+          .filter((cls) => !this.isDynamicClass(cls))
+          .slice(0, 1);
+
+        if (parentClasses.length > 0) {
+          const parentTag = element.parentElement.tagName.toLowerCase();
+          return `//${parentTag}[contains(@class, "${parentClasses[0]}")]/${tagName}[text()='${escapedText}']`;
+        }
+        return `//${tagName}[text()='${escapedText}']`;
+      }
     }
 
     // Try class-based
@@ -402,5 +455,173 @@ export class SelectorGenerator {
     ];
 
     return dynamicPatterns.some((pattern) => pattern.test(className));
+  }
+
+  /**
+   * Enhance selector strategy for uniqueness
+   */
+  private enhanceForUniqueness(element: Element, strategy: SelectorStrategy): SelectorStrategy {
+    // Check if CSS selector is unique
+    if (strategy.css && !this.isSelectorUnique(strategy.css, element)) {
+      // Try CSS with nth-child
+      const cssWithNthChild = this.generateCssSelectorWithNthChild(element);
+      if (this.isSelectorUnique(cssWithNthChild, element)) {
+        strategy.css = cssWithNthChild;
+      }
+    }
+
+    // Reorder priority based on uniqueness and structural preference
+    const structuralSelectors: SelectorType[] = []; // id, dataTestId, ariaLabel, name, css
+    const contentSelectors: SelectorType[] = []; // text, textContains
+    const fallbackSelectors: SelectorType[] = []; // xpath, xpathAbsolute, position
+
+    for (const selectorType of strategy.priority) {
+      const selector = this.getSelectorValue(strategy, selectorType);
+      const isUnique = selector && this.isSelectorTypeUnique(selector, selectorType, element);
+
+      // Categorize selectors
+      if (['id', 'dataTestId', 'ariaLabel', 'name', 'css'].includes(selectorType)) {
+        if (isUnique) {
+          structuralSelectors.push(selectorType);
+        }
+      } else if (['text', 'textContains'].includes(selectorType)) {
+        if (isUnique) {
+          contentSelectors.push(selectorType);
+        }
+      } else {
+        // xpath, xpathAbsolute, position
+        fallbackSelectors.push(selectorType);
+      }
+    }
+
+    // Priority order: structural (unique) > fallback > content (unique)
+    // This ensures CSS selector is tried before text, even if both are unique
+    strategy.priority = [...structuralSelectors, ...fallbackSelectors, ...contentSelectors];
+
+    return strategy;
+  }
+
+  /**
+   * Check if a CSS selector uniquely identifies the element
+   */
+  private isSelectorUnique(selector: string, element: Element): boolean {
+    try {
+      const matches = document.querySelectorAll(selector);
+      return matches.length === 1 && matches[0] === element;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Check if a selector of given type is unique
+   */
+  private isSelectorTypeUnique(
+    selector: string,
+    selectorType: SelectorType,
+    element: Element
+  ): boolean {
+    try {
+      let querySelector: string;
+
+      switch (selectorType) {
+        case 'id':
+          querySelector = `#${cssEscape(selector)}`;
+          break;
+        case 'dataTestId':
+          querySelector = `[data-testid="${selector}"]`;
+          break;
+        case 'ariaLabel':
+          querySelector = `[aria-label="${selector}"]`;
+          break;
+        case 'name':
+          querySelector = `[name="${selector}"]`;
+          break;
+        case 'css':
+          querySelector = selector;
+          break;
+        case 'text':
+        case 'textContains':
+          // Validate text uniqueness by checking all elements with same text
+          return this.isTextUnique(selector, element, selectorType === 'textContains');
+        case 'xpath':
+          // XPath validation is complex, assume unique for now
+          // TODO: Implement XPath evaluation for better validation
+          return true;
+        case 'xpathAbsolute':
+          // Absolute XPath should always be unique
+          return true;
+        case 'position':
+          // Position-based selector is always unique within parent
+          return true;
+        default:
+          return true;
+      }
+
+      const matches = document.querySelectorAll(querySelector);
+      return matches.length === 1 && matches[0] === element;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Check if text content uniquely identifies the element
+   */
+  private isTextUnique(text: string, element: Element, isPartial: boolean): boolean {
+    if (!text) return false;
+
+    // Get all elements in the document
+    const allElements = document.querySelectorAll('*');
+    let matchCount = 0;
+    let matchedElement: Element | null = null;
+
+    for (const el of Array.from(allElements)) {
+      const elementText = el.textContent?.trim();
+      if (!elementText) continue;
+
+      const matches = isPartial ? elementText.includes(text) : elementText === text;
+
+      if (matches) {
+        matchCount++;
+        matchedElement = el;
+
+        // If we found more than one match, it's not unique
+        if (matchCount > 1) {
+          return false;
+        }
+      }
+    }
+
+    // Text is unique only if exactly one element matched and it's our target
+    return matchCount === 1 && matchedElement === element;
+  }
+
+  /**
+   * Get selector value by type
+   */
+  private getSelectorValue(strategy: SelectorStrategy, type: SelectorType): string | undefined {
+    switch (type) {
+      case 'id':
+        return strategy.id;
+      case 'dataTestId':
+        return strategy.dataTestId;
+      case 'ariaLabel':
+        return strategy.ariaLabel;
+      case 'name':
+        return strategy.name;
+      case 'css':
+        return strategy.css;
+      case 'xpath':
+        return strategy.xpath;
+      case 'xpathAbsolute':
+        return strategy.xpathAbsolute;
+      case 'text':
+        return strategy.text;
+      case 'textContains':
+        return strategy.textContains;
+      default:
+        return undefined;
+    }
   }
 }
