@@ -238,9 +238,16 @@ if (window.self !== window.top) {
    * Cleanup on page unload
    */
   window.addEventListener('beforeunload', () => {
+    // Detect if this is back/forward navigation
+    const isBackForward = performance.navigation && performance.navigation.type === 2;
+
     // Save current state to background before unloading
     if (recorder && recorder.isRecording()) {
-      console.log('[Content] Page unloading - saving state');
+      console.log('[Content] Page unloading - saving state, back/forward:', isBackForward);
+
+      // Note: Navigation action will be captured by background's chrome.tabs.onUpdated
+      // No need to create it here as it would be redundant
+
       try {
         chrome.runtime.sendMessage({
           type: 'SAVE_CURRENT_STATE',
