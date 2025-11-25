@@ -99,7 +99,28 @@ export class ActionRecorder {
     this.state = 'recording';
     this.eventListener.start();
 
+    // Sync action counter with background
+    this.syncActionCounter();
+
     console.log('[ActionRecorder] Recording restored with original metadata:', this.metadata);
+  }
+
+  /**
+   * Sync action counter with background to ensure sequential IDs
+   */
+  private async syncActionCounter(): Promise<void> {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'GET_ACTION_COUNTER' });
+      if (response?.success && typeof response.data?.counter === 'number') {
+        this.eventListener.setActionSequence(response.data.counter);
+        console.log(
+          '[ActionRecorder] Synced action counter from background:',
+          response.data.counter
+        );
+      }
+    } catch (error) {
+      console.error('[ActionRecorder] Failed to sync action counter:', error);
+    }
   }
 
   /**

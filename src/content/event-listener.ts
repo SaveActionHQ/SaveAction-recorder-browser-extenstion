@@ -58,6 +58,14 @@ export class EventListener {
   }
 
   /**
+   * Set action sequence counter (for syncing with background)
+   */
+  public setActionSequence(sequence: number): void {
+    this.actionSequence = sequence;
+    console.log('[EventListener] Action sequence set to:', sequence);
+  }
+
+  /**
    * Start listening to events
    */
   public start(): void {

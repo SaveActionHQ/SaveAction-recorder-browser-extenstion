@@ -23,6 +23,7 @@ interface BackgroundState {
   actionCache: any[]; // Cache of last known actions from content script
   pollingInterval: NodeJS.Timeout | null; // Timer for periodic action syncing
   actionCounter: number; // Global action counter across all pages
+  previousUrl: string | null; // Track previous URL for back/forward navigation detection
 }
 
 /**
@@ -40,7 +41,94 @@ let state: BackgroundState = {
   actionCache: [],
   pollingInterval: null,
   actionCounter: 0,
+  previousUrl: null,
 };
+
+/**
+ * Restore state from storage on service worker startup
+ */
+async function restoreStateFromStorage() {
+  try {
+    const result = await chrome.storage.session.get([
+      'saveaction_action_counter',
+      'saveaction_recording_state',
+      'saveaction_current_actions',
+    ]);
+
+    // Restore action counter
+    if (typeof result['saveaction_action_counter'] === 'number') {
+      state.actionCounter = result['saveaction_action_counter'];
+      console.log('[Background] Restored action counter:', state.actionCounter);
+    }
+
+    // Restore recording state if exists
+    if (result['saveaction_recording_state']) {
+      const recordingState = result['saveaction_recording_state'];
+      state.isRecording = recordingState.isRecording || false;
+      state.isPaused = recordingState.isPaused || false;
+      state.testName = recordingState.testName || null;
+      state.currentTabId = recordingState.currentTabId || null;
+      state.startTime = recordingState.startTime || null;
+      state.initialUrl = recordingState.initialUrl || null;
+      console.log('[Background] Restored recording state:', {
+        isRecording: state.isRecording,
+        testName: state.testName,
+        actionCounter: state.actionCounter,
+      });
+    }
+
+    // Restore accumulated actions
+    if (
+      result['saveaction_current_actions'] &&
+      Array.isArray(result['saveaction_current_actions'])
+    ) {
+      state.actionCache = result['saveaction_current_actions'];
+      console.log('[Background] Restored', state.actionCache.length, 'actions from storage');
+    }
+
+    // Resume polling if recording was active
+    if (state.isRecording) {
+      startActionPolling();
+    }
+  } catch (error) {
+    console.error('[Background] Failed to restore state:', error);
+  }
+}
+
+/**
+ * Persist action counter to storage
+ */
+async function persistActionCounter() {
+  try {
+    await chrome.storage.session.set({
+      saveaction_action_counter: state.actionCounter,
+    });
+  } catch (error) {
+    console.error('[Background] Failed to persist action counter:', error);
+  }
+}
+
+/**
+ * Get highest action ID from existing actions (hybrid validation)
+ */
+function getMaxActionId(actions: any[]): number {
+  if (!actions || actions.length === 0) return 0;
+
+  const ids = actions
+    .map((action) => {
+      if (action.id && typeof action.id === 'string') {
+        const match = action.id.match(/act_(\d+)/);
+        return match ? parseInt(match[1], 10) : 0;
+      }
+      return 0;
+    })
+    .filter((id) => !isNaN(id));
+
+  return ids.length > 0 ? Math.max(...ids) : 0;
+}
+
+// Restore state on service worker startup
+restoreStateFromStorage();
 
 /**
  * Start polling storage for actions every 2 seconds
@@ -184,6 +272,13 @@ chrome.runtime.onMessage.addListener(
           );
         return true;
 
+      case 'GET_ACTION_COUNTER':
+        sendResponse({
+          success: true,
+          data: { counter: state.actionCounter },
+        });
+        return false;
+
       default:
         sendResponse({
           success: false,
@@ -235,6 +330,7 @@ async function handleStartRecording(
   state.currentTabId = tabId;
   state.startTime = startTime;
   state.initialUrl = initialUrl; // Store initial URL
+  state.previousUrl = initialUrl; // Initialize previousUrl for navigation detection
   state.metadata = null; // Will be populated from content script
 
   // Send message to content script to start recording
@@ -590,6 +686,22 @@ async function handleSyncAction(payload: { action: any }): Promise<MessageRespon
   }
 
   try {
+    // Read current actions from storage
+    const result = await chrome.storage.session.get('saveaction_current_actions');
+    const actions = result['saveaction_current_actions'] || [];
+
+    // Hybrid validation: ensure counter is never less than max existing ID
+    const maxExistingId = getMaxActionId(actions);
+    if (state.actionCounter < maxExistingId) {
+      console.log(
+        '[Background] Counter drift detected. Adjusting from',
+        state.actionCounter,
+        'to',
+        maxExistingId
+      );
+      state.actionCounter = maxExistingId;
+    }
+
     // Increment global counter
     state.actionCounter++;
 
@@ -599,21 +711,18 @@ async function handleSyncAction(payload: { action: any }): Promise<MessageRespon
       id: `act_${String(state.actionCounter).padStart(3, '0')}`,
     };
 
-    // Read current actions from storage
-    const result = await chrome.storage.session.get('saveaction_current_actions');
-    const actions = result['saveaction_current_actions'] || [];
-
     // Add new action with corrected ID
     actions.push(action);
 
-    // Save back to storage
+    // Save actions and counter to storage
     await chrome.storage.session.set({
       saveaction_current_actions: actions,
+      saveaction_action_counter: state.actionCounter,
     });
 
     console.log('[Background] Synced action', action.id, 'to storage. Total:', actions.length);
 
-    return { success: true };
+    return { success: true, data: { actionId: action.id, counter: state.actionCounter } };
   } catch (error) {
     console.error('[Background] Failed to sync action:', error);
     return { success: false, error: (error as Error).message };
@@ -692,7 +801,7 @@ function broadcastStatusUpdate(): void {
 /**
  * Reset state to idle
  */
-function resetState(): void {
+async function resetState(): Promise<void> {
   // Stop polling if active
   if (state.pollingInterval) {
     clearInterval(state.pollingInterval);
@@ -710,7 +819,20 @@ function resetState(): void {
     actionCache: [],
     pollingInterval: null,
     actionCounter: 0,
+    previousUrl: null,
   };
+
+  // Clear storage
+  try {
+    await chrome.storage.session.remove([
+      'saveaction_recording_state',
+      'saveaction_current_actions',
+      'saveaction_action_counter',
+    ]);
+    console.log('[Background] Storage cleared');
+  } catch (error) {
+    console.error('[Background] Failed to clear storage:', error);
+  }
 }
 
 /**
@@ -736,6 +858,34 @@ chrome.tabs.onUpdated.addListener(async (tabId: number, changeInfo: chrome.tabs.
   ) {
     console.log('[Background] Recording tab navigating to:', changeInfo.url);
     console.log('[Background] Current accumulated actions:', state.accumulatedActions.length);
+
+    // Detect back/forward navigation by URL change
+    if (state.previousUrl && state.previousUrl !== changeInfo.url) {
+      console.log('[Background] URL changed from', state.previousUrl, 'to', changeInfo.url);
+
+      // Create navigation action for back/forward button
+      const navigationAction = {
+        id: `act_${String(state.actionCounter + 1).padStart(3, '0')}`, // Will be renumbered
+        type: 'navigation',
+        timestamp: Date.now(),
+        url: changeInfo.url,
+        from: state.previousUrl,
+        to: changeInfo.url,
+        navigationTrigger: 'back', // Assume back (most common), could be forward
+        waitUntil: 'load',
+        duration: 0,
+      };
+
+      // Add to accumulated actions immediately
+      state.accumulatedActions.push(navigationAction);
+      state.actionCounter++;
+      await persistActionCounter();
+
+      console.log('[Background] Created navigation action:', navigationAction.id, 'for URL change');
+    }
+
+    // Update previous URL for next navigation
+    state.previousUrl = changeInfo.url;
 
     // Read fresh actions directly from storage (not from cache which might be stale)
     let currentPageActions: any[] = [];

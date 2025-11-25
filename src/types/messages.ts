@@ -14,6 +14,7 @@ export type MessageType =
   | 'GET_RECORDING'
   | 'SAVE_CURRENT_STATE'
   | 'SYNC_ACTION'
+  | 'GET_ACTION_COUNTER'
   | 'CLEAR_RECORDING'
   | 'DOWNLOAD_RECORDING'
   | 'STATUS_UPDATE';
@@ -88,13 +89,20 @@ export interface SaveCurrentStateMessage extends BaseMessage {
 }
 
 /**
- * Sync action to background for persistent storage
+ * Sync action message
  */
 export interface SyncActionMessage extends BaseMessage {
   type: 'SYNC_ACTION';
   payload: {
     action: Action;
   };
+}
+
+/**
+ * Get action counter message
+ */
+export interface GetActionCounterMessage extends BaseMessage {
+  type: 'GET_ACTION_COUNTER';
 }
 
 /**
@@ -135,6 +143,7 @@ export type Message =
   | GetRecordingMessage
   | SaveCurrentStateMessage
   | SyncActionMessage
+  | GetActionCounterMessage
   | ClearRecordingMessage
   | DownloadRecordingMessage
   | StatusUpdateMessage;
