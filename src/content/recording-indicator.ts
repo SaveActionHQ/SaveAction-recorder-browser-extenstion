@@ -7,7 +7,7 @@ export class RecordingIndicator {
   private statusDot: HTMLDivElement | null = null;
   private timerText: HTMLSpanElement | null = null;
   private actionCountText: HTMLSpanElement | null = null;
-  private startTime: number | null = null;
+  private startTime: number | null = null; // Store as timestamp, not ISO string
   private timerInterval: number | null = null;
   private pollingInterval: number | null = null;
   private pauseButton: HTMLButtonElement | null = null;
@@ -427,7 +427,9 @@ export class RecordingIndicator {
 
             // Update start time if we don't have it yet
             if (startTime && !this.startTime) {
-              this.startTime = startTime;
+              // Convert ISO string to timestamp
+              this.startTime =
+                typeof startTime === 'string' ? new Date(startTime).getTime() : startTime;
               this.startTimer();
             }
 
