@@ -28,6 +28,7 @@ export class EventListener {
   private pendingInputElement: HTMLInputElement | HTMLTextAreaElement | null = null;
   private typingStartTime = 0;
   private keyCount = 0;
+  private previousUrl: string = window.location.href; // Track previous URL for back/forward detection
 
   // Event handlers (need to be stored for removal)
   private handleClick: (e: MouseEvent) => void;
@@ -147,6 +148,9 @@ export class EventListener {
 
       const action = this.createClickAction(event, target, 1);
       this.emitAction(action);
+
+      // Update previous URL before navigation happens
+      this.previousUrl = window.location.href;
 
       // Wait a bit for sync to complete, then trigger navigation
       setTimeout(() => {
@@ -417,24 +421,41 @@ export class EventListener {
   }
 
   /**
-   * Handle popstate events (navigation)
+   * Handle popstate events (back/forward navigation)
    */
   private onPopState(_event: PopStateEvent): void {
     if (!this.isListening) return;
+
+    const currentUrl = window.location.href;
+    const fromUrl = this.previousUrl;
+
+    // Determine if this is back or forward navigation
+    // Note: We can't reliably detect forward vs back, so we default to 'back'
+    // which is the most common case
+    const navigationTrigger: 'back' | 'forward' = 'back';
 
     const action: NavigationAction = {
       id: generateActionId(++this.actionSequence),
       type: 'navigation',
       timestamp: Date.now(),
-      url: window.location.href,
-      from: document.referrer || window.location.href,
-      to: window.location.href,
-      navigationTrigger: 'back',
+      url: currentUrl,
+      from: fromUrl,
+      to: currentUrl,
+      navigationTrigger,
       waitUntil: 'load',
       duration: 0,
     };
 
+    // Update previous URL for next navigation
+    this.previousUrl = currentUrl;
+
     this.emitAction(action);
+
+    console.log('[EventListener] Back/Forward navigation detected:', {
+      from: fromUrl,
+      to: currentUrl,
+      trigger: navigationTrigger,
+    });
   }
 
   /**
