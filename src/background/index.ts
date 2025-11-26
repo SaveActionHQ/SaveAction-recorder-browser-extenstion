@@ -863,7 +863,36 @@ chrome.tabs.onUpdated.addListener(async (tabId: number, changeInfo: chrome.tabs.
     if (state.previousUrl && state.previousUrl !== changeInfo.url) {
       console.log('[Background] URL changed from', state.previousUrl, 'to', changeInfo.url);
 
-      // Create navigation action for back/forward button
+      // Determine navigation trigger based on last action
+      let navigationTrigger: 'back' | 'forward' | 'form-submit' | 'click' = 'back';
+
+      // Check accumulated actions to detect what caused navigation
+      const recentActions = state.accumulatedActions.slice(-5); // Check last 5 actions
+      const now = Date.now();
+
+      for (let i = recentActions.length - 1; i >= 0; i--) {
+        const action = recentActions[i];
+        const timeDiff = now - action.timestamp;
+
+        // Only consider actions within last 2 seconds
+        if (timeDiff > 2000) break;
+
+        // Check if it was a form submit
+        if (action.type === 'submit') {
+          navigationTrigger = 'form-submit';
+          console.log('[Background] Navigation caused by form submit');
+          break;
+        }
+
+        // Check if it was a link click (tagName === 'a')
+        if (action.type === 'click' && action.tagName === 'a') {
+          navigationTrigger = 'click';
+          console.log('[Background] Navigation caused by link click');
+          break;
+        }
+      }
+
+      // Create navigation action
       const navigationAction = {
         id: `act_${String(state.actionCounter + 1).padStart(3, '0')}`, // Will be renumbered
         type: 'navigation',
@@ -871,7 +900,7 @@ chrome.tabs.onUpdated.addListener(async (tabId: number, changeInfo: chrome.tabs.
         url: changeInfo.url,
         from: state.previousUrl,
         to: changeInfo.url,
-        navigationTrigger: 'back', // Assume back (most common), could be forward
+        navigationTrigger,
         waitUntil: 'load',
         duration: 0,
       };
@@ -881,7 +910,12 @@ chrome.tabs.onUpdated.addListener(async (tabId: number, changeInfo: chrome.tabs.
       state.actionCounter++;
       await persistActionCounter();
 
-      console.log('[Background] Created navigation action:', navigationAction.id, 'for URL change');
+      console.log(
+        '[Background] Created navigation action:',
+        navigationAction.id,
+        'trigger:',
+        navigationTrigger
+      );
     }
 
     // Update previous URL for next navigation

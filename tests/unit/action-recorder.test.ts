@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/await-thenable */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ActionRecorder } from '@/content/action-recorder';
 import { EventListener } from '@/content/event-listener';
@@ -9,6 +10,8 @@ vi.mock('@/content/event-listener', () => ({
     start: vi.fn(),
     stop: vi.fn(),
     destroy: vi.fn(),
+    setActionSequence: vi.fn(),
+    setRecordingStartTime: vi.fn(),
   })),
 }));
 
@@ -99,9 +102,7 @@ describe('ActionRecorder', () => {
 
     it('should not pause if not recording', () => {
       recorder = new ActionRecorder();
-      expect(() => recorder.pauseRecording()).toThrow(
-        'Cannot pause: not currently recording'
-      );
+      expect(() => recorder.pauseRecording()).toThrow('Cannot pause: not currently recording');
     });
 
     it('should resume from paused state', async () => {
@@ -116,9 +117,7 @@ describe('ActionRecorder', () => {
     it('should not resume if not paused', async () => {
       recorder = new ActionRecorder();
       await recorder.startRecording('Test 1');
-      expect(() => recorder.resumeRecording()).toThrow(
-        'Cannot resume: recording is not paused'
-      );
+      expect(() => recorder.resumeRecording()).toThrow('Cannot resume: recording is not paused');
     });
 
     it('should stop recording and return final recording', async () => {
@@ -175,8 +174,7 @@ describe('ActionRecorder', () => {
 
       // Access the onAction callback passed to EventListener
       const eventListenerConstructor = vi.mocked(EventListener);
-      const onActionCallback =
-        eventListenerConstructor.mock.calls[0]?.[0];
+      const onActionCallback = eventListenerConstructor.mock.calls[0]?.[0];
       onActionCallback?.(mockAction);
 
       const recording = await recorder.stopRecording();
@@ -204,8 +202,7 @@ describe('ActionRecorder', () => {
       };
 
       const eventListenerConstructor = vi.mocked(EventListener);
-      const onActionCallback =
-        eventListenerConstructor.mock.calls[0]?.[0];
+      const onActionCallback = eventListenerConstructor.mock.calls[0]?.[0];
       onActionCallback?.(mockAction);
 
       recorder.resumeRecording();
@@ -231,8 +228,7 @@ describe('ActionRecorder', () => {
       };
 
       const eventListenerConstructor = vi.mocked(EventListener);
-      const onActionCallback =
-        eventListenerConstructor.mock.calls[0]?.[0];
+      const onActionCallback = eventListenerConstructor.mock.calls[0]?.[0];
       onActionCallback?.(mockAction);
 
       await recorder.startRecording('Test 1');
@@ -286,8 +282,7 @@ describe('ActionRecorder', () => {
       ];
 
       const eventListenerConstructor = vi.mocked(EventListener);
-      const onActionCallback =
-        eventListenerConstructor.mock.calls[0]?.[0];
+      const onActionCallback = eventListenerConstructor.mock.calls[0]?.[0];
 
       actions.forEach((action) => onActionCallback?.(action));
 
@@ -379,8 +374,7 @@ describe('ActionRecorder', () => {
       ];
 
       const eventListenerConstructor = vi.mocked(EventListener);
-      const onActionCallback =
-        eventListenerConstructor.mock.calls[0]?.[0];
+      const onActionCallback = eventListenerConstructor.mock.calls[0]?.[0];
 
       actions.forEach((action) => onActionCallback?.(action));
 
@@ -404,8 +398,7 @@ describe('ActionRecorder', () => {
       await recorder.startRecording('Test 1');
 
       const eventListenerConstructor = vi.mocked(EventListener);
-      const eventListenerInstance =
-        eventListenerConstructor.mock.results[0]?.value;
+      const eventListenerInstance = eventListenerConstructor.mock.results[0]?.value;
       expect(eventListenerInstance?.start).toHaveBeenCalledTimes(1);
     });
 
@@ -415,8 +408,7 @@ describe('ActionRecorder', () => {
       await recorder.stopRecording();
 
       const eventListenerConstructor = vi.mocked(EventListener);
-      const eventListenerInstance =
-        eventListenerConstructor.mock.results[0]?.value;
+      const eventListenerInstance = eventListenerConstructor.mock.results[0]?.value;
       expect(eventListenerInstance?.stop).toHaveBeenCalledTimes(1);
     });
 
@@ -426,8 +418,7 @@ describe('ActionRecorder', () => {
       recorder.pauseRecording();
 
       const eventListenerConstructor = vi.mocked(EventListener);
-      const eventListenerInstance =
-        eventListenerConstructor.mock.results[0]?.value;
+      const eventListenerInstance = eventListenerConstructor.mock.results[0]?.value;
       expect(eventListenerInstance?.stop).toHaveBeenCalled();
     });
 
@@ -438,8 +429,7 @@ describe('ActionRecorder', () => {
       recorder.resumeRecording();
 
       const eventListenerConstructor = vi.mocked(EventListener);
-      const eventListenerInstance =
-        eventListenerConstructor.mock.results[0]?.value;
+      const eventListenerInstance = eventListenerConstructor.mock.results[0]?.value;
       expect(eventListenerInstance?.start).toHaveBeenCalledTimes(2);
     });
 
@@ -448,8 +438,7 @@ describe('ActionRecorder', () => {
       recorder.destroy();
 
       const eventListenerConstructor = vi.mocked(EventListener);
-      const eventListenerInstance =
-        eventListenerConstructor.mock.results[0]?.value;
+      const eventListenerInstance = eventListenerConstructor.mock.results[0]?.value;
       expect(eventListenerInstance?.destroy).toHaveBeenCalledTimes(1);
     });
   });
@@ -525,8 +514,7 @@ describe('ActionRecorder', () => {
       ];
 
       const eventListenerConstructor = vi.mocked(EventListener);
-      const onActionCallback =
-        eventListenerConstructor.mock.calls[0]?.[0];
+      const onActionCallback = eventListenerConstructor.mock.calls[0]?.[0];
 
       actions.forEach((action) => onActionCallback?.(action));
 
@@ -586,8 +574,7 @@ describe('ActionRecorder', () => {
       };
 
       const eventListenerConstructor = vi.mocked(EventListener);
-      const onActionCallback =
-        eventListenerConstructor.mock.calls[0]?.[0];
+      const onActionCallback = eventListenerConstructor.mock.calls[0]?.[0];
       onActionCallback?.(mockAction);
 
       let recording = await recorder.stopRecording();

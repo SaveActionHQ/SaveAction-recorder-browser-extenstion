@@ -111,6 +111,18 @@ export interface CheckpointAction extends BaseAction {
 }
 
 /**
+ * Hover action (mouseenter/mouseover for dropdowns)
+ */
+export interface HoverAction extends BaseAction {
+  type: 'hover';
+  selector: SelectorStrategy;
+  tagName: string;
+  text?: string;
+  duration?: number; // How long mouse was over element (ms)
+  isDropdownParent?: boolean; // True if this is a dropdown parent element
+}
+
+/**
  * Modifier keys (Ctrl, Shift, Alt, Meta/Cmd)
  */
 export type ModifierKey = 'ctrl' | 'shift' | 'alt' | 'meta';
@@ -126,7 +138,8 @@ export type ActionType =
   | 'scroll'
   | 'keypress'
   | 'submit'
-  | 'checkpoint';
+  | 'checkpoint'
+  | 'hover';
 
 /**
  * Union type of all actions
@@ -139,7 +152,8 @@ export type Action =
   | ScrollAction
   | KeypressAction
   | SubmitAction
-  | CheckpointAction;
+  | CheckpointAction
+  | HoverAction;
 
 /**
  * Type guard for ClickAction

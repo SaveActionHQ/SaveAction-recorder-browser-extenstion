@@ -7,6 +7,7 @@ import type {
   ScrollAction,
   KeypressAction,
   SubmitAction,
+  HoverAction,
   ModifierKey,
 } from '@/types';
 import { generateActionId } from '@/types';
@@ -29,6 +30,13 @@ export class EventListener {
   private typingStartTime = 0;
   private keyCount = 0;
   private previousUrl: string = window.location.href; // Track previous URL for back/forward detection
+  private lastAction: Action | null = null; // Track last action for navigation trigger detection
+  private lastHoveredElement: Element | null = null; // Track hovered element for dropdown detection
+  private hoverStartTime = 0; // Track when hover started
+  private lastEmittedAction: Action | null = null; // Track last emitted action for duplicate prevention
+  private lastEmitTime = 0; // Track when last action was emitted
+  private readonly DEBOUNCE_MS = 500; // Duplicate detection threshold
+  private recordingStartTime: number = 0; // Track recording start time for relative timestamps
 
   // Event handlers (need to be stored for removal)
   private handleClick: (e: MouseEvent) => void;
@@ -40,6 +48,8 @@ export class EventListener {
   private handleScroll: (e: Event) => void;
   private handlePopState: (e: PopStateEvent) => void;
   private handleDoubleClick: (e: MouseEvent) => void;
+  private handleMouseEnter: (e: MouseEvent) => void;
+  private handleMouseLeave: (e: MouseEvent) => void;
 
   constructor(actionCallback: (action: Action) => void) {
     this.actionCallback = actionCallback;
@@ -55,6 +65,8 @@ export class EventListener {
     this.handleScroll = this.onScroll.bind(this);
     this.handlePopState = this.onPopState.bind(this);
     this.handleDoubleClick = this.onDoubleClick.bind(this);
+    this.handleMouseEnter = this.onMouseEnter.bind(this);
+    this.handleMouseLeave = this.onMouseLeave.bind(this);
   }
 
   /**
@@ -63,6 +75,25 @@ export class EventListener {
   public setActionSequence(sequence: number): void {
     this.actionSequence = sequence;
     console.log('[EventListener] Action sequence set to:', sequence);
+  }
+
+  /**
+   * Set recording start time for relative timestamps
+   */
+  public setRecordingStartTime(startTime: number): void {
+    this.recordingStartTime = startTime;
+    console.log('[EventListener] Recording start time set to:', new Date(startTime).toISOString());
+  }
+
+  /**
+   * Get relative timestamp (ms since recording started)
+   */
+  private getRelativeTimestamp(): number {
+    if (this.recordingStartTime === 0) {
+      // Fallback to absolute timestamp if start time not set
+      return Date.now();
+    }
+    return Date.now() - this.recordingStartTime;
   }
 
   /**
@@ -107,6 +138,8 @@ export class EventListener {
     document.addEventListener('keydown', this.handleKeyDown, true);
     window.addEventListener('scroll', this.handleScroll, true);
     window.addEventListener('popstate', this.handlePopState);
+    document.addEventListener('mouseenter', this.handleMouseEnter, true);
+    document.addEventListener('mouseleave', this.handleMouseLeave, true);
   }
 
   /**
@@ -122,6 +155,8 @@ export class EventListener {
     document.removeEventListener('keydown', this.handleKeyDown, true);
     window.removeEventListener('scroll', this.handleScroll, true);
     window.removeEventListener('popstate', this.handlePopState);
+    document.removeEventListener('mouseenter', this.handleMouseEnter, true);
+    document.removeEventListener('mouseleave', this.handleMouseLeave, true);
   }
 
   /**
@@ -145,6 +180,17 @@ export class EventListener {
 
     // Skip if this is part of a double-click (handled by dblclick event)
     if (isDoubleClick) return;
+
+    // Check if we need to record a hover action for dropdown parent
+    // This happens when clicking on a child element that only becomes visible on hover
+    if (this.lastHoveredElement && this.hoverStartTime > 0) {
+      const dropdownParent = this.findDropdownParent(target);
+      if (dropdownParent && dropdownParent === this.lastHoveredElement) {
+        // Record hover action BEFORE the click
+        const hoverDuration = now - this.hoverStartTime;
+        this.recordHoverAction(dropdownParent, hoverDuration);
+      }
+    }
 
     // Check if this click might cause navigation
     const willNavigate = this.isNavigationClick(target);
@@ -226,7 +272,7 @@ export class EventListener {
     return {
       id: generateActionId(++this.actionSequence),
       type: 'click',
-      timestamp: Date.now(),
+      timestamp: this.getRelativeTimestamp(),
       url: window.location.href,
       selector,
       tagName: target.tagName.toLowerCase(),
@@ -288,7 +334,7 @@ export class EventListener {
     const action: InputAction = {
       id: generateActionId(++this.actionSequence),
       type: 'input',
-      timestamp: Date.now(),
+      timestamp: this.getRelativeTimestamp(),
       url: window.location.href,
       selector,
       tagName: target.tagName.toLowerCase(),
@@ -325,7 +371,7 @@ export class EventListener {
     const action: SelectAction = {
       id: generateActionId(++this.actionSequence),
       type: 'select',
-      timestamp: Date.now(),
+      timestamp: this.getRelativeTimestamp(),
       url: window.location.href,
       selector,
       tagName: 'select',
@@ -351,7 +397,7 @@ export class EventListener {
     const action: SubmitAction = {
       id: generateActionId(++this.actionSequence),
       type: 'submit',
-      timestamp: Date.now(),
+      timestamp: this.getRelativeTimestamp(),
       url: window.location.href,
       selector,
       tagName: 'form',
@@ -384,7 +430,7 @@ export class EventListener {
     const action: KeypressAction = {
       id: generateActionId(++this.actionSequence),
       type: 'keypress',
-      timestamp: Date.now(),
+      timestamp: this.getRelativeTimestamp(),
       url: window.location.href,
       key: event.key,
       code: event.code,
@@ -418,7 +464,7 @@ export class EventListener {
     const action: ScrollAction = {
       id: generateActionId(++this.actionSequence),
       type: 'scroll',
-      timestamp: Date.now(),
+      timestamp: this.getRelativeTimestamp(),
       url: window.location.href,
       scrollX: window.scrollX,
       scrollY: window.scrollY,
@@ -437,15 +483,37 @@ export class EventListener {
     const currentUrl = window.location.href;
     const fromUrl = this.previousUrl;
 
-    // Determine if this is back or forward navigation
-    // Note: We can't reliably detect forward vs back, so we default to 'back'
-    // which is the most common case
-    const navigationTrigger: 'back' | 'forward' = 'back';
+    // Determine navigation trigger based on last action
+    let navigationTrigger: 'back' | 'forward' | 'click';
+
+    // Check if last action was within the last 100ms (indicates programmatic navigation)
+    const timeSinceLastAction = this.lastAction ? Date.now() - this.lastAction.timestamp : Infinity;
+
+    if (timeSinceLastAction < 100 && this.lastAction) {
+      // Recent action caused navigation
+      if (this.lastAction.type === 'submit') {
+        // This would have been caught by form submission, skip
+        return;
+      } else if (this.lastAction.type === 'click') {
+        // Link click navigation - will be handled by background URL monitoring
+        return;
+      }
+    }
+
+    // Try to detect back vs forward using performance API
+    // performance.navigation.type === 2 indicates back/forward
+    // But we can't distinguish between them, default to 'back' (more common)
+    if (performance.navigation && performance.navigation.type === 2) {
+      navigationTrigger = 'back';
+    } else {
+      // Fallback: check URL history position
+      navigationTrigger = 'back'; // Default assumption
+    }
 
     const action: NavigationAction = {
       id: generateActionId(++this.actionSequence),
       type: 'navigation',
-      timestamp: Date.now(),
+      timestamp: this.getRelativeTimestamp(),
       url: currentUrl,
       from: fromUrl,
       to: currentUrl,
@@ -725,9 +793,221 @@ export class EventListener {
   }
 
   /**
+   * Handle mouseenter events (track hovers for dropdown detection)
+   */
+  private onMouseEnter(event: MouseEvent): void {
+    if (!this.isListening) return;
+
+    const target = event.target as Element;
+
+    // Check if this element could be a dropdown parent
+    if (this.isDropdownParent(target)) {
+      this.lastHoveredElement = target;
+      this.hoverStartTime = Date.now();
+      console.log(
+        '[EventListener] Hover started on potential dropdown parent:',
+        target.tagName,
+        target.className
+      );
+    }
+  }
+
+  /**
+   * Handle mouseleave events
+   */
+  private onMouseLeave(event: MouseEvent): void {
+    if (!this.isListening) return;
+
+    const target = event.target as Element;
+
+    // Clear hover tracking if leaving the hovered element
+    if (this.lastHoveredElement === target) {
+      // Don't clear immediately - might be moving to child element
+      // Let onClick handle the hover recording if needed
+    }
+  }
+
+  /**
+   * Check if element is a dropdown parent
+   */
+  private isDropdownParent(element: Element): boolean {
+    // Check CSS classes for dropdown patterns
+    const classList = Array.from(element.classList).map((c) => c.toLowerCase());
+    const dropdownPatterns = ['dropdown', 'menu', 'nav', 'submenu', 'popover'];
+
+    if (dropdownPatterns.some((pattern) => classList.some((cls) => cls.includes(pattern)))) {
+      return true;
+    }
+
+    // Check aria attributes
+    if (element.hasAttribute('aria-haspopup')) {
+      return true;
+    }
+
+    // Check if element has children that might be hidden (dropdown items)
+    const hasHiddenChildren = Array.from(element.children).some((child) => {
+      const style = window.getComputedStyle(child);
+      return style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0';
+    });
+
+    if (hasHiddenChildren) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Find dropdown parent of an element (if it's inside a dropdown)
+   */
+  private findDropdownParent(element: Element): Element | null {
+    let current: Element | null = element;
+    let depth = 0;
+    const maxDepth = 5; // Don't traverse too far up
+
+    while (current && depth < maxDepth) {
+      if (this.isDropdownParent(current)) {
+        return current;
+      }
+      current = current.parentElement;
+      depth++;
+    }
+
+    return null;
+  }
+
+  /**
+   * Record hover action for dropdown parent
+   */
+  private recordHoverAction(element: Element, duration: number): void {
+    const selector = this.selectorGenerator.generateSelectors(element);
+
+    const action: HoverAction = {
+      id: generateActionId(++this.actionSequence),
+      type: 'hover',
+      timestamp: this.getRelativeTimestamp(),
+      url: window.location.href,
+      selector,
+      tagName: element.tagName.toLowerCase(),
+      text: element.textContent?.trim()?.substring(0, 50), // Limit text length
+      duration,
+      isDropdownParent: true,
+    };
+
+    this.emitAction(action);
+
+    console.log(
+      '[EventListener] Recorded hover action for dropdown parent:',
+      action.id,
+      'duration:',
+      duration + 'ms'
+    );
+
+    // Clear hover tracking after recording
+    this.lastHoveredElement = null;
+    this.hoverStartTime = 0;
+  }
+
+  /**
    * Emit action to callback
    */
   private emitAction(action: Action): void {
+    // Check for duplicate action
+    if (this.isDuplicateAction(action)) {
+      console.log('[EventListener] Skipping duplicate action:', action.type, action.id);
+      return;
+    }
+
+    // Track for duplicate detection
+    this.lastEmittedAction = action;
+    this.lastEmitTime = action.timestamp;
+
+    // Track last action for navigation trigger detection
+    this.lastAction = action;
     this.actionCallback(action);
+  }
+
+  /**
+   * Check if action is a duplicate of the last emitted action
+   */
+  private isDuplicateAction(action: Action): boolean {
+    if (!this.lastEmittedAction) return false;
+
+    const timeDiff = action.timestamp - this.lastEmitTime;
+
+    // Only check actions within debounce window
+    if (timeDiff >= this.DEBOUNCE_MS) return false;
+
+    // Must be same action type
+    if (action.type !== this.lastEmittedAction.type) return false;
+
+    // Type-specific duplicate detection
+    switch (action.type) {
+      case 'click': {
+        const clickAction = action as ClickAction;
+        const lastClickAction = this.lastEmittedAction as ClickAction;
+
+        // Don't treat double-clicks as duplicates
+        if (clickAction.clickCount !== lastClickAction.clickCount) {
+          return false;
+        }
+
+        // Check selector and button match
+        return (
+          clickAction.button === lastClickAction.button &&
+          this.areSelectorsEqual(clickAction.selector, lastClickAction.selector)
+        );
+      }
+
+      case 'input':
+        // Input actions are already debounced, but check for exact duplicates
+        return (
+          this.areSelectorsEqual(
+            (action as InputAction).selector,
+            (this.lastEmittedAction as InputAction).selector
+          ) && (action as InputAction).value === (this.lastEmittedAction as InputAction).value
+        );
+
+      case 'submit':
+        return this.areSelectorsEqual(
+          (action as SubmitAction).selector,
+          (this.lastEmittedAction as SubmitAction).selector
+        );
+
+      case 'scroll':
+        // Scroll is already debounced, don't do additional duplicate check
+        return false;
+
+      case 'navigation':
+        // Navigation actions should not be duplicated
+        return (
+          (action as NavigationAction).from === (this.lastEmittedAction as NavigationAction).from &&
+          (action as NavigationAction).to === (this.lastEmittedAction as NavigationAction).to
+        );
+
+      case 'hover':
+        // Hover actions on same element within window are duplicates
+        return this.areSelectorsEqual(
+          (action as HoverAction).selector,
+          (this.lastEmittedAction as HoverAction).selector
+        );
+
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * Compare two selectors for equality
+   */
+  private areSelectorsEqual(sel1: any, sel2: any): boolean {
+    if (!sel1 || !sel2) return false;
+
+    // Compare primary selectors (id, css, xpath)
+    if (sel1.id && sel2.id) return sel1.id === sel2.id;
+    if (sel1.css && sel2.css) return sel1.css === sel2.css;
+    if (sel1.xpath && sel2.xpath) return sel1.xpath === sel2.xpath;
+
+    return false;
   }
 }
