@@ -39,6 +39,8 @@ describe('Action Type Guards', () => {
         tagName: 'input',
         value: 'test',
         inputType: 'text',
+        isSensitive: false,
+        simulationType: 'type',
       };
 
       expect(isClickAction(action as Action)).toBe(false);
@@ -56,6 +58,8 @@ describe('Action Type Guards', () => {
         tagName: 'input',
         value: 'test',
         inputType: 'text',
+        isSensitive: false,
+        simulationType: 'type',
       };
 
       expect(isInputAction(action)).toBe(true);
@@ -90,6 +94,8 @@ describe('Action Type Guards', () => {
         from: 'http://example.com',
         to: 'http://example.com/page',
         navigationTrigger: 'click',
+        waitUntil: 'load',
+        duration: 1000,
       };
 
       expect(isNavigationAction(action)).toBe(true);
