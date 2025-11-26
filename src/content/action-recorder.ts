@@ -240,7 +240,9 @@ export class ActionRecorder {
     // Only collect actions when actively recording
     if (this.state === 'recording') {
       this.actions.push(action);
-      // Send to background immediately for persistent storage
+
+      // Send to background IMMEDIATELY for navigation trigger detection
+      // Background will store in memory for quick access
       this.syncActionToBackground(action);
     }
   }

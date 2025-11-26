@@ -832,6 +832,8 @@ export class EventListener {
    */
   private isDropdownParent(element: Element): boolean {
     // Check CSS classes for dropdown patterns
+    if (!element.classList) return false; // Guard against undefined
+
     const classList = Array.from(element.classList).map((c) => c.toLowerCase());
     const dropdownPatterns = ['dropdown', 'menu', 'nav', 'submenu', 'popover'];
 
