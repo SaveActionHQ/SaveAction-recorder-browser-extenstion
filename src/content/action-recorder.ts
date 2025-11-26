@@ -27,6 +27,7 @@ export class ActionRecorder {
   private eventListener: EventListener;
   private actions: Action[] = [];
   private metadata: RecordingMetadata | null = null;
+  private recordingStartTime: number = 0;
 
   constructor() {
     // Initialize EventListener with action callback
@@ -74,6 +75,10 @@ export class ActionRecorder {
     // Start fresh (actions will be restored from background if needed)
     this.actions = [];
 
+    // Track recording start time for relative timestamps
+    this.recordingStartTime = Date.now();
+    this.eventListener.setRecordingStartTime(this.recordingStartTime);
+
     // Start capturing events
     this.state = 'recording';
     this.eventListener.start();
@@ -94,6 +99,10 @@ export class ActionRecorder {
 
     // Start fresh actions (will be synced from background)
     this.actions = [];
+
+    // Restore recording start time from metadata
+    this.recordingStartTime = new Date(metadata.startTime).getTime();
+    this.eventListener.setRecordingStartTime(this.recordingStartTime);
 
     // Start capturing events
     this.state = 'recording';
@@ -231,7 +240,9 @@ export class ActionRecorder {
     // Only collect actions when actively recording
     if (this.state === 'recording') {
       this.actions.push(action);
-      // Send to background immediately for persistent storage
+
+      // Send to background IMMEDIATELY for navigation trigger detection
+      // Background will store in memory for quick access
       this.syncActionToBackground(action);
     }
   }

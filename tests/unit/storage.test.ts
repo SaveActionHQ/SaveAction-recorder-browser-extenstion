@@ -53,7 +53,7 @@ describe('Storage Utils', () => {
       expect(mockStorage.local.set).toHaveBeenCalledWith(
         {
           [`recording_${recording.id}`]: recording,
-          'recording_ids': expect.arrayContaining([recording.id]),
+          recording_ids: expect.arrayContaining([recording.id]),
         },
         expect.any(Function)
       );
@@ -73,8 +73,8 @@ describe('Storage Utils', () => {
       };
 
       mockStorage.local.get.mockImplementation((_keys, callback) => {
-        callback?.({ 'recording_ids': ['rec_123', 'rec_456'] });
-        return Promise.resolve({ 'recording_ids': ['rec_123', 'rec_456'] });
+        callback?.({ recording_ids: ['rec_123', 'rec_456'] });
+        return Promise.resolve({ recording_ids: ['rec_123', 'rec_456'] });
       });
 
       mockStorage.local.set.mockImplementation((_data, callback) => {
@@ -87,7 +87,7 @@ describe('Storage Utils', () => {
       expect(mockStorage.local.set).toHaveBeenCalledWith(
         {
           [`recording_${recording.id}`]: recording,
-          'recording_ids': ['rec_123', 'rec_456'],
+          recording_ids: ['rec_123', 'rec_456'],
         },
         expect.any(Function)
       );
@@ -165,8 +165,8 @@ describe('Storage Utils', () => {
   describe('deleteRecording', () => {
     it('should delete a recording by id', async () => {
       mockStorage.local.get.mockImplementation((_keys, callback) => {
-        callback?.({ 'recording_ids': ['rec_123', 'rec_456'] });
-        return Promise.resolve({ 'recording_ids': ['rec_123', 'rec_456'] });
+        callback?.({ recording_ids: ['rec_123', 'rec_456'] });
+        return Promise.resolve({ recording_ids: ['rec_123', 'rec_456'] });
       });
 
       mockStorage.local.remove.mockImplementation((_keys, callback) => {
@@ -186,15 +186,15 @@ describe('Storage Utils', () => {
         expect.any(Function)
       );
       expect(mockStorage.local.set).toHaveBeenCalledWith(
-        { 'recording_ids': ['rec_456'] },
+        { recording_ids: ['rec_456'] },
         expect.any(Function)
       );
     });
 
     it('should handle non-existent recording gracefully', async () => {
       mockStorage.local.get.mockImplementation((_keys, callback) => {
-        callback?.({ 'recording_ids': ['rec_456'] });
-        return Promise.resolve({ 'recording_ids': ['rec_456'] });
+        callback?.({ recording_ids: ['rec_456'] });
+        return Promise.resolve({ recording_ids: ['rec_456'] });
       });
 
       mockStorage.local.remove.mockImplementation((_keys, callback) => {
@@ -244,16 +244,16 @@ describe('Storage Utils', () => {
 
       mockStorage.local.get.mockImplementation((keys, callback) => {
         if (Array.isArray(keys) && keys[0] === 'recording_ids') {
-          callback?.({ 'recording_ids': ['rec_123', 'rec_456'] });
-          return Promise.resolve({ 'recording_ids': ['rec_123', 'rec_456'] });
+          callback?.({ recording_ids: ['rec_123', 'rec_456'] });
+          return Promise.resolve({ recording_ids: ['rec_123', 'rec_456'] });
         } else {
           callback?.({
-            'recording_rec_123': recording1,
-            'recording_rec_456': recording2,
+            recording_rec_123: recording1,
+            recording_rec_456: recording2,
           });
           return Promise.resolve({
-            'recording_rec_123': recording1,
-            'recording_rec_456': recording2,
+            recording_rec_123: recording1,
+            recording_rec_456: recording2,
           });
         }
       });

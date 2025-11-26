@@ -714,6 +714,9 @@ async function handleSyncAction(payload: { action: any }): Promise<MessageRespon
     // Add new action with corrected ID
     actions.push(action);
 
+    // CRITICAL: Also store in accumulated actions immediately for navigation detection
+    state.accumulatedActions.push(action);
+
     // Save actions and counter to storage
     await chrome.storage.session.set({
       saveaction_current_actions: actions,
@@ -863,25 +866,95 @@ chrome.tabs.onUpdated.addListener(async (tabId: number, changeInfo: chrome.tabs.
     if (state.previousUrl && state.previousUrl !== changeInfo.url) {
       console.log('[Background] URL changed from', state.previousUrl, 'to', changeInfo.url);
 
-      // Create navigation action for back/forward button
+      // Determine navigation trigger based on last action
+      let navigationTrigger: 'back' | 'forward' | 'form-submit' | 'click' = 'back';
+
+      // Get recent actions from accumulated actions (now populated immediately via SYNC_ACTION)
+      const recentActions = state.accumulatedActions.slice(-5); // Last 5 actions
+
+      // Since timestamps are relative, we need to find the most recent action
+      // and check if it's within a reasonable threshold
+      if (recentActions.length > 0) {
+        // Get the last action's timestamp
+        const lastAction = recentActions[recentActions.length - 1];
+        if (!lastAction) {
+          console.log('[Background] No last action found');
+        } else {
+          // Calculate current relative timestamp
+          const currentRelativeTime = state.startTime ? Date.now() - state.startTime : Date.now();
+          const timeDiff = currentRelativeTime - lastAction.timestamp;
+
+          console.log('[Background] Last action:', lastAction.type, 'time diff:', timeDiff + 'ms');
+
+          // Only consider recent actions (within last 2 seconds)
+          if (timeDiff < 2000) {
+            // Check recent actions for form submit or link click
+            for (let i = recentActions.length - 1; i >= 0; i--) {
+              const action = recentActions[i];
+              if (!action) continue;
+
+              const actionTimeDiff = currentRelativeTime - action.timestamp;
+
+              // Only check actions within 2 seconds
+              if (actionTimeDiff > 2000) break;
+
+              // Check if it was a form submit
+              if (action.type === 'submit') {
+                navigationTrigger = 'form-submit';
+                console.log('[Background] Navigation caused by form submit');
+                break;
+              }
+
+              // Check if it was a link click (tagName === 'a')
+              if (action.type === 'click' && 'tagName' in action && action.tagName === 'a') {
+                navigationTrigger = 'click';
+                console.log('[Background] Navigation caused by link click');
+                break;
+              }
+
+              // Check if it was an image click inside a link
+              if (action.type === 'click' && 'tagName' in action && action.tagName === 'img') {
+                navigationTrigger = 'click';
+                console.log('[Background] Navigation caused by image click (likely inside link)');
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      // Create navigation action with RELATIVE timestamp
+      const relativeTimestamp = state.startTime ? Date.now() - state.startTime : Date.now();
       const navigationAction = {
         id: `act_${String(state.actionCounter + 1).padStart(3, '0')}`, // Will be renumbered
         type: 'navigation',
-        timestamp: Date.now(),
+        timestamp: relativeTimestamp, // Fixed: Use relative timestamp
         url: changeInfo.url,
         from: state.previousUrl,
         to: changeInfo.url,
-        navigationTrigger: 'back', // Assume back (most common), could be forward
+        navigationTrigger,
         waitUntil: 'load',
         duration: 0,
       };
+
+      console.log(
+        '[Background] Navigation action timestamp:',
+        relativeTimestamp,
+        '(relative), trigger:',
+        navigationTrigger
+      );
 
       // Add to accumulated actions immediately
       state.accumulatedActions.push(navigationAction);
       state.actionCounter++;
       await persistActionCounter();
 
-      console.log('[Background] Created navigation action:', navigationAction.id, 'for URL change');
+      console.log(
+        '[Background] Created navigation action:',
+        navigationAction.id,
+        'trigger:',
+        navigationTrigger
+      );
     }
 
     // Update previous URL for next navigation

@@ -225,6 +225,7 @@ describe('Exporter Utils', () => {
 
       await downloadRecording(recording);
 
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
     });
   });
@@ -298,6 +299,98 @@ describe('Exporter Utils', () => {
 
       expect(result.valid).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);
+    });
+
+    it('should detect invalid endTime format', () => {
+      const recording: Recording = {
+        id: 'rec_123',
+        testName: 'Test',
+        url: 'https://example.com',
+        startTime: '2025-11-18T10:00:00.000Z',
+        endTime: 'not-a-date',
+        actions: [],
+        viewport: { width: 1920, height: 1080 },
+        userAgent: 'Mozilla/5.0',
+        version: '1.0.0',
+      };
+
+      const result = validateExportData(recording);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain('Invalid endTime format');
+    });
+
+    it('should validate recording with no endTime', () => {
+      const recording: Recording = {
+        id: 'rec_123',
+        testName: 'Test',
+        url: 'https://example.com',
+        startTime: '2025-11-18T10:00:00.000Z',
+        actions: [],
+        viewport: { width: 1920, height: 1080 },
+        userAgent: 'Mozilla/5.0',
+        version: '1.0.0',
+      };
+
+      const result = validateExportData(recording);
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should detect missing viewport width', () => {
+      const recording: Recording = {
+        id: 'rec_123',
+        testName: 'Test',
+        url: 'https://example.com',
+        startTime: '2025-11-18T10:00:00.000Z',
+        actions: [],
+        viewport: { width: 0, height: 1080 },
+        userAgent: 'Mozilla/5.0',
+        version: '1.0.0',
+      };
+
+      const result = validateExportData(recording);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain('Invalid viewport width');
+    });
+
+    it('should detect missing viewport height', () => {
+      const recording: Recording = {
+        id: 'rec_123',
+        testName: 'Test',
+        url: 'https://example.com',
+        startTime: '2025-11-18T10:00:00.000Z',
+        actions: [],
+        viewport: { width: 1920, height: 0 },
+        userAgent: 'Mozilla/5.0',
+        version: '1.0.0',
+      };
+
+      const result = validateExportData(recording);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain('Invalid viewport height');
+    });
+
+    it('should detect non-array actions', () => {
+      const recording = {
+        id: 'rec_123',
+        testName: 'Test',
+        url: 'https://example.com',
+        startTime: '2025-11-18T10:00:00.000Z',
+        actions: 'not-an-array',
+        viewport: { width: 1920, height: 1080 },
+        userAgent: 'Mozilla/5.0',
+        version: '1.0.0',
+      } as unknown as Recording;
+
+      const result = validateExportData(recording);
+
+      expect(result.valid).toBe(false);
+      const hasError = result.errors.includes('Actions must be an array');
+      expect(hasError).toBe(true);
     });
   });
 });

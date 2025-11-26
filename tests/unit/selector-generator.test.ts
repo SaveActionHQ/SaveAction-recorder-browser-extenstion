@@ -473,5 +473,92 @@ describe('SelectorGenerator', () => {
 
       document.body.removeChild(element);
     });
+
+    it('should handle select elements with name attribute', () => {
+      const select = document.createElement('select');
+      select.name = 'country';
+      document.body.appendChild(select);
+
+      const strategy = generator.generateSelectors(select);
+
+      expect(strategy.name).toBe('country');
+      expect(strategy.priority).toContain('name');
+
+      document.body.removeChild(select);
+    });
+
+    it('should handle elements with text longer than 50 characters', () => {
+      const element = document.createElement('p');
+      element.textContent =
+        'This is a very long text content that exceeds fifty characters to test textContains';
+      document.body.appendChild(element);
+
+      const strategy = generator.generateSelectors(element);
+
+      expect(strategy.textContains).toBeDefined();
+      expect(strategy.text).toBeUndefined();
+
+      document.body.removeChild(element);
+    });
+
+    it('should handle list items with nth-child', () => {
+      const ul = document.createElement('ul');
+      const li1 = document.createElement('li');
+      const li2 = document.createElement('li');
+      const li3 = document.createElement('li');
+
+      li1.textContent = 'Item 1';
+      li2.textContent = 'Item 2';
+      li3.textContent = 'Item 3';
+
+      ul.appendChild(li1);
+      ul.appendChild(li2);
+      ul.appendChild(li3);
+      document.body.appendChild(ul);
+
+      const strategy = generator.generateSelectors(li2);
+
+      // Should include css with nth-child
+      expect(strategy.css).toBeDefined();
+      if (strategy.css) {
+        expect(strategy.css).toContain('nth-child');
+      }
+
+      document.body.removeChild(ul);
+    });
+
+    it('should handle elements with dynamic class names', () => {
+      const element = document.createElement('div');
+      element.className = 'css-abc123 valid-class jss-456789';
+      document.body.appendChild(element);
+
+      const strategy = generator.generateSelectors(element);
+
+      // Should filter out dynamic classes
+      expect(strategy.css).toBeDefined();
+      if (strategy.css) {
+        expect(strategy.css).toContain('valid-class');
+        expect(strategy.css).not.toContain('css-abc123');
+        expect(strategy.css).not.toContain('jss-456789');
+      }
+
+      document.body.removeChild(element);
+    });
+
+    it('should handle input elements with type attribute', () => {
+      const input = document.createElement('input');
+      input.type = 'email';
+      input.className = 'form-input';
+      document.body.appendChild(input);
+
+      const strategy = generator.generateSelectors(input);
+
+      expect(strategy.css).toBeDefined();
+      if (strategy.css) {
+        expect(strategy.css).toContain('type="email"');
+      }
+
+      document.body.removeChild(input);
+    });
   });
 });
