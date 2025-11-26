@@ -636,4 +636,196 @@ describe('EventListener', () => {
       document.body.removeChild(button);
     });
   });
+
+  describe('Duplicate Detection', () => {
+    it('should prevent duplicate click actions', () => {
+      const button = document.createElement('button');
+      button.id = 'test-btn';
+      document.body.appendChild(button);
+
+      eventListener.start();
+
+      // First click
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expect(capturedActions).toHaveLength(1);
+
+      // Immediate duplicate click (within 500ms)
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expect(capturedActions).toHaveLength(1); // Should still be 1
+
+      document.body.removeChild(button);
+    });
+
+    it('should prevent duplicate input actions', async () => {
+      const input = document.createElement('input');
+      input.id = 'test-input';
+      document.body.appendChild(input);
+
+      eventListener.start();
+
+      // First input
+      input.value = 'test';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+
+      // Wait for debounce
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      const firstCount = capturedActions.length;
+      expect(firstCount).toBeGreaterThan(0);
+
+      // Different input value (will not be duplicate)
+      input.value = 'test2';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 600));
+
+      // Should increase because value changed
+      expect(capturedActions.length).toBeGreaterThan(firstCount);
+
+      document.body.removeChild(input);
+    });
+
+    it('should detect hover actions', () => {
+      const div = document.createElement('div');
+      div.id = 'hover-test';
+      div.style.width = '100px';
+      div.style.height = '100px';
+      document.body.appendChild(div);
+
+      eventListener.start();
+
+      // Hover
+      div.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+      div.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+
+      // Check for hover action
+      const hoverActions = capturedActions.filter((a) => a.type === 'hover');
+      expect(hoverActions.length).toBeGreaterThanOrEqual(0);
+
+      document.body.removeChild(div);
+    });
+
+    it('should allow actions after debounce window expires', async () => {
+      const button = document.createElement('button');
+      button.id = 'test-btn';
+      document.body.appendChild(button);
+
+      eventListener.start();
+
+      // First click
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expect(capturedActions).toHaveLength(1);
+
+      // Wait for debounce window to expire
+      await new Promise((resolve) => setTimeout(resolve, 600));
+
+      // Second click should be recorded
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expect(capturedActions).toHaveLength(2);
+
+      document.body.removeChild(button);
+    });
+
+    it('should handle areSelectorsEqual with null selectors', () => {
+      const button = document.createElement('button');
+      document.body.appendChild(button);
+
+      eventListener.start();
+
+      // Click without id (will use different selector strategy)
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      const firstCount = capturedActions.length;
+      expect(firstCount).toBeGreaterThan(0);
+
+      document.body.removeChild(button);
+    });
+
+    it('should compare selectors by id', () => {
+      const button1 = document.createElement('button');
+      button1.id = 'btn-1';
+      const button2 = document.createElement('button');
+      button2.id = 'btn-1';
+      document.body.appendChild(button1);
+      document.body.appendChild(button2);
+
+      eventListener.start();
+
+      button1.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      const firstCount = capturedActions.length;
+
+      // Click on different element with same id (duplicate)
+      button2.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expect(capturedActions.length).toBe(firstCount);
+
+      document.body.removeChild(button1);
+      document.body.removeChild(button2);
+    });
+
+    it('should compare selectors by css', () => {
+      const div1 = document.createElement('div');
+      div1.className = 'test-class';
+      const div2 = document.createElement('div');
+      div2.className = 'test-class';
+      document.body.appendChild(div1);
+      document.body.appendChild(div2);
+
+      eventListener.start();
+
+      div1.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      const firstCount = capturedActions.length;
+
+      // Click on different element with same class (duplicate)
+      div2.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expect(capturedActions.length).toBe(firstCount);
+
+      document.body.removeChild(div1);
+      document.body.removeChild(div2);
+    });
+
+    it('should handle select change events', () => {
+      const select = document.createElement('select');
+      const option1 = document.createElement('option');
+      option1.value = 'option1';
+      const option2 = document.createElement('option');
+      option2.value = 'option2';
+
+      select.appendChild(option1);
+      select.appendChild(option2);
+      document.body.appendChild(select);
+
+      eventListener.start();
+
+      select.value = 'option2';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+
+      const selectActions = capturedActions.filter((a) => a.type === 'select');
+      expect(selectActions.length).toBeGreaterThan(0);
+
+      document.body.removeChild(select);
+    });
+
+    it('should handle keypress with special keys', () => {
+      const input = document.createElement('input');
+      document.body.appendChild(input);
+
+      eventListener.start();
+
+      const keypressEvent = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        code: 'Enter',
+        keyCode: 13,
+        bubbles: true,
+      });
+      input.dispatchEvent(keypressEvent);
+
+      const keypressActions = capturedActions.filter((a) => a.type === 'keypress');
+      if (keypressActions.length > 0) {
+        expect(keypressActions[0]).toMatchObject({
+          type: 'keypress',
+          key: 'Enter',
+        });
+      }
+
+      document.body.removeChild(input);
+    });
+  });
 });

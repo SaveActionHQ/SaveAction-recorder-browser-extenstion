@@ -585,4 +585,45 @@ describe('ActionRecorder', () => {
       expect(recording.actions).toHaveLength(0);
     });
   });
+
+  describe('Error Handling', () => {
+    it('should handle sendMessage exception in syncActionToBackground', async () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      recorder = new ActionRecorder();
+      await recorder.startRecording('Test');
+
+      // Mock sendMessage to throw
+      vi.mocked(chrome.runtime.sendMessage).mockImplementation(() => {
+        throw new Error('Connection error');
+      });
+
+      const mockAction: Action = {
+        id: 'act_001',
+        type: 'click',
+        timestamp: 1000,
+        url: 'http://example.com',
+        selector: { priority: ['id'], id: 'btn' },
+        tagName: 'button',
+        coordinates: { x: 100, y: 50 },
+        coordinatesRelativeTo: 'element',
+        button: 'left',
+        clickCount: 1,
+        modifiers: [],
+      };
+
+      const eventListenerConstructor = vi.mocked(EventListener);
+      const onActionCallback = eventListenerConstructor.mock.calls[0]?.[0];
+      onActionCallback?.(mockAction);
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        '[ActionRecorder] Failed to sync action to background:',
+        expect.any(Error)
+      );
+
+      consoleErrorSpy.mockRestore();
+    });
+  });
 });

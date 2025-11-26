@@ -515,4 +515,87 @@ describe('Validator', () => {
       expect(error.message).toBe('Test error message');
     });
   });
+
+  describe('Edge Cases', () => {
+    it('should validate recording without viewport', () => {
+      const recording = {
+        id: 'rec_123',
+        version: '1.0.0',
+        testName: 'Test',
+        url: 'http://example.com',
+        startTime: '2024-01-01T00:00:00.000Z',
+        userAgent: 'Test Agent',
+        actions: [],
+      } as any;
+
+      const result = validateRecording(recording);
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContainEqual(
+        expect.objectContaining({
+          field: 'recording.viewport',
+          message: 'Viewport is required',
+        })
+      );
+    });
+
+    it('should validate recording with invalid viewport dimensions', () => {
+      const recording: Recording = {
+        id: 'rec_123',
+        version: '1.0.0',
+        testName: 'Test',
+        url: 'http://example.com',
+        startTime: '2024-01-01T00:00:00.000Z',
+        viewport: { width: 0, height: -100 },
+        userAgent: 'Test Agent',
+        actions: [],
+      };
+
+      const result = validateRecording(recording);
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContainEqual(
+        expect.objectContaining({
+          field: 'recording.viewport',
+          message: 'Viewport width and height must be positive numbers',
+        })
+      );
+    });
+
+    it('should validate recording without userAgent', () => {
+      const recording = {
+        id: 'rec_123',
+        version: '1.0.0',
+        testName: 'Test',
+        url: 'http://example.com',
+        startTime: '2024-01-01T00:00:00.000Z',
+        viewport: { width: 1920, height: 1080 },
+        actions: [],
+      } as any;
+
+      const result = validateRecording(recording);
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContainEqual(
+        expect.objectContaining({
+          field: 'recording.userAgent',
+          message: 'User agent is required',
+        })
+      );
+    });
+
+    it('should validate recording with non-array actions', () => {
+      const recording = {
+        id: 'rec_123',
+        version: '1.0.0',
+        testName: 'Test',
+        url: 'http://example.com',
+        startTime: '2024-01-01T00:00:00.000Z',
+        viewport: { width: 1920, height: 1080 },
+        userAgent: 'Test Agent',
+        actions: 'not-an-array',
+      } as any;
+
+      const result = validateRecording(recording);
+      expect(result.isValid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
+    });
+  });
 });
