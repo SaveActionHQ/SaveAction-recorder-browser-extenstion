@@ -828,4 +828,191 @@ describe('EventListener', () => {
       document.body.removeChild(input);
     });
   });
+
+  describe('Hidden Input Filtering', () => {
+    it('should skip clicks on hidden radio inputs', () => {
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.id = 'test-radio';
+      radio.name = 'test';
+      radio.style.display = 'none';
+      document.body.appendChild(radio);
+
+      eventListener.start();
+
+      const clickEvent = new MouseEvent('click', { bubbles: true });
+      radio.dispatchEvent(clickEvent);
+
+      expect(capturedActions).toHaveLength(0);
+
+      document.body.removeChild(radio);
+    });
+
+    it('should skip clicks on hidden checkbox inputs', () => {
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.id = 'test-checkbox';
+      checkbox.style.visibility = 'hidden';
+      document.body.appendChild(checkbox);
+
+      eventListener.start();
+
+      const clickEvent = new MouseEvent('click', { bubbles: true });
+      checkbox.dispatchEvent(clickEvent);
+
+      expect(capturedActions).toHaveLength(0);
+
+      document.body.removeChild(checkbox);
+    });
+
+    it('should skip clicks on radio inputs with opacity 0', () => {
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.id = 'test-radio';
+      radio.style.opacity = '0';
+      document.body.appendChild(radio);
+
+      eventListener.start();
+
+      const clickEvent = new MouseEvent('click', { bubbles: true });
+      radio.dispatchEvent(clickEvent);
+
+      expect(capturedActions).toHaveLength(0);
+
+      document.body.removeChild(radio);
+    });
+
+    it('should skip clicks on radio inputs with zero dimensions', () => {
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.id = 'test-radio';
+      radio.style.width = '0px';
+      radio.style.height = '0px';
+      document.body.appendChild(radio);
+
+      eventListener.start();
+
+      const clickEvent = new MouseEvent('click', { bubbles: true });
+      radio.dispatchEvent(clickEvent);
+
+      expect(capturedActions).toHaveLength(0);
+
+      document.body.removeChild(radio);
+    });
+
+    it('should record clicks on visible radio inputs', () => {
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.id = 'test-radio';
+      radio.name = 'test';
+      document.body.appendChild(radio);
+
+      eventListener.start();
+
+      const clickEvent = new MouseEvent('click', { bubbles: true });
+      radio.dispatchEvent(clickEvent);
+
+      expect(capturedActions.length).toBeGreaterThan(0);
+      const action = capturedActions[0];
+      expect(action?.type).toBe('click');
+
+      if (action?.type === 'click') {
+        expect(action.tagName).toBe('input');
+      }
+
+      document.body.removeChild(radio);
+    });
+
+    it('should record clicks on visible checkbox inputs', () => {
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.id = 'test-checkbox';
+      document.body.appendChild(checkbox);
+
+      eventListener.start();
+
+      const clickEvent = new MouseEvent('click', { bubbles: true });
+      checkbox.dispatchEvent(clickEvent);
+
+      expect(capturedActions.length).toBeGreaterThan(0);
+      const action = capturedActions[0];
+      expect(action?.type).toBe('click');
+
+      if (action?.type === 'click') {
+        expect(action.tagName).toBe('input');
+      }
+
+      document.body.removeChild(checkbox);
+    });
+
+    it('should skip mousedown on hidden radio inputs', () => {
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.id = 'test-radio';
+      radio.style.display = 'none';
+      document.body.appendChild(radio);
+
+      eventListener.start();
+
+      const mouseDownEvent = new MouseEvent('mousedown', { bubbles: true });
+      radio.dispatchEvent(mouseDownEvent);
+
+      expect(capturedActions).toHaveLength(0);
+
+      document.body.removeChild(radio);
+    });
+
+    it('should skip input events on hidden radio inputs', async () => {
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.id = 'test-radio';
+      radio.value = 'test';
+      radio.style.display = 'none';
+      document.body.appendChild(radio);
+
+      eventListener.start();
+
+      radio.value = 'changed';
+      const inputEvent = new Event('input', { bubbles: true });
+      radio.dispatchEvent(inputEvent);
+
+      await new Promise((resolve) => setTimeout(resolve, 600));
+
+      const inputActions = capturedActions.filter((a) => a.type === 'input');
+      expect(inputActions).toHaveLength(0);
+
+      document.body.removeChild(radio);
+    });
+
+    it('should record label clicks for hidden radio inputs', () => {
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.id = 'test-radio';
+      radio.style.display = 'none';
+
+      const label = document.createElement('label');
+      label.htmlFor = 'test-radio';
+      label.textContent = 'Test Label';
+
+      document.body.appendChild(radio);
+      document.body.appendChild(label);
+
+      eventListener.start();
+
+      const clickEvent = new MouseEvent('click', { bubbles: true });
+      label.dispatchEvent(clickEvent);
+
+      expect(capturedActions.length).toBeGreaterThan(0);
+      const action = capturedActions[0];
+      expect(action?.type).toBe('click');
+
+      if (action?.type === 'click') {
+        expect(action.tagName).toBe('label');
+        expect(action.text).toBe('Test Label');
+      }
+
+      document.body.removeChild(radio);
+      document.body.removeChild(label);
+    });
+  });
 });

@@ -171,6 +171,16 @@ export class EventListener {
     const target = this.findInteractiveElement(clickedElement);
     if (!target) return;
 
+    // Skip hidden radio/checkbox inputs - they're typically clicked via labels
+    // Recording them causes "Element is not visible" errors during replay
+    if (
+      target instanceof HTMLInputElement &&
+      (target.type === 'radio' || target.type === 'checkbox') &&
+      !this.isElementVisible(target)
+    ) {
+      return;
+    }
+
     // Check for double-click
     const now = Date.now();
     const isDoubleClick = target === this.lastClickTarget && now - this.lastClickTime < 500;
@@ -229,6 +239,15 @@ export class EventListener {
     // Find the interactive element (could be the target or a parent)
     const target = this.findInteractiveElement(clickedElement);
     if (!target) return;
+
+    // Skip hidden radio/checkbox inputs
+    if (
+      target instanceof HTMLInputElement &&
+      (target.type === 'radio' || target.type === 'checkbox') &&
+      !this.isElementVisible(target)
+    ) {
+      return;
+    }
 
     // Don't record navigation clicks on mousedown (let click handler do it)
     const willNavigate = this.isNavigationClick(target);
@@ -324,6 +343,15 @@ export class EventListener {
    * Capture input action
    */
   private captureInputAction(target: HTMLInputElement | HTMLTextAreaElement): void {
+    // Skip hidden radio/checkbox inputs - they're typically controlled via labels
+    if (
+      target instanceof HTMLInputElement &&
+      (target.type === 'radio' || target.type === 'checkbox') &&
+      !this.isElementVisible(target)
+    ) {
+      return;
+    }
+
     const selector = this.selectorGenerator.generateSelectors(target);
     const isSensitive = this.isSensitiveInput(target);
 
@@ -776,6 +804,26 @@ export class EventListener {
     }
 
     return false;
+  }
+
+  /**
+   * Check if element is visible (not hidden by CSS)
+   * Used to filter out hidden radio/checkbox inputs that fail during replay
+   */
+  private isElementVisible(element: Element): boolean {
+    const style = window.getComputedStyle(element);
+
+    // Check common CSS hiding techniques
+    if (style.display === 'none') return false;
+    if (style.visibility === 'hidden') return false;
+    if (style.opacity === '0') return false;
+
+    // Check dimensions (only if explicitly set to 0)
+    const width = parseFloat(style.width);
+    const height = parseFloat(style.height);
+    if (width === 0 && height === 0) return false;
+
+    return true;
   }
 
   /**

@@ -479,24 +479,25 @@ export class SelectorGenerator {
       const selector = this.getSelectorValue(strategy, selectorType);
       const isUnique = selector && this.isSelectorTypeUnique(selector, selectorType, element);
 
-      // Categorize selectors
+      // ✅ ONLY include unique selectors in priority
+      if (!isUnique) {
+        continue; // Skip non-unique selectors
+      }
+
+      // Categorize UNIQUE selectors by reliability
       if (['id', 'dataTestId', 'ariaLabel', 'name', 'css'].includes(selectorType)) {
-        if (isUnique) {
-          structuralSelectors.push(selectorType);
-        }
+        structuralSelectors.push(selectorType);
       } else if (['text', 'textContains'].includes(selectorType)) {
-        if (isUnique) {
-          contentSelectors.push(selectorType);
-        }
+        contentSelectors.push(selectorType);
       } else {
-        // xpath, xpathAbsolute, position
+        // xpath, xpathAbsolute, position - least reliable
         fallbackSelectors.push(selectorType);
       }
     }
 
-    // Priority order: structural (unique) > fallback > content (unique)
-    // This ensures CSS selector is tried before text, even if both are unique
-    strategy.priority = [...structuralSelectors, ...fallbackSelectors, ...contentSelectors];
+    // ✅ Priority order: structural > content > fallback (all verified unique)
+    // This ensures CSS/ID tried before text, and text before xpath
+    strategy.priority = [...structuralSelectors, ...contentSelectors, ...fallbackSelectors];
 
     return strategy;
   }
@@ -545,12 +546,11 @@ export class SelectorGenerator {
           // Validate text uniqueness by checking all elements with same text
           return this.isTextUnique(selector, element, selectorType === 'textContains');
         case 'xpath':
-          // XPath validation is complex, assume unique for now
-          // TODO: Implement XPath evaluation for better validation
-          return true;
+          // ✅ Validate XPath uniqueness
+          return this.isXPathUnique(selector, element);
         case 'xpathAbsolute':
-          // Absolute XPath should always be unique
-          return true;
+          // ✅ Validate absolute XPath uniqueness
+          return this.isXPathUnique(selector, element);
         case 'position':
           // Position-based selector is always unique within parent
           return true;
@@ -595,6 +595,27 @@ export class SelectorGenerator {
 
     // Text is unique only if exactly one element matched and it's our target
     return matchCount === 1 && matchedElement === element;
+  }
+
+  /**
+   * Check if XPath selector uniquely identifies the element
+   */
+  private isXPathUnique(xpath: string, element: Element): boolean {
+    try {
+      const result = document.evaluate(
+        xpath,
+        document,
+        null,
+        XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,
+        null
+      );
+
+      // XPath is unique if it matches exactly one element and it's our target
+      return result.snapshotLength === 1 && result.snapshotItem(0) === element;
+    } catch {
+      // Invalid XPath or evaluation error
+      return false;
+    }
   }
 
   /**
