@@ -7,6 +7,14 @@ import {
 } from '@/utils/validator';
 import type { Recording, Action, SelectorStrategy } from '@/types';
 
+// Helper for dimension data
+const mockDimensions = {
+  viewport: { width: 1920, height: 1080 },
+  windowSize: { width: 1920, height: 1179 },
+  screenSize: { width: 1920, height: 1080 },
+  devicePixelRatio: 1,
+};
+
 describe('Validator', () => {
   describe('Selector Validation', () => {
     it('should validate valid selector with ID', () => {
@@ -279,7 +287,7 @@ describe('Validator', () => {
         url: 'http://example.com',
         startTime: '2024-01-01T00:00:00.000Z',
         endTime: '2024-01-01T00:01:00.000Z',
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Test Agent',
         actions: [
           {
@@ -310,7 +318,7 @@ describe('Validator', () => {
         testName: 'Test',
         url: 'http://example.com',
         startTime: '2024-01-01T00:00:00.000Z',
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Test Agent',
         actions: [],
       } as any;
@@ -331,7 +339,7 @@ describe('Validator', () => {
         testName: 'Test',
         url: 'http://example.com',
         startTime: '2024-01-01T00:00:00.000Z',
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Test Agent',
         actions: [],
       } as any;
@@ -353,7 +361,7 @@ describe('Validator', () => {
         testName: '',
         url: 'http://example.com',
         startTime: '2024-01-01T00:00:00.000Z',
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Test Agent',
         actions: [],
       } as any;
@@ -375,7 +383,7 @@ describe('Validator', () => {
         testName: 'Test',
         url: 'not-a-url',
         startTime: '2024-01-01T00:00:00.000Z',
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Test Agent',
         actions: [],
       } as any;
@@ -397,7 +405,7 @@ describe('Validator', () => {
         testName: 'Test',
         url: 'http://example.com',
         startTime: 'invalid-date',
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Test Agent',
         actions: [],
       } as any;
@@ -412,14 +420,17 @@ describe('Validator', () => {
       );
     });
 
-    it('should fail if viewport is invalid', () => {
+    it('should fail if viewport dimensions are invalid', () => {
       const recording = {
         id: 'rec_123',
         version: '1.0.0',
         testName: 'Test',
         url: 'http://example.com',
         startTime: '2024-01-01T00:00:00.000Z',
-        viewport: { width: -1, height: 1080 },
+        viewport: { width: 0, height: -100 },
+        windowSize: { width: 1920, height: 1179 },
+        screenSize: { width: 1920, height: 1080 },
+        devicePixelRatio: 1,
         userAgent: 'Test Agent',
         actions: [],
       } as any;
@@ -441,7 +452,7 @@ describe('Validator', () => {
         testName: 'Test',
         url: 'http://example.com',
         startTime: '2024-01-01T00:00:00.000Z',
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Test Agent',
       } as any;
 
@@ -462,7 +473,7 @@ describe('Validator', () => {
         testName: 'Test',
         url: 'http://example.com',
         startTime: '2024-01-01T00:00:00.000Z',
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Test Agent',
         actions: [
           {
@@ -500,7 +511,7 @@ describe('Validator', () => {
         testName: 'Test',
         url: 'http://example.com',
         startTime: '2024-01-01T00:00:00.000Z',
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Test Agent',
         actions: [],
       };
@@ -552,6 +563,9 @@ describe('Validator', () => {
         url: 'http://example.com',
         startTime: '2024-01-01T00:00:00.000Z',
         viewport: { width: 0, height: -100 },
+        windowSize: { width: 1920, height: 1179 },
+        screenSize: { width: 1920, height: 1080 },
+        devicePixelRatio: 1,
         userAgent: 'Test Agent',
         actions: [],
       };
@@ -573,7 +587,7 @@ describe('Validator', () => {
         testName: 'Test',
         url: 'http://example.com',
         startTime: '2024-01-01T00:00:00.000Z',
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         actions: [],
       } as any;
 
@@ -594,7 +608,7 @@ describe('Validator', () => {
         testName: 'Test',
         url: 'http://example.com',
         startTime: '2024-01-01T00:00:00.000Z',
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Test Agent',
         actions: 'not-an-array',
       } as any;

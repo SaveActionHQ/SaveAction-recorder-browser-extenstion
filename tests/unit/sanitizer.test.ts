@@ -10,6 +10,14 @@ import {
 } from '@/utils/sanitizer';
 import type { Action, InputAction, Recording } from '@/types';
 
+// Helper for dimension data
+const mockDimensions = {
+  viewport: { width: 1920, height: 1080 },
+  windowSize: { width: 1920, height: 1179 },
+  screenSize: { width: 1920, height: 1080 },
+  devicePixelRatio: 1,
+};
+
 describe('Sanitizer', () => {
   describe('Password Masking', () => {
     it('should fully mask password values', () => {
@@ -252,7 +260,7 @@ describe('Sanitizer', () => {
         url: 'http://example.com',
         startTime: '2024-01-01T00:00:00.000Z',
         endTime: '2024-01-01T00:01:00.000Z',
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Test Agent',
         actions: [
           {
@@ -312,7 +320,7 @@ describe('Sanitizer', () => {
         testName: 'Test',
         url: 'http://example.com',
         startTime: '2024-01-01T00:00:00.000Z',
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Test Agent',
         actions: [
           {
@@ -346,6 +354,9 @@ describe('Sanitizer', () => {
         startTime: '2024-01-01T00:00:00.000Z',
         endTime: '2024-01-01T00:02:00.000Z',
         viewport: { width: 1366, height: 768 },
+        windowSize: { width: 1366, height: 847 },
+        screenSize: { width: 1366, height: 768 },
+        devicePixelRatio: 1,
         userAgent: 'Mozilla/5.0',
         actions: [],
       };

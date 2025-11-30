@@ -18,6 +18,14 @@ global.chrome = {
 global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
 global.URL.revokeObjectURL = vi.fn();
 
+// Helper for dimension data
+const mockDimensions = {
+  viewport: { width: 1920, height: 1080 },
+  windowSize: { width: 1920, height: 1179 },
+  screenSize: { width: 1920, height: 1080 },
+  devicePixelRatio: 1,
+};
+
 describe('Exporter Utils', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -32,7 +40,7 @@ describe('Exporter Utils', () => {
         startTime: '2025-11-18T10:00:00.000Z',
         endTime: '2025-11-18T10:01:00.000Z',
         actions: [],
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Mozilla/5.0',
         version: '1.0.0',
       };
@@ -52,7 +60,7 @@ describe('Exporter Utils', () => {
         startTime: '2025-11-18T10:00:00.000Z',
         endTime: '2025-11-18T10:01:00.000Z',
         actions: [],
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Mozilla/5.0',
         version: '1.0.0',
       };
@@ -91,7 +99,7 @@ describe('Exporter Utils', () => {
             modifiers: [],
           },
         ],
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Mozilla/5.0',
         version: '1.0.0',
       };
@@ -113,7 +121,7 @@ describe('Exporter Utils', () => {
         startTime: '2025-11-18T10:00:00.000Z',
         endTime: '2025-11-18T10:01:00.000Z',
         actions: [],
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Mozilla/5.0',
         version: '1.0.0',
       };
@@ -143,7 +151,7 @@ describe('Exporter Utils', () => {
         startTime: '2025-11-18T10:00:00.000Z',
         endTime: '2025-11-18T10:01:00.000Z',
         actions: [],
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Mozilla/5.0',
         version: '1.0.0',
       };
@@ -167,7 +175,7 @@ describe('Exporter Utils', () => {
         startTime: '2025-11-18T10:00:00.000Z',
         endTime: '2025-11-18T10:01:00.000Z',
         actions: [],
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Mozilla/5.0',
         version: '1.0.0',
       };
@@ -194,7 +202,7 @@ describe('Exporter Utils', () => {
         startTime: '2025-11-18T10:00:00.000Z',
         endTime: '2025-11-18T10:01:00.000Z',
         actions: [],
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Mozilla/5.0',
         version: '1.0.0',
       };
@@ -214,7 +222,7 @@ describe('Exporter Utils', () => {
         startTime: '2025-11-18T10:00:00.000Z',
         endTime: '2025-11-18T10:01:00.000Z',
         actions: [],
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Mozilla/5.0',
         version: '1.0.0',
       };
@@ -240,7 +248,7 @@ describe('Exporter Utils', () => {
         startTime: '2025-11-18T10:00:00.000Z',
         endTime: '2025-11-18T10:01:00.000Z',
         actions: [],
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Mozilla/5.0',
         version: '1.0.0',
       };
@@ -272,7 +280,7 @@ describe('Exporter Utils', () => {
         startTime: 'invalid-date',
         endTime: '2025-11-18T10:01:00.000Z',
         actions: [],
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Mozilla/5.0',
         version: '1.0.0',
       };
@@ -292,6 +300,9 @@ describe('Exporter Utils', () => {
         endTime: '2025-11-18T10:01:00.000Z',
         actions: [],
         viewport: { width: -100, height: 0 },
+        windowSize: { width: 1920, height: 1179 },
+        screenSize: { width: 1920, height: 1080 },
+        devicePixelRatio: 1,
         userAgent: 'Mozilla/5.0',
         version: '1.0.0',
       };
@@ -310,7 +321,7 @@ describe('Exporter Utils', () => {
         startTime: '2025-11-18T10:00:00.000Z',
         endTime: 'not-a-date',
         actions: [],
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Mozilla/5.0',
         version: '1.0.0',
       };
@@ -328,7 +339,7 @@ describe('Exporter Utils', () => {
         url: 'https://example.com',
         startTime: '2025-11-18T10:00:00.000Z',
         actions: [],
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Mozilla/5.0',
         version: '1.0.0',
       };
@@ -347,6 +358,9 @@ describe('Exporter Utils', () => {
         startTime: '2025-11-18T10:00:00.000Z',
         actions: [],
         viewport: { width: 0, height: 1080 },
+        windowSize: { width: 1920, height: 1179 },
+        screenSize: { width: 1920, height: 1080 },
+        devicePixelRatio: 1,
         userAgent: 'Mozilla/5.0',
         version: '1.0.0',
       };
@@ -365,6 +379,9 @@ describe('Exporter Utils', () => {
         startTime: '2025-11-18T10:00:00.000Z',
         actions: [],
         viewport: { width: 1920, height: 0 },
+        windowSize: { width: 1920, height: 1179 },
+        screenSize: { width: 1920, height: 1080 },
+        devicePixelRatio: 1,
         userAgent: 'Mozilla/5.0',
         version: '1.0.0',
       };
@@ -382,7 +399,7 @@ describe('Exporter Utils', () => {
         url: 'https://example.com',
         startTime: '2025-11-18T10:00:00.000Z',
         actions: 'not-an-array',
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Mozilla/5.0',
         version: '1.0.0',
       } as unknown as Recording;

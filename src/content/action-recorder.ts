@@ -16,6 +16,9 @@ export interface RecordingMetadata {
   url: string;
   startTime: string;
   viewport: { width: number; height: number };
+  windowSize: { width: number; height: number };
+  screenSize: { width: number; height: number };
+  devicePixelRatio: number;
   userAgent: string;
 }
 
@@ -69,6 +72,15 @@ export class ActionRecorder {
         width: window.innerWidth,
         height: window.innerHeight,
       },
+      windowSize: {
+        width: window.outerWidth,
+        height: window.outerHeight,
+      },
+      screenSize: {
+        width: window.screen.width,
+        height: window.screen.height,
+      },
+      devicePixelRatio: window.devicePixelRatio || 1,
       userAgent: navigator.userAgent,
     };
 
@@ -82,6 +94,31 @@ export class ActionRecorder {
     // Start capturing events
     this.state = 'recording';
     this.eventListener.start();
+
+    // Sync metadata to background for fallback recording builder
+    this.syncMetadataToBackground();
+  }
+
+  /**
+   * Sync metadata to background script for fallback recording builder
+   */
+  private syncMetadataToBackground(): void {
+    if (!this.metadata) return;
+
+    try {
+      chrome.runtime.sendMessage({
+        type: 'SYNC_METADATA',
+        payload: {
+          viewport: this.metadata.viewport,
+          windowSize: this.metadata.windowSize,
+          screenSize: this.metadata.screenSize,
+          devicePixelRatio: this.metadata.devicePixelRatio,
+        },
+      });
+      console.log('[ActionRecorder] Synced metadata to background');
+    } catch (error) {
+      console.error('[ActionRecorder] Failed to sync metadata:', error);
+    }
   }
 
   /**
@@ -176,6 +213,9 @@ export class ActionRecorder {
       startTime: this.metadata.startTime,
       endTime: new Date().toISOString(),
       viewport: this.metadata.viewport,
+      windowSize: this.metadata.windowSize,
+      screenSize: this.metadata.screenSize,
+      devicePixelRatio: this.metadata.devicePixelRatio,
       userAgent: this.metadata.userAgent,
       actions: [...this.actions],
     };
