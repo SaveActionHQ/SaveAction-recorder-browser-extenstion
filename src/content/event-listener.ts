@@ -88,33 +88,39 @@ export class EventListener {
 
   /**
    * Get relative timestamp (ms since recording started)
+   * Returns the ACTUAL time the action occurred, without artificial inflation
    */
   private getRelativeTimestamp(): number {
     if (this.recordingStartTime === 0) {
       // Fallback to absolute timestamp if start time not set
       return Date.now();
     }
-    const now = Date.now() - this.recordingStartTime;
-    // Ensure action doesn't start before previous action completed
-    return Math.max(now, this.lastCompletedTimestamp);
+    // Return actual timestamp - do NOT use Math.max() here
+    // Overlap prevention is handled in calculateCompletedAt() instead
+    return Date.now() - this.recordingStartTime;
   }
 
   /**
    * Calculate when action completes based on action type
+   * Ensures no action completes before the previous action completed (overlap prevention)
    */
   private calculateCompletedAt(action: Action): number {
+    let completedAt: number;
+
     switch (action.type) {
       case 'hover': {
         // Hover completes after its duration
         const hoverAction = action as HoverAction;
-        return action.timestamp + (hoverAction.duration || 0);
+        completedAt = action.timestamp + (hoverAction.duration || 0);
+        break;
       }
 
       case 'input': {
         // Input completes after typing all characters
         const inputAction = action as InputAction;
         const typingTime = inputAction.value.length * (inputAction.typingDelay || 100);
-        return action.timestamp + typingTime;
+        completedAt = action.timestamp + typingTime;
+        break;
       }
 
       case 'scroll': {
@@ -124,49 +130,61 @@ export class EventListener {
           // Estimate scroll animation time (200-800ms based on distance)
           const scrollDistance = Math.abs(scrollAction.scrollY);
           const scrollDuration = Math.min(800, Math.max(200, scrollDistance / 3));
-          return action.timestamp + scrollDuration;
+          completedAt = action.timestamp + scrollDuration;
+        } else {
+          // Element scrolls are typically faster
+          completedAt = action.timestamp + 200;
         }
-        // Element scrolls are typically faster
-        return action.timestamp + 200;
+        break;
       }
 
       case 'click': {
         // Clicks have brief animation/feedback time
-        return action.timestamp + 50;
+        completedAt = action.timestamp + 50;
+        break;
       }
 
       case 'select': {
         // Dropdown selection has brief animation
-        return action.timestamp + 100;
+        completedAt = action.timestamp + 100;
+        break;
       }
 
       case 'keypress': {
         // Key presses are instant
-        return action.timestamp;
+        completedAt = action.timestamp;
+        break;
       }
 
       case 'submit': {
         // Form submit triggers navigation, instant action itself
-        return action.timestamp + 50;
+        completedAt = action.timestamp + 50;
+        break;
       }
 
       case 'navigation': {
         // Navigation completes after its duration
         const navAction = action as NavigationAction;
-        return action.timestamp + (navAction.duration || 0);
+        completedAt = action.timestamp + (navAction.duration || 0);
+        break;
       }
 
       case 'checkpoint': {
         // Checkpoints are instant
-        return action.timestamp;
+        completedAt = action.timestamp;
+        break;
       }
 
       default: {
         // Exhaustive check - should never reach here
         const _exhaustiveCheck: never = action;
-        return (_exhaustiveCheck as Action).timestamp;
+        completedAt = (_exhaustiveCheck as Action).timestamp;
       }
     }
+
+    // Prevent overlap: ensure this action doesn't complete before previous action completed
+    // This fixes timing conflicts during replay while preserving accurate action timestamps
+    return Math.max(completedAt, this.lastCompletedTimestamp);
   }
 
   /**
