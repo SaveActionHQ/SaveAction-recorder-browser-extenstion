@@ -419,14 +419,14 @@ async function handleStopRecording(
         if (recording.id && recording.testName && recording.startTime) {
           console.log('[Background] Got recording metadata from content script');
 
-          // Merge accumulated actions from previous pages
+          // Use accumulated actions (which already include current page actions via SYNC_ACTION)
           if (state.accumulatedActions.length > 0) {
             console.log(
-              '[Background] Merging',
+              '[Background] Using',
               state.accumulatedActions.length,
-              'accumulated actions'
+              'accumulated actions (includes current page)'
             );
-            recording.actions = [...state.accumulatedActions, ...currentPageActions];
+            recording.actions = [...state.accumulatedActions];
 
             // Re-sort by timestamp
             recording.actions.sort((a, b) => a.timestamp - b.timestamp);
@@ -929,6 +929,7 @@ chrome.tabs.onUpdated.addListener(async (tabId: number, changeInfo: chrome.tabs.
         id: `act_${String(state.actionCounter + 1).padStart(3, '0')}`, // Will be renumbered
         type: 'navigation',
         timestamp: relativeTimestamp, // Fixed: Use relative timestamp
+        completedAt: relativeTimestamp, // Navigation completes instantly (duration: 0)
         url: changeInfo.url,
         from: state.previousUrl,
         to: changeInfo.url,

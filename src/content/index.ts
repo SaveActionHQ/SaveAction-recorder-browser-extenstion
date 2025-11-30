@@ -14,19 +14,94 @@ if (window.self !== window.top) {
 } else {
   let recorder: ActionRecorder | null = null;
   let indicator: RecordingIndicator | null = null;
+  let restorationComplete = false;
+  let restorationPromise: Promise<void> | null = null;
 
   /**
-   * Initialize recorder
+   * Initialize recorder and restore state if needed
    */
-  function initializeRecorder(): void {
-    if (!recorder) {
-      recorder = new ActionRecorder();
-      console.log('[Content] ActionRecorder initialized');
+  async function ensureRecorderReady(): Promise<void> {
+    // If already restored, return immediately
+    if (restorationComplete) {
+      return;
     }
-    if (!indicator) {
-      indicator = new RecordingIndicator();
-      console.log('[Content] RecordingIndicator initialized');
+
+    // If restoration is in progress, wait for it
+    if (restorationPromise) {
+      return restorationPromise;
     }
+
+    // Start restoration
+    restorationPromise = (async () => {
+      // Initialize recorder and indicator
+      if (!recorder) {
+        recorder = new ActionRecorder();
+        console.log('[Content] ActionRecorder initialized');
+      }
+      if (!indicator) {
+        indicator = new RecordingIndicator();
+        console.log('[Content] RecordingIndicator initialized');
+      }
+
+      // Check if there's an active recording in background
+      try {
+        const response = await new Promise<MessageResponse>((resolve) => {
+          chrome.runtime.sendMessage({ type: 'GET_STATUS' }, resolve);
+        });
+
+        console.log('[Content] Status check response:', response);
+
+        if (response?.success && response.data) {
+          const responseData = response.data as any;
+          const { state: recordingState, metadata } = responseData;
+
+          if ((recordingState === 'recording' || recordingState === 'paused') && metadata) {
+            console.log(
+              '[Content] Restoring recording state:',
+              recordingState,
+              'metadata:',
+              metadata
+            );
+
+            // Restore recording in the recorder
+            if (recorder && metadata.testName) {
+              try {
+                console.log('[Content] Calling recorder.restoreRecording with metadata:', metadata);
+                recorder.restoreRecording(metadata);
+                console.log(
+                  '[Content] recorder.restoreRecording completed, isRecording:',
+                  recorder.isRecording()
+                );
+
+                // Show indicator
+                if (indicator) {
+                  console.log('[Content] Showing recording indicator');
+                  indicator.show(metadata.testName);
+
+                  if (recordingState === 'paused') {
+                    console.log('[Content] Setting paused state');
+                    indicator.setPaused(true);
+                    recorder.pauseRecording();
+                  }
+                }
+
+                console.log('[Content] Recording state restored successfully');
+              } catch (error) {
+                console.error('[Content] Failed to restore recording state:', error);
+              }
+            }
+          } else {
+            console.log('[Content] No active recording to restore, state:', recordingState);
+          }
+        }
+      } catch (error) {
+        console.error('[Content] Failed to check recording status:', error);
+      }
+
+      restorationComplete = true;
+    })();
+
+    return restorationPromise;
   }
 
   /**
@@ -40,197 +115,211 @@ if (window.self !== window.top) {
     ) => {
       console.log('[Content] Received message:', message.type);
 
-      // Ensure recorder is initialized
-      initializeRecorder();
+      // Ensure recorder is ready and state is restored before handling messages
+      ensureRecorderReady()
+        .then(() => {
+          try {
+            switch (message.type) {
+              case 'START_RECORDING':
+                if (!recorder || !indicator) {
+                  sendResponse({
+                    success: false,
+                    error: 'Recorder not initialized',
+                  });
+                  return false;
+                }
 
-      try {
-        switch (message.type) {
-          case 'START_RECORDING':
-            if (!recorder || !indicator) {
-              sendResponse({
-                success: false,
-                error: 'Recorder not initialized',
-              });
-              return false;
+                try {
+                  console.log(
+                    '[Content] Starting recording with testName:',
+                    message.payload.testName
+                  );
+                  recorder.startRecording(message.payload.testName);
+                  console.log('[Content] Recording started, isRecording:', recorder.isRecording());
+
+                  indicator.show(message.payload.testName);
+                  console.log('[Content] Indicator shown');
+
+                  sendResponse({
+                    success: true,
+                    data: {
+                      state: 'recording',
+                      testName: message.payload.testName,
+                    },
+                  });
+                } catch (error) {
+                  console.error('[Content] Error starting recording:', error);
+                  sendResponse({
+                    success: false,
+                    error: (error as Error).message,
+                  });
+                }
+                return false;
+
+              case 'STOP_RECORDING':
+                if (!recorder || !indicator) {
+                  sendResponse({
+                    success: false,
+                    error: 'Recorder not initialized',
+                  });
+                  return false;
+                }
+
+                try {
+                  const recording: Recording = recorder.stopRecording();
+                  indicator.hide();
+                  console.log('[Content] Recording stopped, indicator hidden');
+                  sendResponse({
+                    success: true,
+                    data: recording,
+                  });
+                } catch (error) {
+                  console.error('[Content] Error stopping recording:', error);
+                  // Hide indicator even on error
+                  indicator.hide();
+                  sendResponse({
+                    success: false,
+                    error: (error as Error).message,
+                  });
+                }
+                return false;
+
+              case 'PAUSE_RECORDING':
+                if (!recorder || !indicator) {
+                  sendResponse({
+                    success: false,
+                    error: 'Recorder not initialized',
+                  });
+                  return false;
+                }
+
+                try {
+                  recorder.pauseRecording();
+                  indicator.setPaused(true);
+                  sendResponse({
+                    success: true,
+                    data: { state: 'paused' },
+                  });
+                } catch (error) {
+                  sendResponse({
+                    success: false,
+                    error: (error as Error).message,
+                  });
+                }
+                return false;
+
+              case 'RESUME_RECORDING':
+                if (!recorder || !indicator) {
+                  sendResponse({
+                    success: false,
+                    error: 'Recorder not initialized',
+                  });
+                  return false;
+                }
+
+                try {
+                  recorder.resumeRecording();
+                  indicator.setPaused(false);
+                  sendResponse({
+                    success: true,
+                    data: { state: 'recording' },
+                  });
+                } catch (error) {
+                  sendResponse({
+                    success: false,
+                    error: (error as Error).message,
+                  });
+                }
+                return false;
+
+              case 'GET_STATUS':
+                if (!recorder) {
+                  sendResponse({
+                    success: true,
+                    data: {
+                      state: 'idle',
+                      metadata: null,
+                    },
+                  });
+                  return false;
+                }
+
+                sendResponse({
+                  success: true,
+                  data: {
+                    state: recorder.getState(),
+                    metadata: recorder.getMetadata(),
+                  },
+                });
+                return false;
+
+              case 'GET_RECORDING':
+                if (!recorder || !recorder.isRecording()) {
+                  sendResponse({
+                    success: false,
+                    error: 'No active recording',
+                  });
+                  return false;
+                }
+
+                const actionCount = recorder.getActionCount();
+
+                sendResponse({
+                  success: true,
+                  data: {
+                    actionCount,
+                    actions: recorder.getActions(),
+                    metadata: recorder.getMetadata(),
+                  },
+                });
+                return false;
+
+              case 'SAVE_CURRENT_STATE':
+                // Save current actions to background before page unloads
+                console.log('[Content] SAVE_CURRENT_STATE received');
+                if (!recorder || !recorder.isRecording()) {
+                  console.log('[Content] No active recording, sending empty actions');
+                  sendResponse({ success: true, data: { actions: [] } });
+                  return false;
+                }
+
+                const actionsToSave = recorder.getActions();
+                console.log('[Content] Saving', actionsToSave.length, 'actions to background');
+                sendResponse({
+                  success: true,
+                  data: {
+                    actions: actionsToSave,
+                    metadata: recorder.getMetadata(),
+                  },
+                });
+                return false;
+
+              default:
+                sendResponse({
+                  success: false,
+                  error: `Unknown message type: ${message.type}`,
+                });
+                return false;
             }
-
-            try {
-              console.log('[Content] Starting recording with testName:', message.payload.testName);
-              recorder.startRecording(message.payload.testName);
-              console.log('[Content] Recording started, isRecording:', recorder.isRecording());
-
-              indicator.show(message.payload.testName);
-              console.log('[Content] Indicator shown');
-
-              sendResponse({
-                success: true,
-                data: {
-                  state: 'recording',
-                  testName: message.payload.testName,
-                },
-              });
-            } catch (error) {
-              console.error('[Content] Error starting recording:', error);
-              sendResponse({
-                success: false,
-                error: (error as Error).message,
-              });
-            }
-            return false;
-
-          case 'STOP_RECORDING':
-            if (!recorder || !indicator) {
-              sendResponse({
-                success: false,
-                error: 'Recorder not initialized',
-              });
-              return false;
-            }
-
-            try {
-              const recording: Recording = recorder.stopRecording();
-              indicator.hide();
-              console.log('[Content] Recording stopped, indicator hidden');
-              sendResponse({
-                success: true,
-                data: recording,
-              });
-            } catch (error) {
-              console.error('[Content] Error stopping recording:', error);
-              // Hide indicator even on error
-              indicator.hide();
-              sendResponse({
-                success: false,
-                error: (error as Error).message,
-              });
-            }
-            return false;
-
-          case 'PAUSE_RECORDING':
-            if (!recorder || !indicator) {
-              sendResponse({
-                success: false,
-                error: 'Recorder not initialized',
-              });
-              return false;
-            }
-
-            try {
-              recorder.pauseRecording();
-              indicator.setPaused(true);
-              sendResponse({
-                success: true,
-                data: { state: 'paused' },
-              });
-            } catch (error) {
-              sendResponse({
-                success: false,
-                error: (error as Error).message,
-              });
-            }
-            return false;
-
-          case 'RESUME_RECORDING':
-            if (!recorder || !indicator) {
-              sendResponse({
-                success: false,
-                error: 'Recorder not initialized',
-              });
-              return false;
-            }
-
-            try {
-              recorder.resumeRecording();
-              indicator.setPaused(false);
-              sendResponse({
-                success: true,
-                data: { state: 'recording' },
-              });
-            } catch (error) {
-              sendResponse({
-                success: false,
-                error: (error as Error).message,
-              });
-            }
-            return false;
-
-          case 'GET_STATUS':
-            if (!recorder) {
-              sendResponse({
-                success: true,
-                data: {
-                  state: 'idle',
-                  metadata: null,
-                },
-              });
-              return false;
-            }
-
-            sendResponse({
-              success: true,
-              data: {
-                state: recorder.getState(),
-                metadata: recorder.getMetadata(),
-              },
-            });
-            return false;
-
-          case 'GET_RECORDING':
-            if (!recorder || !recorder.isRecording()) {
-              sendResponse({
-                success: false,
-                error: 'No active recording',
-              });
-              return false;
-            }
-
-            const actionCount = recorder.getActionCount();
-
-            sendResponse({
-              success: true,
-              data: {
-                actionCount,
-                actions: recorder.getActions(),
-                metadata: recorder.getMetadata(),
-              },
-            });
-            return false;
-
-          case 'SAVE_CURRENT_STATE':
-            // Save current actions to background before page unloads
-            console.log('[Content] SAVE_CURRENT_STATE received');
-            if (!recorder || !recorder.isRecording()) {
-              console.log('[Content] No active recording, sending empty actions');
-              sendResponse({ success: true, data: { actions: [] } });
-              return false;
-            }
-
-            const actionsToSave = recorder.getActions();
-            console.log('[Content] Saving', actionsToSave.length, 'actions to background');
-            sendResponse({
-              success: true,
-              data: {
-                actions: actionsToSave,
-                metadata: recorder.getMetadata(),
-              },
-            });
-            return false;
-
-          default:
+          } catch (error) {
+            console.error('[Content] Error handling message:', error);
             sendResponse({
               success: false,
-              error: `Unknown message type: ${message.type}`,
+              error: (error as Error).message,
             });
             return false;
-        }
-      } catch (error) {
-        console.error('[Content] Error handling message:', error);
-        sendResponse({
-          success: false,
-          error: (error as Error).message,
+          }
+        })
+        .catch((error) => {
+          console.error('[Content] Error ensuring recorder ready:', error);
+          sendResponse({
+            success: false,
+            error: 'Failed to initialize recorder',
+          });
         });
-        return false;
-      }
+
+      // Return true to indicate we'll send response asynchronously
+      return true;
     }
   );
 
@@ -266,68 +355,14 @@ if (window.self !== window.top) {
       indicator.hide();
       indicator = null;
     }
+
+    // Reset restoration flag for next page
+    restorationComplete = false;
+    restorationPromise = null;
   });
 
-  // Initialize on load
-  initializeRecorder();
-
-  // Check if there's an active recording and restore state
-  chrome.runtime.sendMessage({ type: 'GET_STATUS' }, (response) => {
-    if (chrome.runtime.lastError) {
-      console.error('[Content] Failed to get status:', chrome.runtime.lastError);
-      return;
-    }
-
-    console.log('[Content] Status check response:', response);
-
-    if (response?.success && response.data) {
-      const { state, metadata } = response.data;
-
-      if (state === 'recording' || state === 'paused') {
-        console.log('[Content] Restoring recording state:', state, 'metadata:', metadata);
-
-        // Restore recording in the recorder
-        if (recorder && metadata?.testName) {
-          try {
-            // Use restoreRecording to preserve original metadata (including initial URL)
-            console.log('[Content] Calling recorder.restoreRecording with metadata:', metadata);
-            recorder.restoreRecording(metadata);
-            console.log(
-              '[Content] recorder.restoreRecording completed, isRecording:',
-              recorder.isRecording()
-            );
-
-            // Show indicator
-            if (indicator) {
-              console.log('[Content] Showing recording indicator');
-              indicator.show(metadata.testName);
-
-              if (state === 'paused') {
-                console.log('[Content] Setting paused state');
-                indicator.setPaused(true);
-                recorder.pauseRecording();
-              }
-            }
-
-            console.log('[Content] Recording state restored successfully');
-          } catch (error) {
-            console.error('[Content] Failed to restore recording state:', error);
-          }
-        } else {
-          console.error(
-            '[Content] Cannot restore - recorder:',
-            !!recorder,
-            'testName:',
-            metadata?.testName
-          );
-        }
-      } else {
-        console.log('[Content] No active recording to restore, state:', state);
-      }
-    } else {
-      console.log('[Content] Invalid response:', response);
-    }
+  // Initialize and restore state on load
+  ensureRecorderReady().then(() => {
+    console.log('[Content] Content script loaded and ready');
   });
-
-  console.log('[Content] Content script loaded');
 } // End of main frame check

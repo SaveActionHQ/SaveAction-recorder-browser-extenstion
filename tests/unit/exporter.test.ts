@@ -75,6 +75,7 @@ describe('Exporter Utils', () => {
             id: 'act_001',
             type: 'click',
             timestamp: Date.now(),
+            completedAt: Date.now() + 50,
             url: 'https://example.com',
             selector: {
               id: 'button',
