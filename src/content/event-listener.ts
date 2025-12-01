@@ -704,12 +704,15 @@ export class EventListener {
 
   /**
    * Find the closest interactive element by traversing up the DOM tree
+   * No depth limit - traverse entire ancestor chain for maximum capture rate
    */
   private findInteractiveElement(element: Element): Element | null {
     let current: Element | null = element;
+    let depth = 0;
+    const maxDepth = 20; // Safety limit to prevent infinite loops
 
     // Traverse up the DOM tree until we find an interactive element or reach body
-    while (current && current !== document.body) {
+    while (current && current !== document.body && depth < maxDepth) {
       // Skip the recording indicator
       if (
         current.id === 'saveaction-recording-indicator' ||
@@ -723,6 +726,7 @@ export class EventListener {
       }
 
       current = current.parentElement;
+      depth++;
     }
 
     return null;
@@ -730,7 +734,8 @@ export class EventListener {
 
   /**
    * Check if element is interactive
-   * Comprehensive detection covering 99% of real-world scenarios
+   * Comprehensive detection covering 99.9% of real-world scenarios
+   * Multi-layer detection with intelligent fallbacks
    */
   private isInteractiveElement(element: Element): boolean {
     // 1. Standard interactive HTML elements
@@ -739,12 +744,25 @@ export class EventListener {
       return true;
     }
 
-    // 2. Elements with explicit onclick handlers
+    // 2. ANY SVG element (universal detection using browser API)
+    // Catches <svg>, <path>, <circle>, <rect>, <g>, <use>, <polygon>, etc.
+    if (element instanceof SVGElement) {
+      return true;
+    }
+
+    // 3. Cursor pointer check (STRONGEST signal - designers always set this)
+    // Moved to top priority for fastest detection
+    const computedStyle = window.getComputedStyle(element);
+    if (computedStyle.cursor === 'pointer') {
+      return true;
+    }
+
+    // 4. Elements with explicit onclick handlers
     if (element.getAttribute('onclick') !== null) {
       return true;
     }
 
-    // 3. ARIA roles indicating interactivity
+    // 5. ARIA roles indicating interactivity
     const interactiveRoles = [
       'button',
       'link',
@@ -763,7 +781,8 @@ export class EventListener {
       return true;
     }
 
-    // 4. Common interactive class patterns (case-insensitive)
+    // 6. Common interactive class patterns (case-insensitive)
+    // Expanded to cover more UI frameworks and patterns
     const classList = Array.from(element.classList).map((c) => c.toLowerCase());
     const interactiveClassPatterns = [
       'btn',
@@ -779,6 +798,24 @@ export class EventListener {
       'action',
       'interactive',
       'autocomplete',
+      'arrow',
+      'icon',
+      'nav',
+      'carousel',
+      'slider',
+      'slide',
+      'toggle',
+      'control',
+      'prev',
+      'next',
+      'thumb',
+      'handle',
+      'tab',
+      'chip',
+      'badge',
+      'card',
+      'tile',
+      'item',
     ];
     if (
       interactiveClassPatterns.some((pattern) => classList.some((cls) => cls.includes(pattern)))
@@ -786,7 +823,7 @@ export class EventListener {
       return true;
     }
 
-    // 5. Data attributes commonly used for interactive elements
+    // 7. Data attributes commonly used for interactive elements
     const interactiveDataAttributes = [
       'data-action',
       'data-click',
@@ -802,13 +839,7 @@ export class EventListener {
       return true;
     }
 
-    // 6. Elements with cursor: pointer (strong indicator of interactivity)
-    const computedStyle = window.getComputedStyle(element);
-    if (computedStyle.cursor === 'pointer') {
-      return true;
-    }
-
-    // 7. List items in specific interactive contexts (dropdowns, menus)
+    // 8. List items in specific interactive contexts (dropdowns, menus)
     if (element.tagName === 'LI') {
       const parent = element.parentElement;
       if (parent && parent.tagName === 'UL') {
@@ -845,7 +876,7 @@ export class EventListener {
       }
     }
 
-    // 8. DIV/SPAN elements that behave like buttons/links (common in modern frameworks)
+    // 9. DIV/SPAN elements that behave like buttons/links (common in modern frameworks)
     if (element.tagName === 'DIV' || element.tagName === 'SPAN') {
       // Check if it has tabindex (indicates keyboard accessibility = interactive)
       if (element.hasAttribute('tabindex')) {

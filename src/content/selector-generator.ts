@@ -46,73 +46,117 @@ export class SelectorGenerator {
     const selectors: Partial<SelectorStrategy> = {};
     const priority: SelectorType[] = [];
 
-    // 1. ID selector (highest priority)
+    // Detect dropdown context early (before building priority)
+    const isDropdownItem =
+      element.tagName === 'LI' || element.tagName === 'OPTION' || element.tagName === 'A';
+
+    // Also check if element is a child of a dropdown item (e.g., <span> inside <li>)
+    const isChildOfDropdownItem = (() => {
+      const parent = element.parentElement;
+      return (
+        parent && (parent.tagName === 'LI' || parent.tagName === 'OPTION' || parent.tagName === 'A')
+      );
+    })();
+
+    const hasDropdownContext = (() => {
+      if (!isDropdownItem && !isChildOfDropdownItem) return false;
+
+      let parent = element.parentElement;
+      let depth = 0;
+      const maxDepth = 15;
+
+      while (parent && parent !== document.body && depth < maxDepth) {
+        const parentClasses = Array.from(parent.classList).map((c) => c.toLowerCase());
+        const dropdownPatterns = [
+          'dropdown',
+          'menu',
+          'autocomplete',
+          'select',
+          'options',
+          'list',
+          'popover',
+          'picker',
+          'listbox',
+          'combobox',
+        ];
+
+        if (
+          parentClasses.some((cls) => dropdownPatterns.some((pattern) => cls.includes(pattern)))
+        ) {
+          return true;
+        }
+
+        parent = parent.parentElement;
+        depth++;
+      }
+      return false;
+    })();
+
+    // Generate all selectors first
     const id = this.generateIdSelector(element);
-    if (id) {
-      selectors.id = id;
-      priority.push('id');
-    }
+    if (id) selectors.id = id;
 
-    // 2. data-testid selector
     const dataTestId = this.generateDataTestIdSelector(element);
-    if (dataTestId) {
-      selectors.dataTestId = dataTestId;
-      priority.push('dataTestId');
-    }
+    if (dataTestId) selectors.dataTestId = dataTestId;
 
-    // 3. ARIA label selector
     const ariaLabel = this.generateAriaLabelSelector(element);
-    if (ariaLabel) {
-      selectors.ariaLabel = ariaLabel;
-      priority.push('ariaLabel');
-    }
+    if (ariaLabel) selectors.ariaLabel = ariaLabel;
 
-    // 4. Name attribute selector (for form fields)
     const name = this.generateNameSelector(element);
-    if (name) {
-      selectors.name = name;
-      priority.push('name');
-    }
+    if (name) selectors.name = name;
 
-    // 5. CSS selector
     const css = this.generateCssSelector(element);
-    if (css) {
-      selectors.css = css;
-      priority.push('css');
-    }
+    if (css) selectors.css = css;
 
-    // 6. Text-based selector
     const { text, textContains } = this.generateTextSelector(element);
-    if (text) {
-      selectors.text = text;
-      priority.push('text');
-    } else if (textContains) {
-      selectors.textContains = textContains;
-      priority.push('textContains');
-    }
+    if (text) selectors.text = text;
+    if (textContains) selectors.textContains = textContains;
 
-    // 7. XPath selectors
     if (this.config.includeXPath) {
       const xpath = this.generateRelativeXPath(element);
-      if (xpath) {
-        selectors.xpath = xpath;
-        priority.push('xpath');
-      }
+      if (xpath) selectors.xpath = xpath;
 
       const xpathAbsolute = this.generateAbsoluteXPath(element);
-      if (xpathAbsolute) {
-        selectors.xpathAbsolute = xpathAbsolute;
-        priority.push('xpathAbsolute');
-      }
+      if (xpathAbsolute) selectors.xpathAbsolute = xpathAbsolute;
     }
 
-    // 8. Position-based selector (last resort)
     if (this.config.includePosition) {
       const position = this.generatePositionSelector(element);
-      if (position) {
-        selectors.position = position;
-        priority.push('position');
-      }
+      if (position) selectors.position = position;
+    }
+
+    // ✅ CRITICAL FIX: Build priority array with dropdown-aware ordering
+    if ((isDropdownItem || isChildOfDropdownItem) && hasDropdownContext) {
+      // For dropdown items AND their children: prioritize TEXT FIRST (most reliable for dynamic lists)
+      // Even if text is not globally unique, it's better than nth-child selectors
+      if (selectors.text) priority.push('text');
+      if (selectors.textContains) priority.push('textContains');
+
+      // Then structural selectors
+      if (selectors.id) priority.push('id');
+      if (selectors.dataTestId) priority.push('dataTestId');
+      if (selectors.ariaLabel) priority.push('ariaLabel');
+      if (selectors.name) priority.push('name');
+
+      // CSS last (contains fragile nth-child)
+      if (selectors.css) priority.push('css');
+
+      // Fallbacks
+      if (selectors.xpath) priority.push('xpath');
+      if (selectors.xpathAbsolute) priority.push('xpathAbsolute');
+      if (selectors.position) priority.push('position');
+    } else {
+      // For regular elements: standard priority order
+      if (selectors.id) priority.push('id');
+      if (selectors.dataTestId) priority.push('dataTestId');
+      if (selectors.ariaLabel) priority.push('ariaLabel');
+      if (selectors.name) priority.push('name');
+      if (selectors.css) priority.push('css');
+      if (selectors.text) priority.push('text');
+      if (selectors.textContains) priority.push('textContains');
+      if (selectors.xpath) priority.push('xpath');
+      if (selectors.xpathAbsolute) priority.push('xpathAbsolute');
+      if (selectors.position) priority.push('position');
     }
 
     return {
@@ -461,44 +505,16 @@ export class SelectorGenerator {
    * Enhance selector strategy for uniqueness
    */
   private enhanceForUniqueness(element: Element, strategy: SelectorStrategy): SelectorStrategy {
-    // Check if CSS selector is unique
+    // Check if CSS selector is unique, if not try with nth-child
     if (strategy.css && !this.isSelectorUnique(strategy.css, element)) {
-      // Try CSS with nth-child
       const cssWithNthChild = this.generateCssSelectorWithNthChild(element);
       if (this.isSelectorUnique(cssWithNthChild, element)) {
         strategy.css = cssWithNthChild;
       }
     }
 
-    // Reorder priority based on uniqueness and structural preference
-    const structuralSelectors: SelectorType[] = []; // id, dataTestId, ariaLabel, name, css
-    const contentSelectors: SelectorType[] = []; // text, textContains
-    const fallbackSelectors: SelectorType[] = []; // xpath, xpathAbsolute, position
-
-    for (const selectorType of strategy.priority) {
-      const selector = this.getSelectorValue(strategy, selectorType);
-      const isUnique = selector && this.isSelectorTypeUnique(selector, selectorType, element);
-
-      // ✅ ONLY include unique selectors in priority
-      if (!isUnique) {
-        continue; // Skip non-unique selectors
-      }
-
-      // Categorize UNIQUE selectors by reliability
-      if (['id', 'dataTestId', 'ariaLabel', 'name', 'css'].includes(selectorType)) {
-        structuralSelectors.push(selectorType);
-      } else if (['text', 'textContains'].includes(selectorType)) {
-        contentSelectors.push(selectorType);
-      } else {
-        // xpath, xpathAbsolute, position - least reliable
-        fallbackSelectors.push(selectorType);
-      }
-    }
-
-    // ✅ Priority order: structural > content > fallback (all verified unique)
-    // This ensures CSS/ID tried before text, and text before xpath
-    strategy.priority = [...structuralSelectors, ...contentSelectors, ...fallbackSelectors];
-
+    // Priority is already set correctly in generateAllSelectors()
+    // No need to reorder here - just return the strategy
     return strategy;
   }
 
@@ -511,138 +527,6 @@ export class SelectorGenerator {
       return matches.length === 1 && matches[0] === element;
     } catch {
       return false;
-    }
-  }
-
-  /**
-   * Check if a selector of given type is unique
-   */
-  private isSelectorTypeUnique(
-    selector: string,
-    selectorType: SelectorType,
-    element: Element
-  ): boolean {
-    try {
-      let querySelector: string;
-
-      switch (selectorType) {
-        case 'id':
-          querySelector = `#${cssEscape(selector)}`;
-          break;
-        case 'dataTestId':
-          querySelector = `[data-testid="${selector}"]`;
-          break;
-        case 'ariaLabel':
-          querySelector = `[aria-label="${selector}"]`;
-          break;
-        case 'name':
-          querySelector = `[name="${selector}"]`;
-          break;
-        case 'css':
-          querySelector = selector;
-          break;
-        case 'text':
-        case 'textContains':
-          // Validate text uniqueness by checking all elements with same text
-          return this.isTextUnique(selector, element, selectorType === 'textContains');
-        case 'xpath':
-          // ✅ Validate XPath uniqueness
-          return this.isXPathUnique(selector, element);
-        case 'xpathAbsolute':
-          // ✅ Validate absolute XPath uniqueness
-          return this.isXPathUnique(selector, element);
-        case 'position':
-          // Position-based selector is always unique within parent
-          return true;
-        default:
-          return true;
-      }
-
-      const matches = document.querySelectorAll(querySelector);
-      return matches.length === 1 && matches[0] === element;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Check if text content uniquely identifies the element
-   */
-  private isTextUnique(text: string, element: Element, isPartial: boolean): boolean {
-    if (!text) return false;
-
-    // Get all elements in the document
-    const allElements = document.querySelectorAll('*');
-    let matchCount = 0;
-    let matchedElement: Element | null = null;
-
-    for (const el of Array.from(allElements)) {
-      const elementText = el.textContent?.trim();
-      if (!elementText) continue;
-
-      const matches = isPartial ? elementText.includes(text) : elementText === text;
-
-      if (matches) {
-        matchCount++;
-        matchedElement = el;
-
-        // If we found more than one match, it's not unique
-        if (matchCount > 1) {
-          return false;
-        }
-      }
-    }
-
-    // Text is unique only if exactly one element matched and it's our target
-    return matchCount === 1 && matchedElement === element;
-  }
-
-  /**
-   * Check if XPath selector uniquely identifies the element
-   */
-  private isXPathUnique(xpath: string, element: Element): boolean {
-    try {
-      const result = document.evaluate(
-        xpath,
-        document,
-        null,
-        XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,
-        null
-      );
-
-      // XPath is unique if it matches exactly one element and it's our target
-      return result.snapshotLength === 1 && result.snapshotItem(0) === element;
-    } catch {
-      // Invalid XPath or evaluation error
-      return false;
-    }
-  }
-
-  /**
-   * Get selector value by type
-   */
-  private getSelectorValue(strategy: SelectorStrategy, type: SelectorType): string | undefined {
-    switch (type) {
-      case 'id':
-        return strategy.id;
-      case 'dataTestId':
-        return strategy.dataTestId;
-      case 'ariaLabel':
-        return strategy.ariaLabel;
-      case 'name':
-        return strategy.name;
-      case 'css':
-        return strategy.css;
-      case 'xpath':
-        return strategy.xpath;
-      case 'xpathAbsolute':
-        return strategy.xpathAbsolute;
-      case 'text':
-        return strategy.text;
-      case 'textContains':
-        return strategy.textContains;
-      default:
-        return undefined;
     }
   }
 }
