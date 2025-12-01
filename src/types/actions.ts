@@ -1,6 +1,86 @@
 import type { SelectorStrategy } from './selectors';
 
 /**
+ * Element state captured when user interacts (for smart waits)
+ */
+export interface ElementState {
+  visible?: boolean; // Element is visible in viewport
+  enabled?: boolean; // Element is not disabled
+  imageComplete?: boolean; // For <img>: image.complete
+  imageNaturalWidth?: number; // For <img>: naturalWidth (0 if not loaded)
+  imageNaturalHeight?: number; // For <img>: naturalHeight
+  inViewport?: boolean; // Element is in current viewport
+  opacity?: string; // CSS opacity value
+  display?: string; // CSS display value
+  zIndex?: string; // CSS z-index value
+}
+
+/**
+ * Wait conditions detected for platform to wait before executing action
+ */
+export interface WaitConditions {
+  imageLoaded?: boolean; // Wait for image to load
+  elementVisible?: boolean; // Wait for element visibility
+  elementStable?: boolean; // Wait for position to stabilize
+  networkIdle?: boolean; // Wait for network idle
+  parentVisible?: boolean; // Wait for parent container to be visible
+  modalStateChanged?: boolean; // Wait for modal state transition
+}
+
+/**
+ * Additional context about the interaction
+ */
+export interface ActionContext {
+  modalId?: string; // ID of modal container if inside modal
+  modalState?: string; // Current modal state (e.g., 'order-checkout-status')
+  isInsideModal?: boolean; // Element is inside a modal/dialog
+  parentContainer?: string; // CSS selector of parent container
+  isLazyLoaded?: boolean; // Element uses lazy loading
+  isDropdownItem?: boolean; // Element is a dropdown menu item
+
+  // ✅ NEW: Navigation intent detection (Phase 1 implementation)
+  navigationIntent?: NavigationIntent; // Detected navigation intent
+  expectedUrlChange?: UrlChangeExpectation; // Expected URL change pattern
+  actionGroup?: string; // Group ID for related actions (e.g., 'checkout-modal-1')
+  isTerminalAction?: boolean; // True if action completes a flow (checkout, etc.)
+  dependentActions?: string[]; // Action IDs that depend on this action's success
+}
+
+/**
+ * Alternative selector strategies (fallback options)
+ */
+export interface AlternativeSelector {
+  css?: string; // CSS selector
+  xpath?: string; // XPath selector
+  dataAttribute?: string; // data-* attribute selector
+  ariaLabel?: string; // aria-label selector
+  text?: string; // Text content selector
+  priority: number; // Lower = try first
+}
+
+/**
+ * Navigation intent detected from button/action
+ */
+export type NavigationIntent =
+  | 'submit-form' // Form submission
+  | 'checkout-complete' // Complete purchase/checkout
+  | 'close-modal-and-redirect' // Close modal with navigation
+  | 'navigate-to-page' // Link/button navigation
+  | 'logout' // User logout
+  | 'none'; // No navigation expected
+
+/**
+ * Expected URL change pattern after action
+ */
+export interface UrlChangeExpectation {
+  type: 'success' | 'redirect' | 'same-page' | 'error';
+  patterns: string[]; // URL patterns to match (/account/, /orders/, etc.)
+  isSuccessFlow: boolean; // True if this is a successful completion flow
+  beforeUrl?: string; // URL before action
+  afterUrl?: string; // URL after action (captured post-navigation)
+}
+
+/**
  * Base interface for all action types
  */
 export interface BaseAction {
@@ -12,6 +92,12 @@ export interface BaseAction {
   frameId?: string; // iFrame identifier if in frame
   frameUrl?: string; // iFrame URL if in frame
   frameSelector?: string; // Selector to target frame
+
+  // ✅ NEW: Optional metadata for smart waits (backward compatible)
+  elementState?: ElementState; // Element state when action recorded
+  waitConditions?: WaitConditions; // Conditions to wait for before executing
+  context?: ActionContext; // Additional context about interaction
+  alternativeSelectors?: AlternativeSelector[]; // Fallback selector strategies
 }
 
 /**

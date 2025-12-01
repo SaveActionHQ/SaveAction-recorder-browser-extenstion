@@ -9,9 +9,19 @@ import type {
   SubmitAction,
   HoverAction,
   ModifierKey,
+  ElementState,
+  WaitConditions,
+  ActionContext,
+  AlternativeSelector,
 } from '@/types';
 import { generateActionId } from '@/types';
 import { SelectorGenerator } from './selector-generator';
+import {
+  captureElementState,
+  logElementState,
+  detectNavigationIntent,
+  createUrlChangeExpectation,
+} from '@/utils/element-state';
 
 /**
  * EventListener - Captures user interactions on the page
@@ -38,6 +48,9 @@ export class EventListener {
   private lastCompletedTimestamp = 0; // Track when last action completed
   private readonly DEBOUNCE_MS = 500; // Duplicate detection threshold
   private recordingStartTime: number = 0; // Track recording start time for relative timestamps
+  private currentModalActionGroup: string | null = null; // Track current modal action group
+  private modalActionGroups: Map<string, string[]> = new Map(); // Map modal groups to action IDs
+  private terminalActionId: string | null = null; // Track last terminal action
 
   // Event handlers (need to be stored for removal)
   private handleClick: (e: MouseEvent) => void;
@@ -379,6 +392,66 @@ export class EventListener {
     const button = event.button === 0 ? 'left' : event.button === 1 ? 'middle' : 'right';
     const modifiers = this.getModifierKeys(event);
 
+    // Capture element state for smart waits
+    let elementState: ElementState | undefined;
+    let waitConditions: WaitConditions | undefined;
+    let context: Partial<ActionContext> | undefined;
+    let alternativeSelectors: AlternativeSelector[] | undefined;
+
+    try {
+      const state = captureElementState(target);
+      elementState = state.elementState;
+      waitConditions = state.waitConditions;
+      context = state.context;
+      alternativeSelectors = state.alternativeSelectors;
+
+      // ✅ NEW: Detect navigation intent
+      const navigationIntent = detectNavigationIntent(target);
+      if (navigationIntent !== 'none') {
+        context.navigationIntent = navigationIntent;
+
+        // Mark as terminal action if it's a checkout/completion flow
+        if (navigationIntent === 'checkout-complete') {
+          context.isTerminalAction = true;
+        }
+
+        // Create expected URL change (pre-navigation)
+        const beforeUrl = window.location.href;
+        const expectedUrlChange = createUrlChangeExpectation(beforeUrl, navigationIntent);
+        if (expectedUrlChange) {
+          context.expectedUrlChange = expectedUrlChange;
+        }
+
+        // Set up post-navigation tracking to capture actual URL
+        const capturedContext = context; // Capture for closure
+        setTimeout(() => {
+          const afterUrl = window.location.href;
+          if (afterUrl !== beforeUrl && capturedContext.expectedUrlChange) {
+            // Update the expectation with actual URL
+            const updatedExpectation = createUrlChangeExpectation(
+              beforeUrl,
+              navigationIntent,
+              afterUrl
+            );
+            if (updatedExpectation) {
+              capturedContext.expectedUrlChange = updatedExpectation;
+              console.log('[Navigation] Detected URL change:', {
+                intent: navigationIntent,
+                from: beforeUrl,
+                to: afterUrl,
+                isSuccess: updatedExpectation.isSuccessFlow,
+              });
+            }
+          }
+        }, 500); // Wait for navigation to complete
+      }
+
+      // Log for debugging
+      logElementState(target, elementState, waitConditions);
+    } catch (error) {
+      console.warn('[EventListener] Failed to capture element state:', error);
+    }
+
     return {
       id: generateActionId(++this.actionSequence),
       type: 'click',
@@ -393,6 +466,10 @@ export class EventListener {
       button,
       clickCount,
       modifiers,
+      elementState,
+      waitConditions,
+      context,
+      alternativeSelectors,
     };
   }
 
@@ -459,6 +536,21 @@ export class EventListener {
       variableName = this.generateVariableName(target);
     }
 
+    // Capture element state for smart waits
+    let elementState, waitConditions, context, alternativeSelectors;
+    try {
+      const state = captureElementState(target);
+      elementState = state.elementState;
+      waitConditions = state.waitConditions;
+      context = state.context;
+      alternativeSelectors = state.alternativeSelectors;
+
+      // Log for debugging
+      logElementState(target, elementState, waitConditions);
+    } catch (error) {
+      console.warn('[EventListener] Failed to capture element state:', error);
+    }
+
     const action: InputAction = {
       id: generateActionId(++this.actionSequence),
       type: 'input',
@@ -473,6 +565,10 @@ export class EventListener {
       simulationType: 'type',
       typingDelay,
       variableName,
+      elementState,
+      waitConditions,
+      context,
+      alternativeSelectors,
     };
 
     this.emitAction(action);
@@ -1121,6 +1217,21 @@ export class EventListener {
   private recordHoverAction(element: Element, duration: number): void {
     const selector = this.selectorGenerator.generateSelectors(element);
 
+    // Capture element state for smart waits
+    let elementState, waitConditions, context, alternativeSelectors;
+    try {
+      const state = captureElementState(element);
+      elementState = state.elementState;
+      waitConditions = state.waitConditions;
+      context = state.context;
+      alternativeSelectors = state.alternativeSelectors;
+
+      // Log for debugging
+      logElementState(element, elementState, waitConditions);
+    } catch (error) {
+      console.warn('[EventListener] Failed to capture element state:', error);
+    }
+
     const action: HoverAction = {
       id: generateActionId(++this.actionSequence),
       type: 'hover',
@@ -1132,6 +1243,10 @@ export class EventListener {
       text: element.textContent?.trim()?.substring(0, 50), // Limit text length
       duration,
       isDropdownParent: true,
+      elementState,
+      waitConditions,
+      context,
+      alternativeSelectors,
     };
 
     this.emitAction(action);
@@ -1161,6 +1276,9 @@ export class EventListener {
       return;
     }
 
+    // ✅ NEW: Track action groups and dependencies
+    this.trackActionGroupsAndDependencies(action);
+
     // Track for duplicate detection
     this.lastEmittedAction = action;
     this.lastEmitTime = action.timestamp;
@@ -1169,6 +1287,65 @@ export class EventListener {
     // Track last action for navigation trigger detection
     this.lastAction = action;
     this.actionCallback(action);
+  }
+
+  /**
+   * Track action groups and dependencies for modal flows
+   */
+  private trackActionGroupsAndDependencies(action: Action): void {
+    // Only apply to click actions with context
+    if (action.type !== 'click') return;
+
+    const clickAction = action as ClickAction;
+    if (!clickAction.context) return;
+
+    const { isInsideModal, modalId, isTerminalAction, navigationIntent } = clickAction.context;
+
+    // Generate action group ID for modal actions
+    if (isInsideModal && modalId) {
+      const groupId = `modal-${modalId}`;
+
+      // Set action group
+      clickAction.context.actionGroup = groupId;
+
+      // Track action in group
+      if (!this.modalActionGroups.has(groupId)) {
+        this.modalActionGroups.set(groupId, []);
+      }
+      this.modalActionGroups.get(groupId)?.push(action.id);
+
+      // Update current modal group
+      this.currentModalActionGroup = groupId;
+    }
+
+    // Track terminal actions (checkout complete, etc.)
+    if (isTerminalAction) {
+      this.terminalActionId = action.id;
+      console.log('[ActionDependency] Terminal action detected:', {
+        id: action.id,
+        intent: navigationIntent,
+      });
+    }
+
+    // Mark subsequent modal actions as dependent on terminal action
+    if (
+      isInsideModal &&
+      this.terminalActionId &&
+      !isTerminalAction &&
+      this.currentModalActionGroup
+    ) {
+      // This action is a cleanup action (Close button, etc.) after terminal action
+      const groupActions = this.modalActionGroups.get(this.currentModalActionGroup) || [];
+
+      // Mark as dependent on all previous actions in the group
+      clickAction.context.dependentActions = groupActions.filter((id) => id !== action.id);
+
+      console.log('[ActionDependency] Dependent action marked:', {
+        id: action.id,
+        dependsOn: clickAction.context.dependentActions,
+        reason: 'Modal cleanup after terminal action',
+      });
+    }
   }
 
   /**
