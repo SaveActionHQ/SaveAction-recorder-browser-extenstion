@@ -617,5 +617,80 @@ describe('Validator', () => {
       expect(result.isValid).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);
     });
+
+    it('should validate recording with invalid windowSize dimensions', () => {
+      const recording: Recording = {
+        id: 'rec_123',
+        version: '1.0.0',
+        testName: 'Test',
+        url: 'http://example.com',
+        startTime: '2024-01-01T00:00:00.000Z',
+        viewport: { width: 1920, height: 1080 },
+        windowSize: { width: -100, height: 0 },
+        screenSize: { width: 1920, height: 1080 },
+        devicePixelRatio: 1,
+        userAgent: 'Test Agent',
+        actions: [],
+      };
+
+      const result = validateRecording(recording);
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContainEqual(
+        expect.objectContaining({
+          field: 'recording.windowSize',
+          message: 'WindowSize width and height must be positive numbers',
+        })
+      );
+    });
+
+    it('should validate recording with invalid screenSize dimensions', () => {
+      const recording: Recording = {
+        id: 'rec_123',
+        version: '1.0.0',
+        testName: 'Test',
+        url: 'http://example.com',
+        startTime: '2024-01-01T00:00:00.000Z',
+        viewport: { width: 1920, height: 1080 },
+        windowSize: { width: 1920, height: 1179 },
+        screenSize: { width: 0, height: -50 },
+        devicePixelRatio: 1,
+        userAgent: 'Test Agent',
+        actions: [],
+      };
+
+      const result = validateRecording(recording);
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContainEqual(
+        expect.objectContaining({
+          field: 'recording.screenSize',
+          message: 'ScreenSize width and height must be positive numbers',
+        })
+      );
+    });
+
+    it('should validate recording with invalid devicePixelRatio', () => {
+      const recording: Recording = {
+        id: 'rec_123',
+        version: '1.0.0',
+        testName: 'Test',
+        url: 'http://example.com',
+        startTime: '2024-01-01T00:00:00.000Z',
+        viewport: { width: 1920, height: 1080 },
+        windowSize: { width: 1920, height: 1179 },
+        screenSize: { width: 1920, height: 1080 },
+        devicePixelRatio: -1,
+        userAgent: 'Test Agent',
+        actions: [],
+      };
+
+      const result = validateRecording(recording);
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContainEqual(
+        expect.objectContaining({
+          field: 'recording.devicePixelRatio',
+          message: 'DevicePixelRatio must be a positive number',
+        })
+      );
+    });
   });
 });
