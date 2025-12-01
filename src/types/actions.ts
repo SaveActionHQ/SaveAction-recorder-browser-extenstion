@@ -6,7 +6,8 @@ import type { SelectorStrategy } from './selectors';
 export interface BaseAction {
   id: string; // Unique action ID (act_xxx)
   type: ActionType;
-  timestamp: number; // Unix timestamp in milliseconds
+  timestamp: number; // When action started (ms since recording start)
+  completedAt: number; // When action completed (ms since recording start)
   url: string; // Current page URL
   frameId?: string; // iFrame identifier if in frame
   frameUrl?: string; // iFrame URL if in frame

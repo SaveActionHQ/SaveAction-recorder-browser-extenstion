@@ -19,6 +19,14 @@ global.chrome = {
   },
 } as any;
 
+// Helper for dimension data
+const mockDimensions = {
+  viewport: { width: 1920, height: 1080 },
+  windowSize: { width: 1920, height: 1179 },
+  screenSize: { width: 1920, height: 1080 },
+  devicePixelRatio: 1,
+};
+
 describe('Storage Utils', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -33,7 +41,7 @@ describe('Storage Utils', () => {
         startTime: '2025-11-18T10:00:00.000Z',
         endTime: '2025-11-18T10:01:00.000Z',
         actions: [],
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Mozilla/5.0',
         version: '1.0.0',
       };
@@ -67,7 +75,7 @@ describe('Storage Utils', () => {
         startTime: '2025-11-18T10:00:00.000Z',
         endTime: '2025-11-18T10:02:00.000Z',
         actions: [],
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Mozilla/5.0',
         version: '1.0.0',
       };
@@ -101,7 +109,7 @@ describe('Storage Utils', () => {
         startTime: '2025-11-18T10:00:00.000Z',
         endTime: '2025-11-18T10:01:00.000Z',
         actions: [],
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Mozilla/5.0',
         version: '1.0.0',
       };
@@ -123,7 +131,7 @@ describe('Storage Utils', () => {
         startTime: '2025-11-18T10:00:00.000Z',
         endTime: '2025-11-18T10:01:00.000Z',
         actions: [],
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Mozilla/5.0',
         version: '1.0.0',
       };
@@ -225,7 +233,7 @@ describe('Storage Utils', () => {
         startTime: '2025-11-18T10:00:00.000Z',
         endTime: '2025-11-18T10:01:00.000Z',
         actions: [],
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Mozilla/5.0',
         version: '1.0.0',
       };
@@ -237,7 +245,7 @@ describe('Storage Utils', () => {
         startTime: '2025-11-18T11:00:00.000Z',
         endTime: '2025-11-18T11:01:00.000Z',
         actions: [],
-        viewport: { width: 1920, height: 1080 },
+        ...mockDimensions,
         userAgent: 'Mozilla/5.0',
         version: '1.0.0',
       };

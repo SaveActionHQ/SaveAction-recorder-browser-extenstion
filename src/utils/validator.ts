@@ -277,6 +277,46 @@ export function validateRecording(recording: Recording): ValidationResult {
     });
   }
 
+  // WindowSize validation (optional but validated if present)
+  if (recording.windowSize) {
+    if (
+      typeof recording.windowSize.width !== 'number' ||
+      typeof recording.windowSize.height !== 'number' ||
+      recording.windowSize.width <= 0 ||
+      recording.windowSize.height <= 0
+    ) {
+      errors.push({
+        field: 'recording.windowSize',
+        message: 'WindowSize width and height must be positive numbers',
+      });
+    }
+  }
+
+  // ScreenSize validation (optional but validated if present)
+  if (recording.screenSize) {
+    if (
+      typeof recording.screenSize.width !== 'number' ||
+      typeof recording.screenSize.height !== 'number' ||
+      recording.screenSize.width <= 0 ||
+      recording.screenSize.height <= 0
+    ) {
+      errors.push({
+        field: 'recording.screenSize',
+        message: 'ScreenSize width and height must be positive numbers',
+      });
+    }
+  }
+
+  // DevicePixelRatio validation (optional but validated if present)
+  if (recording.devicePixelRatio !== undefined) {
+    if (typeof recording.devicePixelRatio !== 'number' || recording.devicePixelRatio <= 0) {
+      errors.push({
+        field: 'recording.devicePixelRatio',
+        message: 'DevicePixelRatio must be a positive number',
+      });
+    }
+  }
+
   // User agent
   if (!recording.userAgent) {
     errors.push({

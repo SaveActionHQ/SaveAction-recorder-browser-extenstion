@@ -24,6 +24,11 @@ interface BackgroundState {
   pollingInterval: NodeJS.Timeout | null; // Timer for periodic action syncing
   actionCounter: number; // Global action counter across all pages
   previousUrl: string | null; // Track previous URL for back/forward navigation detection
+  // Dimension data from initial page
+  viewport: { width: number; height: number } | null;
+  windowSize: { width: number; height: number } | null;
+  screenSize: { width: number; height: number } | null;
+  devicePixelRatio: number | null;
 }
 
 /**
@@ -42,6 +47,10 @@ let state: BackgroundState = {
   pollingInterval: null,
   actionCounter: 0,
   previousUrl: null,
+  viewport: null,
+  windowSize: null,
+  screenSize: null,
+  devicePixelRatio: null,
 };
 
 /**
@@ -272,6 +281,18 @@ chrome.runtime.onMessage.addListener(
           );
         return true;
 
+      case 'SYNC_METADATA':
+        // Store dimension data from content script
+        if (message.payload) {
+          state.viewport = message.payload.viewport;
+          state.windowSize = message.payload.windowSize;
+          state.screenSize = message.payload.screenSize;
+          state.devicePixelRatio = message.payload.devicePixelRatio;
+          console.log('[Background] Synced metadata:', message.payload);
+        }
+        sendResponse({ success: true });
+        return false;
+
       case 'GET_ACTION_COUNTER':
         sendResponse({
           success: true,
@@ -419,14 +440,14 @@ async function handleStopRecording(
         if (recording.id && recording.testName && recording.startTime) {
           console.log('[Background] Got recording metadata from content script');
 
-          // Merge accumulated actions from previous pages
+          // Use accumulated actions (which already include current page actions via SYNC_ACTION)
           if (state.accumulatedActions.length > 0) {
             console.log(
-              '[Background] Merging',
+              '[Background] Using',
               state.accumulatedActions.length,
-              'accumulated actions'
+              'accumulated actions (includes current page)'
             );
-            recording.actions = [...state.accumulatedActions, ...currentPageActions];
+            recording.actions = [...state.accumulatedActions];
 
             // Re-sort by timestamp
             recording.actions.sort((a, b) => a.timestamp - b.timestamp);
@@ -463,6 +484,12 @@ async function handleStopRecording(
       throw new Error('Missing recording metadata');
     }
 
+    // Use stored dimensions or fall back to reasonable defaults
+    const viewport = state.viewport || { width: 1920, height: 1080 };
+    const windowSize = state.windowSize || { width: 1920, height: 1179 }; // ~99px for browser chrome
+    const screenSize = state.screenSize || { width: 1920, height: 1080 };
+    const devicePixelRatio = state.devicePixelRatio || 1;
+
     // Use the initial URL where recording started, not the current page URL
     const recording: Recording = {
       id: `rec_${Date.now()}`,
@@ -471,10 +498,10 @@ async function handleStopRecording(
       url: state.initialUrl, // Use stored initial URL
       startTime: new Date(state.startTime).toISOString(),
       endTime: new Date().toISOString(),
-      viewport: {
-        width: 1920,
-        height: 1080,
-      },
+      viewport,
+      windowSize,
+      screenSize,
+      devicePixelRatio,
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       actions: [...state.accumulatedActions, ...currentPageActions],
     };
@@ -623,10 +650,10 @@ function handleGetStatus(): StatusResponse {
           testName: state.testName,
           url: state.initialUrl, // Use initial URL, not current page URL
           startTime: new Date(state.startTime).toISOString(),
-          viewport: {
-            width: 1920,
-            height: 1080,
-          },
+          viewport: state.viewport || { width: 1920, height: 1080 },
+          windowSize: state.windowSize || { width: 1920, height: 1179 },
+          screenSize: state.screenSize || { width: 1920, height: 1080 },
+          devicePixelRatio: state.devicePixelRatio || 1,
           userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           actionCount: totalActions,
         }
@@ -818,6 +845,10 @@ async function resetState(): Promise<void> {
     startTime: null,
     initialUrl: null,
     metadata: null,
+    viewport: null,
+    windowSize: null,
+    screenSize: null,
+    devicePixelRatio: null,
     accumulatedActions: [],
     actionCache: [],
     pollingInterval: null,
@@ -929,6 +960,7 @@ chrome.tabs.onUpdated.addListener(async (tabId: number, changeInfo: chrome.tabs.
         id: `act_${String(state.actionCounter + 1).padStart(3, '0')}`, // Will be renumbered
         type: 'navigation',
         timestamp: relativeTimestamp, // Fixed: Use relative timestamp
+        completedAt: relativeTimestamp, // Navigation completes instantly (duration: 0)
         url: changeInfo.url,
         from: state.previousUrl,
         to: changeInfo.url,

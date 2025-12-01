@@ -14,6 +14,7 @@ export type MessageType =
   | 'GET_RECORDING'
   | 'SAVE_CURRENT_STATE'
   | 'SYNC_ACTION'
+  | 'SYNC_METADATA'
   | 'GET_ACTION_COUNTER'
   | 'CLEAR_RECORDING'
   | 'DOWNLOAD_RECORDING'
@@ -99,6 +100,19 @@ export interface SyncActionMessage extends BaseMessage {
 }
 
 /**
+ * Sync metadata message (send dimensions to background)
+ */
+export interface SyncMetadataMessage extends BaseMessage {
+  type: 'SYNC_METADATA';
+  payload: {
+    viewport: { width: number; height: number };
+    windowSize: { width: number; height: number };
+    screenSize: { width: number; height: number };
+    devicePixelRatio: number;
+  };
+}
+
+/**
  * Get action counter message
  */
 export interface GetActionCounterMessage extends BaseMessage {
@@ -143,6 +157,7 @@ export type Message =
   | GetRecordingMessage
   | SaveCurrentStateMessage
   | SyncActionMessage
+  | SyncMetadataMessage
   | GetActionCounterMessage
   | ClearRecordingMessage
   | DownloadRecordingMessage

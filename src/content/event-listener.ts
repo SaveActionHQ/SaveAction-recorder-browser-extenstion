@@ -35,6 +35,7 @@ export class EventListener {
   private hoverStartTime = 0; // Track when hover started
   private lastEmittedAction: Action | null = null; // Track last emitted action for duplicate prevention
   private lastEmitTime = 0; // Track when last action was emitted
+  private lastCompletedTimestamp = 0; // Track when last action completed
   private readonly DEBOUNCE_MS = 500; // Duplicate detection threshold
   private recordingStartTime: number = 0; // Track recording start time for relative timestamps
 
@@ -87,13 +88,103 @@ export class EventListener {
 
   /**
    * Get relative timestamp (ms since recording started)
+   * Returns the ACTUAL time the action occurred, without artificial inflation
    */
   private getRelativeTimestamp(): number {
     if (this.recordingStartTime === 0) {
       // Fallback to absolute timestamp if start time not set
       return Date.now();
     }
+    // Return actual timestamp - do NOT use Math.max() here
+    // Overlap prevention is handled in calculateCompletedAt() instead
     return Date.now() - this.recordingStartTime;
+  }
+
+  /**
+   * Calculate when action completes based on action type
+   * Ensures no action completes before the previous action completed (overlap prevention)
+   */
+  private calculateCompletedAt(action: Action): number {
+    let completedAt: number;
+
+    switch (action.type) {
+      case 'hover': {
+        // Hover completes after its duration
+        const hoverAction = action as HoverAction;
+        completedAt = action.timestamp + (hoverAction.duration || 0);
+        break;
+      }
+
+      case 'input': {
+        // Input completes after typing all characters
+        const inputAction = action as InputAction;
+        const typingTime = inputAction.value.length * (inputAction.typingDelay || 100);
+        completedAt = action.timestamp + typingTime;
+        break;
+      }
+
+      case 'scroll': {
+        // Scroll has animation duration based on distance
+        const scrollAction = action as ScrollAction;
+        if (typeof scrollAction.element === 'string' && scrollAction.element === 'window') {
+          // Estimate scroll animation time (200-800ms based on distance)
+          const scrollDistance = Math.abs(scrollAction.scrollY);
+          const scrollDuration = Math.min(800, Math.max(200, scrollDistance / 3));
+          completedAt = action.timestamp + scrollDuration;
+        } else {
+          // Element scrolls are typically faster
+          completedAt = action.timestamp + 200;
+        }
+        break;
+      }
+
+      case 'click': {
+        // Clicks have brief animation/feedback time
+        completedAt = action.timestamp + 50;
+        break;
+      }
+
+      case 'select': {
+        // Dropdown selection has brief animation
+        completedAt = action.timestamp + 100;
+        break;
+      }
+
+      case 'keypress': {
+        // Key presses are instant
+        completedAt = action.timestamp;
+        break;
+      }
+
+      case 'submit': {
+        // Form submit triggers navigation, instant action itself
+        completedAt = action.timestamp + 50;
+        break;
+      }
+
+      case 'navigation': {
+        // Navigation completes after its duration
+        const navAction = action as NavigationAction;
+        completedAt = action.timestamp + (navAction.duration || 0);
+        break;
+      }
+
+      case 'checkpoint': {
+        // Checkpoints are instant
+        completedAt = action.timestamp;
+        break;
+      }
+
+      default: {
+        // Exhaustive check - should never reach here
+        const _exhaustiveCheck: never = action;
+        completedAt = (_exhaustiveCheck as Action).timestamp;
+      }
+    }
+
+    // Prevent overlap: ensure this action doesn't complete before previous action completed
+    // This fixes timing conflicts during replay while preserving accurate action timestamps
+    return Math.max(completedAt, this.lastCompletedTimestamp);
   }
 
   /**
@@ -292,6 +383,7 @@ export class EventListener {
       id: generateActionId(++this.actionSequence),
       type: 'click',
       timestamp: this.getRelativeTimestamp(),
+      completedAt: 0, // Will be set by emitAction
       url: window.location.href,
       selector,
       tagName: target.tagName.toLowerCase(),
@@ -363,6 +455,7 @@ export class EventListener {
       id: generateActionId(++this.actionSequence),
       type: 'input',
       timestamp: this.getRelativeTimestamp(),
+      completedAt: 0, // Will be set by emitAction
       url: window.location.href,
       selector,
       tagName: target.tagName.toLowerCase(),
@@ -400,6 +493,7 @@ export class EventListener {
       id: generateActionId(++this.actionSequence),
       type: 'select',
       timestamp: this.getRelativeTimestamp(),
+      completedAt: 0, // Will be set by emitAction
       url: window.location.href,
       selector,
       tagName: 'select',
@@ -426,6 +520,7 @@ export class EventListener {
       id: generateActionId(++this.actionSequence),
       type: 'submit',
       timestamp: this.getRelativeTimestamp(),
+      completedAt: 0, // Will be set by emitAction
       url: window.location.href,
       selector,
       tagName: 'form',
@@ -459,6 +554,7 @@ export class EventListener {
       id: generateActionId(++this.actionSequence),
       type: 'keypress',
       timestamp: this.getRelativeTimestamp(),
+      completedAt: 0, // Will be set by emitAction
       url: window.location.href,
       key: event.key,
       code: event.code,
@@ -493,6 +589,7 @@ export class EventListener {
       id: generateActionId(++this.actionSequence),
       type: 'scroll',
       timestamp: this.getRelativeTimestamp(),
+      completedAt: 0, // Will be set by emitAction
       url: window.location.href,
       scrollX: window.scrollX,
       scrollY: window.scrollY,
@@ -542,6 +639,7 @@ export class EventListener {
       id: generateActionId(++this.actionSequence),
       type: 'navigation',
       timestamp: this.getRelativeTimestamp(),
+      completedAt: 0, // Will be set by emitAction
       url: currentUrl,
       from: fromUrl,
       to: currentUrl,
@@ -936,6 +1034,7 @@ export class EventListener {
       id: generateActionId(++this.actionSequence),
       type: 'hover',
       timestamp: this.getRelativeTimestamp(),
+      completedAt: 0, // Will be set by emitAction
       url: window.location.href,
       selector,
       tagName: element.tagName.toLowerCase(),
@@ -962,6 +1061,9 @@ export class EventListener {
    * Emit action to callback
    */
   private emitAction(action: Action): void {
+    // Calculate when this action completes
+    action.completedAt = this.calculateCompletedAt(action);
+
     // Check for duplicate action
     if (this.isDuplicateAction(action)) {
       console.log('[EventListener] Skipping duplicate action:', action.type, action.id);
@@ -971,6 +1073,7 @@ export class EventListener {
     // Track for duplicate detection
     this.lastEmittedAction = action;
     this.lastEmitTime = action.timestamp;
+    this.lastCompletedTimestamp = action.completedAt; // Track completion time
 
     // Track last action for navigation trigger detection
     this.lastAction = action;

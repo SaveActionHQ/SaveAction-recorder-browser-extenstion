@@ -10,9 +10,18 @@ export interface Recording {
   startTime: string; // ISO 8601 format
   endTime?: string; // ISO 8601 format
   viewport: {
-    width: number;
-    height: number;
+    width: number; // window.innerWidth - visible page area
+    height: number; // window.innerHeight - visible page area
   };
+  windowSize: {
+    width: number; // window.outerWidth - includes browser chrome (tabs, address bar)
+    height: number; // window.outerHeight - includes browser chrome
+  };
+  screenSize: {
+    width: number; // screen.width - monitor resolution
+    height: number; // screen.height - monitor resolution
+  };
+  devicePixelRatio: number; // window.devicePixelRatio - for retina/high-DPI displays
   userAgent: string;
   actions: Action[];
   version: string; // Schema version (semantic versioning)
