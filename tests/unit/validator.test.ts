@@ -289,6 +289,7 @@ describe('Validator', () => {
         endTime: '2024-01-01T00:01:00.000Z',
         ...mockDimensions,
         userAgent: 'Test Agent',
+        variables: [],
         actions: [
           {
             id: 'act_001',
@@ -320,6 +321,7 @@ describe('Validator', () => {
         startTime: '2024-01-01T00:00:00.000Z',
         ...mockDimensions,
         userAgent: 'Test Agent',
+        variables: [],
         actions: [],
       } as any;
 
@@ -341,6 +343,7 @@ describe('Validator', () => {
         startTime: '2024-01-01T00:00:00.000Z',
         ...mockDimensions,
         userAgent: 'Test Agent',
+        variables: [],
         actions: [],
       } as any;
 
@@ -363,6 +366,7 @@ describe('Validator', () => {
         startTime: '2024-01-01T00:00:00.000Z',
         ...mockDimensions,
         userAgent: 'Test Agent',
+        variables: [],
         actions: [],
       } as any;
 
@@ -385,6 +389,7 @@ describe('Validator', () => {
         startTime: '2024-01-01T00:00:00.000Z',
         ...mockDimensions,
         userAgent: 'Test Agent',
+        variables: [],
         actions: [],
       } as any;
 
@@ -407,6 +412,7 @@ describe('Validator', () => {
         startTime: 'invalid-date',
         ...mockDimensions,
         userAgent: 'Test Agent',
+        variables: [],
         actions: [],
       } as any;
 
@@ -432,6 +438,7 @@ describe('Validator', () => {
         screenSize: { width: 1920, height: 1080 },
         devicePixelRatio: 1,
         userAgent: 'Test Agent',
+        variables: [],
         actions: [],
       } as any;
 
@@ -475,6 +482,7 @@ describe('Validator', () => {
         startTime: '2024-01-01T00:00:00.000Z',
         ...mockDimensions,
         userAgent: 'Test Agent',
+        variables: [],
         actions: [
           {
             id: 'act_001',
@@ -513,6 +521,7 @@ describe('Validator', () => {
         startTime: '2024-01-01T00:00:00.000Z',
         ...mockDimensions,
         userAgent: 'Test Agent',
+        variables: [],
         actions: [],
       };
 
@@ -542,6 +551,7 @@ describe('Validator', () => {
         url: 'http://example.com',
         startTime: '2024-01-01T00:00:00.000Z',
         userAgent: 'Test Agent',
+        variables: [],
         actions: [],
       } as any;
 
@@ -567,6 +577,7 @@ describe('Validator', () => {
         screenSize: { width: 1920, height: 1080 },
         devicePixelRatio: 1,
         userAgent: 'Test Agent',
+        variables: [],
         actions: [],
       };
 
@@ -588,6 +599,7 @@ describe('Validator', () => {
         url: 'http://example.com',
         startTime: '2024-01-01T00:00:00.000Z',
         ...mockDimensions,
+        variables: [],
         actions: [],
       } as any;
 
@@ -630,6 +642,7 @@ describe('Validator', () => {
         screenSize: { width: 1920, height: 1080 },
         devicePixelRatio: 1,
         userAgent: 'Test Agent',
+        variables: [],
         actions: [],
       };
 
@@ -655,6 +668,7 @@ describe('Validator', () => {
         screenSize: { width: 0, height: -50 },
         devicePixelRatio: 1,
         userAgent: 'Test Agent',
+        variables: [],
         actions: [],
       };
 
@@ -680,6 +694,7 @@ describe('Validator', () => {
         screenSize: { width: 1920, height: 1080 },
         devicePixelRatio: -1,
         userAgent: 'Test Agent',
+        variables: [],
         actions: [],
       };
 

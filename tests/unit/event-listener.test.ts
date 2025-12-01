@@ -252,7 +252,7 @@ describe('EventListener', () => {
       document.body.removeChild(input);
     });
 
-    it('should detect sensitive input fields', () => {
+    it('should detect sensitive input fields and store actual password', () => {
       const passwordInput = document.createElement('input');
       passwordInput.type = 'password';
       passwordInput.id = 'password';
@@ -269,6 +269,9 @@ describe('EventListener', () => {
 
         if (action?.type === 'input') {
           expect(action.isSensitive).toBe(true);
+          expect(action.variableName).toBeDefined();
+          expect(action.variableName).toBe('PASSWORD');
+          expect(action.value).toBe('secret123'); // Now stores actual password
         }
       }, 600);
 

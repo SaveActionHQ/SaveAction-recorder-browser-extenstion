@@ -1,6 +1,17 @@
 import type { Action } from './actions';
 
 /**
+ * Variable definition for sensitive data (passwords, API keys, etc.)
+ */
+export interface Variable {
+  name: string; // Variable name (e.g., 'LOGIN_PASSWORD')
+  description: string; // Human-readable description
+  fieldType: string; // Input type (password, text, email, etc.)
+  selector: string; // CSS selector where this variable is used
+  placeholder: string; // Placeholder format (e.g., '${LOGIN_PASSWORD}')
+}
+
+/**
  * Recording session containing all captured actions
  */
 export interface Recording {
@@ -24,6 +35,7 @@ export interface Recording {
   devicePixelRatio: number; // window.devicePixelRatio - for retina/high-DPI displays
   userAgent: string;
   actions: Action[];
+  variables: Variable[]; // Environment variables for sensitive data
   version: string; // Schema version (semantic versioning)
 }
 
