@@ -451,6 +451,14 @@ export class EventListener {
     const typingDuration = Date.now() - this.typingStartTime;
     const typingDelay = this.keyCount > 1 ? Math.round(typingDuration / this.keyCount) : 50;
 
+    // Store actual password value for testing purposes
+    // Generate variable name for sensitive fields (for platform metadata)
+    let variableName: string | undefined;
+
+    if (isSensitive) {
+      variableName = this.generateVariableName(target);
+    }
+
     const action: InputAction = {
       id: generateActionId(++this.actionSequence),
       type: 'input',
@@ -459,11 +467,12 @@ export class EventListener {
       url: window.location.href,
       selector,
       tagName: target.tagName.toLowerCase(),
-      value: isSensitive ? '***MASKED***' : target.value,
+      value: target.value, // Store actual password (for testing purposes)
       inputType: (target as HTMLInputElement).type || 'text',
       isSensitive,
       simulationType: 'type',
       typingDelay,
+      variableName,
     };
 
     this.emitAction(action);
@@ -902,6 +911,57 @@ export class EventListener {
     }
 
     return false;
+  }
+
+  /**
+   * Generate a meaningful variable name from input element attributes
+   * Examples: LOGIN_PASSWORD, USER_PIN, API_KEY
+   */
+  private generateVariableName(element: HTMLInputElement | HTMLTextAreaElement): string {
+    // Try to extract meaningful name from id, name, or placeholder
+    const id = element.id?.toLowerCase() || '';
+    const name = element.name?.toLowerCase() || '';
+    const placeholder = element.placeholder?.toLowerCase() || '';
+    const type = element instanceof HTMLInputElement ? element.type : 'text';
+
+    // Priority: id > name > placeholder
+    let baseName = id || name || placeholder || type;
+
+    // Clean and normalize the name
+    baseName = baseName
+      .replace(/[^a-z0-9_]/g, '_') // Replace non-alphanumeric with underscore
+      .replace(/_+/g, '_') // Remove consecutive underscores
+      .replace(/^_|_$/g, '') // Remove leading/trailing underscores
+      .toUpperCase();
+
+    // If we couldn't extract a meaningful name, use type-based default
+    if (!baseName || baseName.length < 2) {
+      baseName = type === 'password' ? 'PASSWORD' : 'SECRET';
+    }
+
+    // Ensure it doesn't already start with a common prefix
+    const prefixes = ['USER_', 'LOGIN_', 'ACCOUNT_', 'INPUT_'];
+    const hasPrefix = prefixes.some((prefix) => baseName.startsWith(prefix));
+
+    // Add context prefix if missing
+    if (!hasPrefix) {
+      // Try to infer context from form or surrounding labels
+      const form = element.closest('form');
+      const formId = form?.id?.toLowerCase() || '';
+      const formName = form?.name?.toLowerCase() || '';
+
+      if (formId.includes('login') || formName.includes('login')) {
+        baseName = `LOGIN_${baseName}`;
+      } else if (
+        formId.includes('signup') ||
+        formName.includes('signup') ||
+        formId.includes('register')
+      ) {
+        baseName = `SIGNUP_${baseName}`;
+      }
+    }
+
+    return baseName;
   }
 
   /**

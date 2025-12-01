@@ -218,6 +218,7 @@ export class ActionRecorder {
       devicePixelRatio: this.metadata.devicePixelRatio,
       userAgent: this.metadata.userAgent,
       actions: [...this.actions],
+      variables: [], // Variables extracted by background script
     };
 
     // Reset state

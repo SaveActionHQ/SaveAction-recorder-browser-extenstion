@@ -5,7 +5,8 @@
  */
 
 import type { Message, MessageResponse, StatusResponse, RecordingResponse } from '@/types/messages';
-import type { Recording, RecordingMetadata } from '@/types/recording';
+import type { Recording, RecordingMetadata, Variable } from '@/types/recording';
+import type { InputAction } from '@/types/actions';
 import { saveRecording } from '@/utils/storage';
 
 /**
@@ -453,6 +454,9 @@ async function handleStopRecording(
             recording.actions.sort((a, b) => a.timestamp - b.timestamp);
           }
 
+          // Extract variables from sensitive input actions
+          recording.variables = extractVariablesFromActions(recording.actions);
+
           // Save recording to storage
           try {
             await saveRecording(recording);
@@ -504,10 +508,14 @@ async function handleStopRecording(
       devicePixelRatio,
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       actions: [...state.accumulatedActions, ...currentPageActions],
+      variables: [], // Will be populated below
     };
 
     // Sort by timestamp
     recording.actions.sort((a, b) => a.timestamp - b.timestamp);
+
+    // Extract variables from sensitive input actions
+    recording.variables = extractVariablesFromActions(recording.actions);
 
     console.log('[Background] Recording built with', recording.actions.length, 'total actions');
 
@@ -1051,5 +1059,54 @@ chrome.tabs.onUpdated.addListener(async (tabId: number, changeInfo: chrome.tabs.
     );
   }
 });
+
+/**
+ * Extract variable definitions from actions
+ * Scans all InputAction items and collects unique variables
+ */
+function extractVariablesFromActions(actions: any[]): Variable[] {
+  const variableMap = new Map<string, Variable>();
+
+  for (const action of actions) {
+    // Only process input actions with variables
+    if (action.type === 'input' && action.variableName && action.isSensitive) {
+      const inputAction = action as InputAction;
+      const variableName = inputAction.variableName;
+
+      // Type guard: variableName must be defined here
+      if (!variableName) continue;
+
+      // Skip if we already have this variable
+      if (variableMap.has(variableName)) {
+        continue;
+      }
+
+      // Get the primary selector (prefer id, dataTestId, or css)
+      let selectorString = '';
+      if (inputAction.selector) {
+        if (inputAction.selector.id) {
+          selectorString = `#${inputAction.selector.id}`;
+        } else if (inputAction.selector.dataTestId) {
+          selectorString = `[data-testid="${inputAction.selector.dataTestId}"]`;
+        } else if (inputAction.selector.css) {
+          selectorString = inputAction.selector.css;
+        }
+      }
+
+      // Create variable definition
+      const variable: Variable = {
+        name: variableName,
+        description: `${inputAction.inputType} field${selectorString ? ` (${selectorString})` : ''}`,
+        fieldType: inputAction.inputType,
+        selector: selectorString,
+        placeholder: `\${${variableName}}`,
+      };
+
+      variableMap.set(variableName, variable);
+    }
+  }
+
+  return Array.from(variableMap.values());
+}
 
 console.log('[Background] SaveAction Recorder initialized');

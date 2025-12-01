@@ -262,6 +262,7 @@ describe('Sanitizer', () => {
         endTime: '2024-01-01T00:01:00.000Z',
         ...mockDimensions,
         userAgent: 'Test Agent',
+        variables: [],
         actions: [
           {
             id: 'act_001',
@@ -322,6 +323,7 @@ describe('Sanitizer', () => {
         startTime: '2024-01-01T00:00:00.000Z',
         ...mockDimensions,
         userAgent: 'Test Agent',
+        variables: [],
         actions: [
           {
             id: 'act_001',
@@ -358,6 +360,7 @@ describe('Sanitizer', () => {
         screenSize: { width: 1366, height: 768 },
         devicePixelRatio: 1,
         userAgent: 'Mozilla/5.0',
+        variables: [],
         actions: [],
       };
 

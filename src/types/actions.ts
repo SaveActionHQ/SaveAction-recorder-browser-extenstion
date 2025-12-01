@@ -36,11 +36,12 @@ export interface InputAction extends BaseAction {
   type: 'input';
   selector: SelectorStrategy;
   tagName: string;
-  value: string; // Masked if sensitive
+  value: string; // Masked if sensitive or variable placeholder (e.g., ${PASSWORD})
   inputType: string; // text, email, password, etc.
   isSensitive: boolean; // True for passwords/cards
   simulationType: 'type' | 'setValue'; // Keystroke vs instant
   typingDelay?: number; // Delay between keystrokes (ms)
+  variableName?: string; // Variable name for sensitive fields (e.g., 'PASSWORD')
 }
 
 /**
