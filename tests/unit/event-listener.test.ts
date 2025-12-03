@@ -178,6 +178,9 @@ describe('EventListener', () => {
 
       eventListener.start();
 
+      // Trigger focus event before input (simulates user clicking on input)
+      input.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+
       input.value = 'testuser';
       input.dispatchEvent(new Event('input', { bubbles: true }));
 
@@ -203,6 +206,9 @@ describe('EventListener', () => {
       document.body.appendChild(input);
 
       eventListener.start();
+
+      // Trigger focus event before input
+      input.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
 
       // Simulate rapid typing
       input.value = 't';
@@ -237,6 +243,9 @@ describe('EventListener', () => {
 
       eventListener.start();
 
+      // Trigger focus event before input
+      input.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+
       input.value = 'hello';
       input.dispatchEvent(new Event('input', { bubbles: true }));
 
@@ -259,6 +268,9 @@ describe('EventListener', () => {
       document.body.appendChild(passwordInput);
 
       eventListener.start();
+
+      // Trigger focus event before input
+      passwordInput.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
 
       passwordInput.value = 'secret123';
       passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -665,6 +677,9 @@ describe('EventListener', () => {
       document.body.appendChild(input);
 
       eventListener.start();
+
+      // Trigger focus event before input
+      input.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
 
       // First input
       input.value = 'test';

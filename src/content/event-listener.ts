@@ -36,9 +36,10 @@ export class EventListener {
   private scrollDebounceTimer: NodeJS.Timeout | null = null;
   private lastClickTarget: Element | null = null;
   private lastClickTime = 0;
-  private pendingInputElement: HTMLInputElement | HTMLTextAreaElement | null = null;
-  private typingStartTime = 0;
-  private keyCount = 0;
+  private inputStartTimes: Map<HTMLInputElement | HTMLTextAreaElement, number> = new Map(); // Track when typing started per element
+  private inputDebounceTimers: Map<HTMLInputElement | HTMLTextAreaElement, NodeJS.Timeout> =
+    new Map(); // Track debounce timers per element
+  private keystrokeTimes: number[] = []; // Track keystroke times for typing speed calculation
   private previousUrl: string = window.location.href; // Track previous URL for back/forward detection
   private lastAction: Action | null = null; // Track last action for navigation trigger detection
   private lastHoveredElement: Element | null = null; // Track hovered element for dropdown detection
@@ -64,6 +65,9 @@ export class EventListener {
   private handleDoubleClick: (e: MouseEvent) => void;
   private handleMouseEnter: (e: MouseEvent) => void;
   private handleMouseLeave: (e: MouseEvent) => void;
+  private handleFocus: (e: FocusEvent) => void;
+  private handleBlur: (e: FocusEvent) => void;
+  private handleBeforeUnload: (e: Event) => void;
 
   constructor(actionCallback: (action: Action) => void) {
     this.actionCallback = actionCallback;
@@ -81,6 +85,9 @@ export class EventListener {
     this.handleDoubleClick = this.onDoubleClick.bind(this);
     this.handleMouseEnter = this.onMouseEnter.bind(this);
     this.handleMouseLeave = this.onMouseLeave.bind(this);
+    this.handleFocus = this.onFocus.bind(this);
+    this.handleBlur = this.onBlur.bind(this);
+    this.handleBeforeUnload = this.onBeforeUnload.bind(this);
   }
 
   /**
@@ -227,6 +234,13 @@ export class EventListener {
     this.stop();
     if (this.inputDebounceTimer) clearTimeout(this.inputDebounceTimer);
     if (this.scrollDebounceTimer) clearTimeout(this.scrollDebounceTimer);
+
+    // Clear all input debounce timers
+    for (const timerId of this.inputDebounceTimers.values()) {
+      clearTimeout(timerId);
+    }
+    this.inputDebounceTimers.clear();
+    this.inputStartTimes.clear();
   }
 
   /**
@@ -244,6 +258,9 @@ export class EventListener {
     window.addEventListener('popstate', this.handlePopState);
     document.addEventListener('mouseenter', this.handleMouseEnter, true);
     document.addEventListener('mouseleave', this.handleMouseLeave, true);
+    document.addEventListener('focus', this.handleFocus, true);
+    document.addEventListener('blur', this.handleBlur, true);
+    window.addEventListener('beforeunload', this.handleBeforeUnload);
   }
 
   /**
@@ -261,6 +278,9 @@ export class EventListener {
     window.removeEventListener('popstate', this.handlePopState);
     document.removeEventListener('mouseenter', this.handleMouseEnter, true);
     document.removeEventListener('mouseleave', this.handleMouseLeave, true);
+    document.removeEventListener('focus', this.handleFocus, true);
+    document.removeEventListener('blur', this.handleBlur, true);
+    window.removeEventListener('beforeunload', this.handleBeforeUnload);
   }
 
   /**
@@ -482,36 +502,41 @@ export class EventListener {
     const target = event.target as HTMLInputElement | HTMLTextAreaElement;
     if (!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) return;
 
-    // Track typing timing
-    const now = Date.now();
-    if (!this.typingStartTime) {
-      this.typingStartTime = now;
-      this.keyCount = 0;
-    }
-    this.keyCount++;
+    // Only record user-initiated changes (not programmatic) in production
+    // Allow test events (non-trusted) in development/testing
+    const isTestEnv = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
+    if (!isTestEnv && !(event as InputEvent).isTrusted) return;
 
-    // Clear previous debounce timer
-    if (this.inputDebounceTimer) {
-      clearTimeout(this.inputDebounceTimer);
+    // If no start time recorded (shouldn't happen with focus handler), record now
+    if (!this.inputStartTimes.has(target)) {
+      this.inputStartTimes.set(target, Date.now());
+      console.warn('[EventListener] Input without focus - recording start time now');
     }
 
-    this.pendingInputElement = target;
+    // Track keystroke for typing speed calculation
+    this.keystrokeTimes.push(Date.now());
 
-    // Debounce input events
-    this.inputDebounceTimer = setTimeout(() => {
-      if (this.pendingInputElement) {
-        this.captureInputAction(this.pendingInputElement);
-        this.pendingInputElement = null;
-        this.typingStartTime = 0;
-        this.keyCount = 0;
-      }
-    }, 500); // 500ms debounce
+    // Clear previous debounce timer for this input
+    if (this.inputDebounceTimers.has(target)) {
+      clearTimeout(this.inputDebounceTimers.get(target)!);
+    }
+
+    // Debounce input events - wait 500ms after last keystroke
+    const timerId = setTimeout(() => {
+      this.flushInputAction(target);
+    }, 500);
+
+    this.inputDebounceTimers.set(target, timerId);
   }
 
   /**
    * Capture input action
    */
-  private captureInputAction(target: HTMLInputElement | HTMLTextAreaElement): void {
+  private captureInputAction(
+    target: HTMLInputElement | HTMLTextAreaElement,
+    typingStartTime: number,
+    typingDelay: number
+  ): void {
     // Skip hidden radio/checkbox inputs - they're typically controlled via labels
     if (
       target instanceof HTMLInputElement &&
@@ -523,10 +548,6 @@ export class EventListener {
 
     const selector = this.selectorGenerator.generateSelectors(target);
     const isSensitive = this.isSensitiveInput(target);
-
-    // Calculate average typing delay
-    const typingDuration = Date.now() - this.typingStartTime;
-    const typingDelay = this.keyCount > 1 ? Math.round(typingDuration / this.keyCount) : 50;
 
     // Store actual password value for testing purposes
     // Generate variable name for sensitive fields (for platform metadata)
@@ -554,7 +575,7 @@ export class EventListener {
     const action: InputAction = {
       id: generateActionId(++this.actionSequence),
       type: 'input',
-      timestamp: this.getRelativeTimestamp(),
+      timestamp: typingStartTime - this.recordingStartTime, // ✅ Use when typing STARTED, not current time!
       completedAt: 0, // Will be set by emitAction
       url: window.location.href,
       selector,
@@ -572,6 +593,103 @@ export class EventListener {
     };
 
     this.emitAction(action);
+  }
+
+  /**
+   * Handle focus events (track when typing starts)
+   */
+  private onFocus(event: FocusEvent): void {
+    if (!this.isListening) return;
+
+    const target = event.target as HTMLInputElement | HTMLTextAreaElement;
+    if (!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) return;
+
+    // Flush any pending input from a different element (rapid switching)
+    for (const [otherInput, timerId] of this.inputDebounceTimers) {
+      if (otherInput !== target) {
+        clearTimeout(timerId);
+        this.flushInputAction(otherInput);
+      }
+    }
+
+    // Record when typing session starts
+    this.inputStartTimes.set(target, Date.now());
+    this.keystrokeTimes = []; // Reset keystroke tracking for this input
+
+    console.log('[EventListener] Input focused - tracking start time:', target.id || target.name);
+  }
+
+  /**
+   * Handle blur events (flush pending input if user clicks away)
+   */
+  private onBlur(event: FocusEvent): void {
+    if (!this.isListening) return;
+
+    const target = event.target as HTMLInputElement | HTMLTextAreaElement;
+    if (!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) return;
+
+    // If there's a pending input action, flush it immediately
+    if (this.inputStartTimes.has(target) && target.value) {
+      this.flushInputAction(target);
+    }
+  }
+
+  /**
+   * Handle beforeunload events (flush all pending inputs)
+   */
+  private onBeforeUnload(_event: Event): void {
+    if (!this.isListening) return;
+
+    // Flush all pending input actions before page unloads
+    for (const [inputElement] of this.inputDebounceTimers) {
+      this.flushInputAction(inputElement);
+    }
+  }
+
+  /**
+   * Flush pending input action (record it immediately)
+   */
+  private flushInputAction(target: HTMLInputElement | HTMLTextAreaElement): void {
+    const startTime = this.inputStartTimes.get(target);
+    const value = target.value;
+
+    // Skip if no start time or empty value
+    if (!startTime || !value) {
+      this.inputStartTimes.delete(target);
+      this.inputDebounceTimers.delete(target);
+      return;
+    }
+
+    // Calculate typing delay based on keystroke times
+    let typingDelay = 50; // Default
+    if (this.keystrokeTimes.length > 1) {
+      const delays: number[] = [];
+      for (let i = 1; i < this.keystrokeTimes.length; i++) {
+        const prevTime = this.keystrokeTimes[i - 1];
+        const currTime = this.keystrokeTimes[i];
+        if (prevTime !== undefined && currTime !== undefined) {
+          delays.push(currTime - prevTime);
+        }
+      }
+      if (delays.length > 0) {
+        typingDelay = Math.round(delays.reduce((a, b) => a + b, 0) / delays.length);
+      }
+    }
+
+    // Record the action with the original start time
+    this.captureInputAction(target, startTime, typingDelay);
+
+    // Cleanup
+    this.inputStartTimes.delete(target);
+    this.inputDebounceTimers.delete(target);
+    this.keystrokeTimes = [];
+
+    console.log('[EventListener] Input flushed:', {
+      element: target.id || target.name,
+      startTime,
+      delay: Date.now() - startTime,
+      typingDelay,
+    });
   }
 
   /**
@@ -639,6 +757,18 @@ export class EventListener {
    */
   private onKeyDown(event: KeyboardEvent): void {
     if (!this.isListening) return;
+
+    // Handle Enter key in input fields (form submit)
+    if (event.key === 'Enter' && event.target) {
+      const target = event.target as HTMLInputElement | HTMLTextAreaElement;
+      if (
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') &&
+        this.inputStartTimes.has(target)
+      ) {
+        // Flush input action immediately before form submits
+        this.flushInputAction(target);
+      }
+    }
 
     // Only capture special keys (Enter, Tab, Escape, etc.)
     const specialKeys = [
