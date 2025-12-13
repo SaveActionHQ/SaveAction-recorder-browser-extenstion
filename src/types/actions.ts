@@ -34,6 +34,7 @@ export interface ActionContext {
   modalId?: string; // ID of modal container if inside modal
   modalState?: string; // Current modal state (e.g., 'order-checkout-status')
   isInsideModal?: boolean; // Element is inside a modal/dialog
+  requiresModalState?: boolean; // Runner must wait for this specific modal state
   parentContainer?: string; // CSS selector of parent container
   isLazyLoaded?: boolean; // Element uses lazy loading
   isDropdownItem?: boolean; // Element is a dropdown menu item
@@ -56,6 +57,48 @@ export interface AlternativeSelector {
   ariaLabel?: string; // aria-label selector
   text?: string; // Text content selector
   priority: number; // Lower = try first
+}
+
+/**
+ * Content signature for intelligent element matching in dynamic lists/cards
+ */
+export interface ContentSignature {
+  elementType: 'list-item' | 'card' | 'table-row' | 'grid-item';
+  listContainer: {
+    selector: string; // Selector for parent container (ul, div.grid, etc.)
+    itemSelector: string; // Selector for individual items
+  };
+  contentFingerprint: {
+    heading?: string; // Primary heading/title
+    subheading?: string; // Secondary text (location, description)
+    imageAlt?: string; // Image alt text
+    imageSrc?: string; // Image source URL
+    linkHref?: string; // Link destination
+    price?: string; // Price/cost if present
+    rating?: string; // Rating if present
+    buttonText?: string; // Button/CTA text
+    dataId?: string; // data-id or similar unique identifier
+    [key: string]: string | undefined; // Allow additional properties
+  };
+  visualHints?: {
+    hasImage?: boolean;
+    hasButton?: boolean;
+    hasLink?: boolean;
+    hasPrice?: boolean;
+    hasRating?: boolean;
+  };
+  fallbackPosition: number; // Position in list (0-based)
+}
+
+/**
+ * Selector with confidence score for intelligent fallback
+ */
+export interface SelectorWithConfidence {
+  strategy: string; // 'data-testid', 'aria-label', 'text-content', etc.
+  value: string; // Selector value
+  context?: string; // Additional context (parent class, etc.)
+  priority: number; // Lower = higher priority (1 = highest)
+  confidence: number; // 0-100 confidence score
 }
 
 /**
@@ -98,6 +141,12 @@ export interface BaseAction {
   waitConditions?: WaitConditions; // Conditions to wait for before executing
   context?: ActionContext; // Additional context about interaction
   alternativeSelectors?: AlternativeSelector[]; // Fallback selector strategies
+
+  // ✅ NEW: Content signature for dynamic list items (v2.0.0)
+  contentSignature?: ContentSignature; // Semantic content for intelligent matching
+
+  // ✅ NEW: Multi-strategy selectors with confidence (v2.0.0)
+  selectors?: SelectorWithConfidence[]; // Prioritized selector strategies
 }
 
 /**
@@ -144,12 +193,14 @@ export interface SelectAction extends BaseAction {
 
 /**
  * Navigation action (page transitions)
+ * 🔧 FIXED: Added relatedAction to link navigation to triggering action
  */
 export interface NavigationAction extends BaseAction {
   type: 'navigation';
   from: string;
   to: string;
   navigationTrigger: 'click' | 'form-submit' | 'manual' | 'redirect' | 'back' | 'forward';
+  relatedAction?: string; // ID of action that triggered navigation (form submit, link click, etc.)
   waitUntil: 'load' | 'domcontentloaded' | 'networkidle';
   duration: number; // Navigation duration in ms
 }
@@ -211,6 +262,22 @@ export interface HoverAction extends BaseAction {
 }
 
 /**
+ * Modal lifecycle action (open, close, state-change)
+ */
+export interface ModalLifecycleAction extends BaseAction {
+  type: 'modal-lifecycle';
+  event: 'modal-opened' | 'modal-closed' | 'modal-state-changed';
+  modalId: string; // Unique identifier for the modal
+  modalSelector: string; // CSS selector for modal element
+  initialState?: string; // State when modal opened
+  fromState?: string; // Previous state (for state-changed)
+  toState?: string; // New state (for state-changed)
+  animationDuration?: number; // Estimated animation duration (ms)
+  transitionDuration?: number; // State transition duration (ms)
+  triggeringAction?: string; // Action ID that triggered this lifecycle event
+}
+
+/**
  * Modifier keys (Ctrl, Shift, Alt, Meta/Cmd)
  */
 export type ModifierKey = 'ctrl' | 'shift' | 'alt' | 'meta';
@@ -227,7 +294,8 @@ export type ActionType =
   | 'keypress'
   | 'submit'
   | 'checkpoint'
-  | 'hover';
+  | 'hover'
+  | 'modal-lifecycle';
 
 /**
  * Union type of all actions
@@ -241,7 +309,8 @@ export type Action =
   | KeypressAction
   | SubmitAction
   | CheckpointAction
-  | HoverAction;
+  | HoverAction
+  | ModalLifecycleAction;
 
 /**
  * Type guard for ClickAction
@@ -262,4 +331,11 @@ export function isInputAction(action: Action): action is InputAction {
  */
 export function isNavigationAction(action: Action): action is NavigationAction {
   return action.type === 'navigation';
+}
+
+/**
+ * Type guard for ModalLifecycleAction
+ */
+export function isModalLifecycleAction(action: Action): action is ModalLifecycleAction {
+  return action.type === 'modal-lifecycle';
 }
