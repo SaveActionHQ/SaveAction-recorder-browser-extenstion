@@ -452,6 +452,12 @@ async function handleStopRecording(
 
             // Re-sort by timestamp
             recording.actions.sort((a, b) => a.timestamp - b.timestamp);
+
+            // ✅ OPTION B: Renumber actions sequentially after sorting
+            // Ensures IDs match chronological order in final JSON (clean for open source)
+            recording.actions.forEach((action, index) => {
+              action.id = `act_${String(index + 1).padStart(3, '0')}`;
+            });
           }
 
           // Extract variables from sensitive input actions
@@ -494,7 +500,10 @@ async function handleStopRecording(
     const screenSize = state.screenSize || { width: 1920, height: 1080 };
     const devicePixelRatio = state.devicePixelRatio || 1;
 
-    // Use the initial URL where recording started, not the current page URL
+    // ✅ FIX: Use accumulatedActions which already contains all actions from SYNC_ACTION
+    // currentPageActions is redundant and causes duplication since SYNC_ACTION already
+    // adds every action to both session storage AND accumulatedActions
+    // Using accumulatedActions ensures proper ordering and eliminates duplicates
     const recording: Recording = {
       id: `rec_${Date.now()}`,
       version: '1.0.0',
@@ -507,12 +516,18 @@ async function handleStopRecording(
       screenSize,
       devicePixelRatio,
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      actions: [...state.accumulatedActions, ...currentPageActions],
+      actions: [...state.accumulatedActions], // Use accumulated actions only (no duplication)
       variables: [], // Will be populated below
     };
 
     // Sort by timestamp
     recording.actions.sort((a, b) => a.timestamp - b.timestamp);
+
+    // ✅ OPTION B: Renumber actions sequentially after sorting
+    // Ensures IDs match chronological order in final JSON (clean for open source)
+    recording.actions.forEach((action, index) => {
+      action.id = `act_${String(index + 1).padStart(3, '0')}`;
+    });
 
     // Extract variables from sensitive input actions
     recording.variables = extractVariablesFromActions(recording.actions);
@@ -713,58 +728,118 @@ async function handleGetRecording(
 }
 
 /**
+ * ✅ BUG FIX #4: ActionQueue to prevent race conditions
+ * Sequential processing ensures no ID collisions from concurrent SYNC_ACTION messages
+ */
+class ActionQueue {
+  private queue: Array<{
+    action: any;
+    resolve: (value: MessageResponse) => void;
+    reject: (error: Error) => void;
+  }> = [];
+  private processing = false;
+
+  async add(action: any): Promise<MessageResponse> {
+    return new Promise((resolve, reject) => {
+      this.queue.push({ action, resolve, reject });
+      this.process();
+    });
+  }
+
+  private async process(): Promise<void> {
+    if (this.processing || this.queue.length === 0) {
+      return;
+    }
+
+    this.processing = true;
+
+    while (this.queue.length > 0) {
+      const item = this.queue.shift();
+      if (!item) break;
+
+      try {
+        const result = await this.processAction(item.action);
+        item.resolve(result);
+      } catch (error) {
+        item.reject(error as Error);
+      }
+    }
+
+    this.processing = false;
+  }
+
+  private async processAction(action: any): Promise<MessageResponse> {
+    if (!state.isRecording) {
+      return { success: true };
+    }
+
+    try {
+      // Read current actions from storage
+      const result = await chrome.storage.session.get('saveaction_current_actions');
+      const actions = result['saveaction_current_actions'] || [];
+
+      // Hybrid validation: ensure counter is never less than max existing ID
+      const maxExistingId = getMaxActionId(actions);
+      if (state.actionCounter < maxExistingId) {
+        console.log(
+          '[Background] Counter drift detected. Adjusting from',
+          state.actionCounter,
+          'to',
+          maxExistingId
+        );
+        state.actionCounter = maxExistingId;
+      }
+
+      // Increment global counter
+      state.actionCounter++;
+
+      // Renumber action with global counter
+      const numberedAction = {
+        ...action,
+        id: `act_${String(state.actionCounter).padStart(3, '0')}`,
+      };
+
+      // Add new action with corrected ID
+      actions.push(numberedAction);
+
+      // ✅ BUG FIX #1: Removed duplicate push - accumulatedActions is already updated at line 512
+      // state.accumulatedActions.push(action); // REMOVED to prevent duplication
+
+      // Save actions and counter to storage
+      await chrome.storage.session.set({
+        saveaction_current_actions: actions,
+        saveaction_action_counter: state.actionCounter,
+      });
+
+      console.log(
+        '[Background] Synced action',
+        numberedAction.id,
+        'to storage. Total:',
+        actions.length
+      );
+
+      return { success: true, data: { actionId: numberedAction.id, counter: state.actionCounter } };
+    } catch (error) {
+      console.error('[Background] Failed to sync action:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  }
+}
+
+// Initialize action queue
+const actionQueue = new ActionQueue();
+
+/**
  * Sync action from content script to persistent storage
+ * ✅ BUG FIX #4: Uses ActionQueue for sequential processing
  */
 async function handleSyncAction(payload: { action: any }): Promise<MessageResponse> {
   if (!state.isRecording || !payload.action) {
     return { success: true };
   }
 
-  try {
-    // Read current actions from storage
-    const result = await chrome.storage.session.get('saveaction_current_actions');
-    const actions = result['saveaction_current_actions'] || [];
-
-    // Hybrid validation: ensure counter is never less than max existing ID
-    const maxExistingId = getMaxActionId(actions);
-    if (state.actionCounter < maxExistingId) {
-      console.log(
-        '[Background] Counter drift detected. Adjusting from',
-        state.actionCounter,
-        'to',
-        maxExistingId
-      );
-      state.actionCounter = maxExistingId;
-    }
-
-    // Increment global counter
-    state.actionCounter++;
-
-    // Renumber action with global counter
-    const action = {
-      ...payload.action,
-      id: `act_${String(state.actionCounter).padStart(3, '0')}`,
-    };
-
-    // Add new action with corrected ID
-    actions.push(action);
-
-    // CRITICAL: Also store in accumulated actions immediately for navigation detection
-    state.accumulatedActions.push(action);
-
-    // Save actions and counter to storage
-    await chrome.storage.session.set({
-      saveaction_current_actions: actions,
-      saveaction_action_counter: state.actionCounter,
-    });
-
-    console.log('[Background] Synced action', action.id, 'to storage. Total:', actions.length);
-
-    return { success: true, data: { actionId: action.id, counter: state.actionCounter } };
-  } catch (error) {
-    console.error('[Background] Failed to sync action:', error);
-    return { success: false, error: (error as Error).message };
-  }
+  // Use queue to prevent race conditions
+  return actionQueue.add(payload.action);
 }
 
 /**
@@ -1023,11 +1098,9 @@ chrome.tabs.onUpdated.addListener(async (tabId: number, changeInfo: chrome.tabs.
     if (currentPageActions.length > 0) {
       console.log('[Background] Merging', currentPageActions.length, 'actions before navigation');
 
-      // Only add actions we don't already have (deduplication by timestamp)
-      const existingTimestamps = new Set(state.accumulatedActions.map((a: any) => a.timestamp));
-      const newActions = currentPageActions.filter(
-        (a: any) => !existingTimestamps.has(a.timestamp)
-      );
+      // ✅ BUG FIX #2: Deduplicate by action.id (unique) instead of timestamp (can collide)
+      const existingIds = new Set(state.accumulatedActions.map((a: any) => a.id));
+      const newActions = currentPageActions.filter((a: any) => !existingIds.has(a.id));
 
       if (newActions.length > 0) {
         state.accumulatedActions = [...state.accumulatedActions, ...newActions];

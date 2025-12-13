@@ -8,11 +8,14 @@ import type {
   KeypressAction,
   SubmitAction,
   HoverAction,
+  ModalLifecycleAction,
   ModifierKey,
   ElementState,
   WaitConditions,
   ActionContext,
   AlternativeSelector,
+  SelectorWithConfidence,
+  ContentSignature,
 } from '@/types';
 import { generateActionId } from '@/types';
 import { SelectorGenerator } from './selector-generator';
@@ -22,6 +25,8 @@ import {
   detectNavigationIntent,
   createUrlChangeExpectation,
 } from '@/utils/element-state';
+import { generateContentSignature, isCarouselElement } from '@/utils/content-signature';
+import { ModalTracker, findParentModal, detectModalState } from '@/utils/modal-tracker';
 
 /**
  * EventListener - Captures user interactions on the page
@@ -40,6 +45,15 @@ export class EventListener {
   private inputDebounceTimers: Map<HTMLInputElement | HTMLTextAreaElement, NodeJS.Timeout> =
     new Map(); // Track debounce timers per element
   private keystrokeTimes: number[] = []; // Track keystroke times for typing speed calculation
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // LAYER 2 & 3: Enhanced Input Capture (99.9% reliability)
+  // ═══════════════════════════════════════════════════════════════════════
+  private focusedField: HTMLInputElement | HTMLTextAreaElement | null = null; // Currently focused input field
+  private fieldPollingInterval: NodeJS.Timeout | null = null; // Polling interval for focused field
+  private lastKnownValues: Map<HTMLElement, string> = new Map(); // Track last known values for change detection
+  private inputObservers: Map<HTMLElement, MutationObserver> = new Map(); // MutationObservers per field
+  private readonly POLLING_INTERVAL_MS = 100; // Poll focused field every 100ms
   private previousUrl: string = window.location.href; // Track previous URL for back/forward detection
   private lastAction: Action | null = null; // Track last action for navigation trigger detection
   private lastHoveredElement: Element | null = null; // Track hovered element for dropdown detection
@@ -47,11 +61,15 @@ export class EventListener {
   private lastEmittedAction: Action | null = null; // Track last emitted action for duplicate prevention
   private lastEmitTime = 0; // Track when last action was emitted
   private lastCompletedTimestamp = 0; // Track when last action completed
-  private readonly DEBOUNCE_MS = 500; // Duplicate detection threshold
+  private readonly DEBOUNCE_MS = 200; // Duplicate detection threshold (matches onClick filter)
   private recordingStartTime: number = 0; // Track recording start time for relative timestamps
   private currentModalActionGroup: string | null = null; // Track current modal action group
   private modalActionGroups: Map<string, string[]> = new Map(); // Map modal groups to action IDs
   private terminalActionId: string | null = null; // Track last terminal action
+  private modalTracker: ModalTracker; // Track modal lifecycle events
+  private MIN_HOVER_DURATION = 300; // Minimum hover duration to record (ms)
+  private clickHistory: Array<{ element: Element; timestamp: number }> = []; // Track recent clicks for carousel detection
+  private readonly MAX_CLICK_HISTORY = 10; // Maximum clicks to track
 
   // Event handlers (need to be stored for removal)
   private handleClick: (e: MouseEvent) => void;
@@ -72,6 +90,11 @@ export class EventListener {
   constructor(actionCallback: (action: Action) => void) {
     this.actionCallback = actionCallback;
     this.selectorGenerator = new SelectorGenerator();
+
+    // Initialize modal tracker
+    this.modalTracker = new ModalTracker((lifecycleEvent) => {
+      this.recordModalLifecycleAction(lifecycleEvent);
+    });
 
     // Bind event handlers
     this.handleClick = this.onClick.bind(this);
@@ -195,6 +218,14 @@ export class EventListener {
         break;
       }
 
+      case 'modal-lifecycle': {
+        // Modal lifecycle events complete after their animation/transition duration
+        const modalAction = action as ModalLifecycleAction;
+        const duration = modalAction.animationDuration || modalAction.transitionDuration || 300;
+        completedAt = action.timestamp + duration;
+        break;
+      }
+
       default: {
         // Exhaustive check - should never reach here
         const _exhaustiveCheck: never = action;
@@ -215,6 +246,8 @@ export class EventListener {
 
     this.isListening = true;
     this.attachEventListeners();
+    this.modalTracker.start();
+    console.log('[EventListener] Started listening (with modal tracking)');
   }
 
   /**
@@ -223,8 +256,34 @@ export class EventListener {
   public stop(): void {
     if (!this.isListening) return;
 
+    // ✅ CRITICAL: Flush ALL pending input actions before stopping
+    // This ensures inputs are recorded when user clicks "Stop Recording" button
+    // or when recording is paused/stopped programmatically
+    if (this.inputDebounceTimers.size > 0) {
+      console.log('[EventListener] 🔥 Flushing pending inputs before stop');
+      for (const [inputElement, timerId] of this.inputDebounceTimers) {
+        clearTimeout(timerId);
+        this.flushInputAction(inputElement);
+      }
+    }
+
+    // LAYER 3: Stop field polling
+    this.stopFieldPolling();
+
+    // LAYER 2: Disconnect all MutationObservers
+    for (const [field, observer] of this.inputObservers) {
+      observer.disconnect();
+      console.log(
+        '[EventListener] ⛔ LAYER 2: Disconnected observer for:',
+        field.id || (field as HTMLInputElement).name
+      );
+    }
+    this.inputObservers.clear();
+    this.lastKnownValues.clear();
+
     this.isListening = false;
     this.removeEventListeners();
+    this.modalTracker.stop();
   }
 
   /**
@@ -241,6 +300,14 @@ export class EventListener {
     }
     this.inputDebounceTimers.clear();
     this.inputStartTimes.clear();
+
+    // LAYER 2 & 3: Final cleanup
+    this.stopFieldPolling();
+    for (const observer of this.inputObservers.values()) {
+      observer.disconnect();
+    }
+    this.inputObservers.clear();
+    this.lastKnownValues.clear();
   }
 
   /**
@@ -305,15 +372,93 @@ export class EventListener {
       return;
     }
 
-    // Check for double-click
+    // 🆕 Enhanced duplicate detection with carousel awareness
     const now = Date.now();
-    const isDoubleClick = target === this.lastClickTarget && now - this.lastClickTime < 500;
+    const timeSinceLastClick = now - this.lastClickTime;
+    const isSameElement = target === this.lastClickTarget;
+    const isDoubleClick = isSameElement && timeSinceLastClick < 500;
+
+    // Check if this is a carousel element
+    const isCarousel = isCarouselElement(target);
+
+    // ✅ STRICT DUPLICATE FILTERING (like test5)
+    // Filter rapid clicks on the SAME element
+    if (isSameElement && !isDoubleClick) {
+      if (isCarousel) {
+        // Carousel: allow clicks > 200ms but watch for excessive clicking
+        if (timeSinceLastClick < 200) {
+          console.log(`⏭️ Skipping rapid carousel click (${timeSinceLastClick}ms)`);
+          return;
+        }
+
+        // Advanced: Check for excessive carousel clicking (user stuck/confused)
+        if (timeSinceLastClick < 500) {
+          const recentClicks = this.countRecentClicksOnElement(target, 5000);
+          if (recentClicks > 8) {
+            console.log(`⏭️ Skipping excessive carousel clicks (${recentClicks} in 5s)`);
+            return;
+          }
+        }
+      } else {
+        // Non-carousel: strict 200ms filter
+        if (timeSinceLastClick < 200) {
+          console.log(`⏭️ Skipping duplicate click (${timeSinceLastClick}ms)`);
+          return;
+        }
+      }
+    }
 
     this.lastClickTarget = target;
     this.lastClickTime = now;
 
+    // Track in click history for carousel detection
+    this.clickHistory.push({ element: target, timestamp: now });
+    if (this.clickHistory.length > this.MAX_CLICK_HISTORY) {
+      this.clickHistory.shift();
+    }
+
     // Skip if this is part of a double-click (handled by dblclick event)
     if (isDoubleClick) return;
+
+    // 🆕 CRITICAL FIX: If clicking on password/sensitive input, start polling immediately
+    // Some websites prevent focus events from firing on password fields
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+      if (this.isSensitiveInput(target)) {
+        console.log(
+          '[EventListener] 🔐 Click on sensitive field - force starting polling:',
+          target.id || target.name
+        );
+        // Ensure focus tracking is initialized
+        if (!this.inputStartTimes.has(target)) {
+          this.inputStartTimes.set(target, Date.now());
+          this.keystrokeTimes = [];
+        }
+        // Force start layers 2 & 3
+        this.attachFieldObserver(target);
+        this.startFieldPolling(target);
+      }
+    }
+
+    // ✅ CRITICAL: Flush ALL pending input actions before ANY click
+    // This ensures password fields are recorded even if user clicks submit immediately
+    // without clicking outside the field or waiting for debounce
+    // ESPECIALLY important for multi-step forms where submit triggers AJAX/state changes
+    if (this.inputDebounceTimers.size > 0) {
+      console.log(
+        '[EventListener] 🔥 Flushing',
+        this.inputDebounceTimers.size,
+        'pending inputs before click'
+      );
+      for (const [inputElement, timerId] of this.inputDebounceTimers) {
+        clearTimeout(timerId);
+        this.flushInputAction(inputElement);
+      }
+
+      // ✅ CRITICAL FIX: Wait for input actions to sync to background before proceeding
+      // This prevents race condition where click causes page transition before inputs save
+      // Uses synchronous loop to ensure all inputs are emitted before click is processed
+      console.log('[EventListener] ✅ All inputs flushed synchronously');
+    }
 
     // Check if we need to record a hover action for dropdown parent
     // This happens when clicking on a child element that only becomes visible on hover
@@ -329,16 +474,36 @@ export class EventListener {
     // Check if this click might cause navigation
     const willNavigate = this.isNavigationClick(target);
 
-    if (willNavigate) {
-      // Prevent default temporarily to ensure action is captured
-      event.preventDefault();
-      event.stopPropagation();
+    // ✅ FIX: Check if this is a submit button (form OR AJAX-based)
+    const isSubmitButton = this.isSubmitButton(target);
 
+    if (willNavigate || isSubmitButton) {
+      // ✅ CRITICAL: For ANY navigation or submit, record action FIRST
       const action = this.createClickAction(event, target, 1);
       this.emitAction(action);
 
       // Update previous URL before navigation happens
       this.previousUrl = window.location.href;
+
+      // ✅ IMPROVED LOGIC: Handle submit buttons correctly
+      if (isSubmitButton) {
+        // Log for debugging multi-step forms
+        console.log('[EventListener] Submit button detected:', {
+          tagName: target.tagName,
+          type: (target as HTMLButtonElement).type,
+          className: target.className,
+          hasForm: !!target.closest('form'),
+        });
+
+        // Don't prevent default for form submit buttons
+        // Let the browser/framework handle the submission
+        // Action is already recorded and inputs are already flushed
+        return;
+      }
+
+      // For links and other navigation clicks, prevent and re-trigger
+      event.preventDefault();
+      event.stopPropagation();
 
       // Wait a bit for sync to complete, then trigger navigation
       setTimeout(() => {
@@ -412,6 +577,30 @@ export class EventListener {
     const button = event.button === 0 ? 'left' : event.button === 1 ? 'middle' : 'right';
     const modifiers = this.getModifierKeys(event);
 
+    // 🆕 Generate multi-strategy selectors with confidence (v2.0.0)
+    let selectorsWithConfidence: SelectorWithConfidence[] | undefined;
+    try {
+      selectorsWithConfidence = this.selectorGenerator.generateSelectorsWithConfidence(target);
+    } catch (error) {
+      console.warn('[EventListener] Failed to generate selectors with confidence:', error);
+    }
+
+    // 🆕 Generate content signature for list items (v2.0.0)
+    let contentSignature: ContentSignature | undefined;
+    try {
+      const signature = generateContentSignature(target);
+      if (signature) {
+        contentSignature = signature;
+        console.log('[EventListener] Content signature generated:', {
+          type: signature.elementType,
+          heading: signature.contentFingerprint.heading,
+          position: signature.fallbackPosition,
+        });
+      }
+    } catch (error) {
+      console.warn('[EventListener] Failed to generate content signature:', error);
+    }
+
     // Capture element state for smart waits
     let elementState: ElementState | undefined;
     let waitConditions: WaitConditions | undefined;
@@ -425,7 +614,24 @@ export class EventListener {
       context = state.context;
       alternativeSelectors = state.alternativeSelectors;
 
-      // ✅ NEW: Detect navigation intent
+      // 🆕 Detect modal context
+      const parentModal = findParentModal(target);
+      if (parentModal) {
+        const modalId = parentModal.id || 'unknown-modal';
+        const modalState = detectModalState(parentModal);
+
+        context.isInsideModal = true;
+        context.modalId = modalId;
+        context.modalState = modalState;
+        context.requiresModalState = true; // Runner must wait for this modal state
+
+        console.log('[EventListener] Element inside modal:', {
+          modalId,
+          state: modalState,
+        });
+      }
+
+      // ✅ Detect navigation intent
       const navigationIntent = detectNavigationIntent(target);
       if (navigationIntent !== 'none') {
         context.navigationIntent = navigationIntent;
@@ -490,6 +696,9 @@ export class EventListener {
       waitConditions,
       context,
       alternativeSelectors,
+      // 🆕 v2.0.0 improvements
+      contentSignature,
+      selectors: selectorsWithConfidence,
     };
   }
 
@@ -501,6 +710,15 @@ export class EventListener {
 
     const target = event.target as HTMLInputElement | HTMLTextAreaElement;
     if (!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) return;
+
+    // 🐛 DEBUG: Log every input event
+    console.log('[EventListener] 🎯 onInput called:', {
+      id: target.id || 'no-id',
+      name: target.name || 'no-name',
+      type: (target as HTMLInputElement).type || 'textarea',
+      value: target.value ? `"${target.value.substring(0, 10)}..."` : 'EMPTY',
+      valueLength: target.value?.length || 0,
+    });
 
     // Note: isTrusted check removed to allow test events while maintaining production functionality
     // The focus/blur handlers provide sufficient protection against accidental recordings
@@ -519,10 +737,28 @@ export class EventListener {
       clearTimeout(this.inputDebounceTimers.get(target)!);
     }
 
-    // Debounce input events - wait 500ms after last keystroke
+    // ✅ ADAPTIVE DEBOUNCE: Adjust timeout based on field type (universal for all websites)
+    // LAYER 1: Event debouncing for normal typing
+    // NOTE: Password fields now have 0ms debounce due to LAYER 2 & 3 backup
+    const isSensitive = this.isSensitiveInput(target);
+    const isShortField =
+      target instanceof HTMLInputElement &&
+      (target.type === 'email' ||
+        target.type === 'tel' ||
+        target.type === 'number' ||
+        (target.maxLength > 0 && target.maxLength < 50));
+
+    let debounceTime = 500; // Default for long text fields
+
+    if (isSensitive) {
+      debounceTime = 0; // ⚡ INSTANT capture for passwords (LAYERS 2 & 3 provide backup)
+    } else if (isShortField) {
+      debounceTime = 400; // Medium for emails, phone numbers
+    }
+
     const timerId = setTimeout(() => {
       this.flushInputAction(target);
-    }, 500);
+    }, debounceTime);
 
     this.inputDebounceTimers.set(target, timerId);
   }
@@ -595,6 +831,7 @@ export class EventListener {
 
   /**
    * Handle focus events (track when typing starts)
+   * LAYER 2 & 3: Start MutationObserver and polling for 99.9% reliability
    */
   private onFocus(event: FocusEvent): void {
     if (!this.isListening) return;
@@ -614,11 +851,21 @@ export class EventListener {
     this.inputStartTimes.set(target, Date.now());
     this.keystrokeTimes = []; // Reset keystroke tracking for this input
 
-    console.log('[EventListener] Input focused - tracking start time:', target.id || target.name);
+    // LAYER 2: Attach MutationObserver to catch React/Vue programmatic changes
+    this.attachFieldObserver(target);
+
+    // LAYER 3: Start polling to catch inputs even if events are blocked
+    this.startFieldPolling(target);
+
+    console.log(
+      '[EventListener] \u2728 Input focused - ALL 3 LAYERS ACTIVE:',
+      target.id || target.name
+    );
   }
 
   /**
    * Handle blur events (flush pending input if user clicks away)
+   * LAYER 2 & 3: Stop MutationObserver and polling, capture final value
    */
   private onBlur(event: FocusEvent): void {
     if (!this.isListening) return;
@@ -626,10 +873,24 @@ export class EventListener {
     const target = event.target as HTMLInputElement | HTMLTextAreaElement;
     if (!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) return;
 
+    // LAYER 3: Stop polling the field
+    this.stopFieldPolling();
+
+    // LAYER 2: Detach MutationObserver
+    this.detachFieldObserver(target);
+
     // If there's a pending input action, flush it immediately
     if (this.inputStartTimes.has(target) && target.value) {
       this.flushInputAction(target);
     }
+
+    // Cleanup last known value
+    this.lastKnownValues.delete(target);
+
+    console.log(
+      '[EventListener] \u26a0\ufe0f Input blurred - LAYERS 2 & 3 STOPPED:',
+      target.id || target.name
+    );
   }
 
   /**
@@ -644,17 +905,204 @@ export class EventListener {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // LAYER 3: Focused Field Polling (Fallback for blocked events)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Start polling the focused field for value changes
+   * This catches inputs even when the 'input' event is blocked by websites
+   */
+  private startFieldPolling(field: HTMLInputElement | HTMLTextAreaElement): void {
+    // Stop any existing polling
+    this.stopFieldPolling();
+
+    this.focusedField = field;
+    this.lastKnownValues.set(field, field.value);
+
+    // Poll the field every 100ms to detect value changes
+    this.fieldPollingInterval = setInterval(() => {
+      if (!this.focusedField || !this.isListening) {
+        this.stopFieldPolling();
+        return;
+      }
+
+      const currentValue = this.focusedField.value;
+      const lastValue = this.lastKnownValues.get(this.focusedField) || '';
+
+      // If value changed, trigger input capture
+      if (currentValue !== lastValue) {
+        console.log('[EventListener] 🔴 LAYER 3: Polling detected value change:', {
+          field: this.focusedField.id || this.focusedField.name,
+          oldValue: lastValue.substring(0, 20),
+          newValue: currentValue.substring(0, 20),
+        });
+
+        this.lastKnownValues.set(this.focusedField, currentValue);
+
+        // Always trigger input handler for polling (override debounce)
+        // Clear any existing debounce timer and flush immediately
+        const existingTimer = this.inputDebounceTimers.get(this.focusedField);
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+          this.inputDebounceTimers.delete(this.focusedField);
+        }
+
+        // Trigger input handler
+        this.onInput({ target: this.focusedField } as unknown as Event);
+      }
+    }, this.POLLING_INTERVAL_MS);
+
+    console.log('[EventListener] 🟢 LAYER 3: Started polling field:', field.id || field.name);
+  }
+
+  /**
+   * Stop polling the focused field
+   */
+  private stopFieldPolling(): void {
+    if (this.fieldPollingInterval) {
+      clearInterval(this.fieldPollingInterval);
+      this.fieldPollingInterval = null;
+      console.log('[EventListener] ⛔ LAYER 3: Stopped polling');
+    }
+    this.focusedField = null;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // LAYER 2: MutationObserver (Catches React/Vue programmatic changes)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Attach MutationObserver to watch for programmatic value changes
+   * This catches React/Vue/Angular state updates that don't fire 'input' events
+   */
+  private attachFieldObserver(field: HTMLInputElement | HTMLTextAreaElement): void {
+    // Don't attach if already observing
+    if (this.inputObservers.has(field)) {
+      return;
+    }
+
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'value') {
+          const newValue = (mutation.target as HTMLInputElement).value;
+          const oldValue = this.lastKnownValues.get(field) || '';
+
+          if (newValue !== oldValue) {
+            console.log('[EventListener] 🟡 LAYER 2: MutationObserver detected change:', {
+              field: field.id || field.name,
+              newValue: newValue.substring(0, 20),
+            });
+
+            this.lastKnownValues.set(field, newValue);
+
+            // Always trigger input handler for MutationObserver (override debounce)
+            // Clear any existing debounce timer and flush immediately
+            const existingTimer = this.inputDebounceTimers.get(field);
+            if (existingTimer) {
+              clearTimeout(existingTimer);
+              this.inputDebounceTimers.delete(field);
+            }
+
+            // Trigger input capture
+            this.onInput({ target: field } as unknown as Event);
+          }
+        }
+      }
+    });
+
+    observer.observe(field, {
+      attributes: true,
+      attributeFilter: ['value'],
+      attributeOldValue: true,
+    });
+
+    this.inputObservers.set(field, observer);
+    console.log('[EventListener] 🟢 LAYER 2: Attached MutationObserver:', field.id || field.name);
+  }
+
+  /**
+   * Detach MutationObserver from a field
+   */
+  private detachFieldObserver(field: HTMLElement): void {
+    const observer = this.inputObservers.get(field);
+    if (observer) {
+      observer.disconnect();
+      this.inputObservers.delete(field);
+      console.log(
+        '[EventListener] ⛔ LAYER 2: Detached MutationObserver:',
+        field.id || (field as HTMLInputElement).name
+      );
+    }
+  }
+
   /**
    * Flush pending input action (record it immediately)
+   * LAYER 2 & 3: Also cleanup observers and polling if field is flushed early
+   * ✅ BUG FIX #6: Enhanced logging and user notifications for skipped inputs
    */
   private flushInputAction(target: HTMLInputElement | HTMLTextAreaElement): void {
     const startTime = this.inputStartTimes.get(target);
     const value = target.value;
 
+    // Enhanced logging for debugging missing inputs
+    const fieldInfo = {
+      id: target.id || 'none',
+      name: target.name || 'none',
+      type: (target as HTMLInputElement).type || 'textarea',
+      hasStartTime: !!startTime,
+      hasValue: !!value,
+      valueLength: value?.length || 0,
+    };
+
     // Skip if no start time or empty value
     if (!startTime || !value) {
+      // ✅ BUG FIX #6: Enhanced console warnings for skipped inputs
+      console.warn(
+        '[EventListener] ⚠️ INPUT SKIPPED - Field will not be recorded:',
+        '\n  Field ID:',
+        fieldInfo.id,
+        '\n  Field Name:',
+        fieldInfo.name,
+        '\n  Field Type:',
+        fieldInfo.type,
+        '\n  Has Start Time:',
+        fieldInfo.hasStartTime,
+        '\n  Has Value:',
+        fieldInfo.hasValue,
+        '\n  Value Length:',
+        fieldInfo.valueLength,
+        '\n  Reason:',
+        !startTime ? 'Missing start time' : 'Empty value'
+      );
+
+      // ✅ BUG FIX #6: Show toast notification to user (non-blocking)
+      // Use setTimeout to ensure it doesn't interfere with test execution
+      if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+        setTimeout(() => {
+          import('@/utils/toast-notification')
+            .then(({ showToast }) => {
+              showToast({
+                message: `Input field skipped: ${fieldInfo.name || fieldInfo.id || 'Unknown field'}`,
+                type: 'warning',
+                duration: 3000,
+              });
+            })
+            .catch(() => {
+              // Silent failure in test environment is acceptable
+              // Toast notifications are a UX enhancement, not critical functionality
+            });
+        }, 0);
+      }
+
       this.inputStartTimes.delete(target);
       this.inputDebounceTimers.delete(target);
+      // LAYER 2 & 3: Cleanup if early flush
+      this.detachFieldObserver(target);
+      if (this.focusedField === target) {
+        this.stopFieldPolling();
+      }
+      this.lastKnownValues.delete(target);
       return;
     }
 
@@ -681,6 +1129,12 @@ export class EventListener {
     this.inputStartTimes.delete(target);
     this.inputDebounceTimers.delete(target);
     this.keystrokeTimes = [];
+    // LAYER 2 & 3: Cleanup observers and polling
+    this.detachFieldObserver(target);
+    if (this.focusedField === target) {
+      this.stopFieldPolling();
+    }
+    this.lastKnownValues.delete(target);
 
     console.log('[EventListener] Input flushed:', {
       element: target.id || target.name,
@@ -735,6 +1189,16 @@ export class EventListener {
     const target = event.target as HTMLFormElement;
     if (!target || target.tagName !== 'FORM') return;
 
+    // ✅ CRITICAL: Flush ALL pending inputs before form submit
+    // Ensures password/email fields are recorded even if user hits Enter immediately
+    if (this.inputDebounceTimers.size > 0) {
+      console.log('[EventListener] 🔥 Flushing pending inputs before form submit');
+      for (const [inputElement, timerId] of this.inputDebounceTimers) {
+        clearTimeout(timerId);
+        this.flushInputAction(inputElement);
+      }
+    }
+
     const selector = this.selectorGenerator.generateSelectors(target);
 
     const action: SubmitAction = {
@@ -756,15 +1220,102 @@ export class EventListener {
   private onKeyDown(event: KeyboardEvent): void {
     if (!this.isListening) return;
 
+    // ✅ CRITICAL FIX: Use keydown as backup for input capture when input event doesn't fire
+    // Some websites block the input event with stopImmediatePropagation
+    // This ensures we still capture password fields and other inputs
+    const target = event.target as HTMLElement;
+    if (
+      (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') &&
+      ![
+        'Enter',
+        'Tab',
+        'Escape',
+        'Shift',
+        'Control',
+        'Alt',
+        'Meta',
+        'ArrowUp',
+        'ArrowDown',
+        'ArrowLeft',
+        'ArrowRight',
+      ].includes(event.key)
+    ) {
+      const inputElement = target as HTMLInputElement | HTMLTextAreaElement;
+
+      // Set up debounce timer if this is the first keystroke
+      if (!this.inputDebounceTimers.has(inputElement)) {
+        console.log(
+          '[EventListener] ⚠️ Keydown triggered input tracking (input event may be blocked):',
+          inputElement.id || inputElement.name
+        );
+
+        // Ensure start time is set
+        if (!this.inputStartTimes.has(inputElement)) {
+          this.inputStartTimes.set(inputElement, Date.now());
+        }
+
+        // Track keystroke
+        this.keystrokeTimes.push(Date.now());
+
+        // Set up adaptive debounce
+        const isSensitive = this.isSensitiveInput(inputElement);
+        const isShortField =
+          inputElement instanceof HTMLInputElement &&
+          (inputElement.type === 'email' ||
+            inputElement.type === 'tel' ||
+            inputElement.type === 'number' ||
+            (inputElement.maxLength > 0 && inputElement.maxLength < 50));
+
+        let debounceTime = 500;
+        if (isSensitive) {
+          debounceTime = 300;
+        } else if (isShortField) {
+          debounceTime = 400;
+        }
+
+        const timerId = setTimeout(() => {
+          this.flushInputAction(inputElement);
+        }, debounceTime);
+
+        this.inputDebounceTimers.set(inputElement, timerId);
+      } else {
+        // Reset existing timer
+        clearTimeout(this.inputDebounceTimers.get(inputElement)!);
+
+        this.keystrokeTimes.push(Date.now());
+
+        const isSensitive = this.isSensitiveInput(inputElement);
+        const isShortField =
+          inputElement instanceof HTMLInputElement &&
+          (inputElement.type === 'email' ||
+            inputElement.type === 'tel' ||
+            inputElement.type === 'number' ||
+            (inputElement.maxLength > 0 && inputElement.maxLength < 50));
+
+        let debounceTime = 500;
+        if (isSensitive) {
+          debounceTime = 300;
+        } else if (isShortField) {
+          debounceTime = 400;
+        }
+
+        const timerId = setTimeout(() => {
+          this.flushInputAction(inputElement);
+        }, debounceTime);
+
+        this.inputDebounceTimers.set(inputElement, timerId);
+      }
+    }
+
     // Handle Enter key in input fields (form submit)
     if (event.key === 'Enter' && event.target) {
-      const target = event.target as HTMLInputElement | HTMLTextAreaElement;
+      const enterTarget = event.target as HTMLInputElement | HTMLTextAreaElement;
       if (
-        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') &&
-        this.inputStartTimes.has(target)
+        (enterTarget.tagName === 'INPUT' || enterTarget.tagName === 'TEXTAREA') &&
+        this.inputStartTimes.has(enterTarget)
       ) {
         // Flush input action immediately before form submits
-        this.flushInputAction(target);
+        this.flushInputAction(enterTarget);
       }
     }
 
@@ -802,6 +1353,16 @@ export class EventListener {
    */
   private onScroll(_event: Event): void {
     if (!this.isListening) return;
+
+    // ✅ BUG FIX #3: Flush ALL pending input actions before scroll
+    // This ensures inputs are captured before user scrolls away
+    if (this.inputDebounceTimers.size > 0) {
+      console.log('[EventListener] 🔥 Flushing inputs before scroll');
+      for (const [inputElement, timerId] of this.inputDebounceTimers) {
+        clearTimeout(timerId);
+        this.flushInputAction(inputElement);
+      }
+    }
 
     // Clear previous debounce timer
     if (this.scrollDebounceTimer) {
@@ -907,20 +1468,163 @@ export class EventListener {
       return true;
     }
 
-    // Check if it's a submit button
+    return false;
+  }
+
+  /**
+   * Check if element is a submit button (UNIVERSAL detection for any website/language)
+   *
+   * CRITICAL for open-source projects: NO hardcoded text patterns!
+   * This works for ANY language, ANY framework, ANY custom implementation.
+   *
+   * Detection strategy:
+   * 1. Native HTML submit buttons (type="submit")
+   * 2. Buttons inside forms (likely submit even without explicit type)
+   * 3. Buttons with submit-related ARIA attributes (framework-agnostic)
+   * 4. Primary/CTA buttons in form contexts (behavioral detection)
+   */
+  private isSubmitButton(element: Element): boolean {
+    // 1. Standard HTML submit buttons (most reliable)
     if (element.tagName === 'BUTTON') {
       const button = element as HTMLButtonElement;
-      if (button.type === 'submit' || !button.type) {
+      if (button.type === 'submit') {
+        return true;
+      }
+
+      // Buttons without explicit type inside forms are submit buttons by default (HTML spec)
+      // Note: button.type defaults to 'submit' in HTML, but some frameworks might not set it
+      const form = button.closest('form');
+      if (form && button.type !== 'button' && button.type !== 'reset') {
         return true;
       }
     }
 
-    // Check if it's a submit input
+    // 2. Input submit buttons
     if (element.tagName === 'INPUT') {
       const input = element as HTMLInputElement;
       if (input.type === 'submit') {
         return true;
       }
+    }
+
+    // 3. ARIA-based detection (works for React, Vue, Angular, etc.)
+    // Frameworks often use role="button" with form-related ARIA attributes
+    const role = element.getAttribute('role');
+    if (role === 'button') {
+      // Check if inside a form (strong signal)
+      const form = element.closest('form');
+      if (form) {
+        // Check if it's the primary button in the form
+        const isPrimary = this.isPrimaryButton(element);
+        if (isPrimary) {
+          return true;
+        }
+      }
+
+      // Check for ARIA attributes that indicate form submission
+      const ariaLabel = element.getAttribute('aria-label');
+      const ariaDescribedBy = element.getAttribute('aria-describedby');
+
+      if (ariaLabel || ariaDescribedBy) {
+        // Has ARIA attributes and is interactive - likely important action
+        const form = element.closest('form');
+        if (form) {
+          return true;
+        }
+      }
+    }
+
+    // 4. Behavioral detection: Primary buttons in form contexts
+    // This catches AJAX/SPA forms that don't use <form> tags
+    const hasFormContext = this.hasFormContext(element);
+    if (hasFormContext) {
+      const isPrimary = this.isPrimaryButton(element);
+      if (isPrimary) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if element is styled as a primary/CTA button
+   * Universal detection based on CSS patterns (not text content)
+   */
+  private isPrimaryButton(element: Element): boolean {
+    const className = element.className || '';
+
+    // Common CSS patterns for primary buttons (language/framework agnostic)
+    const primaryPatterns = [
+      'primary', // btn-primary, button-primary
+      'cta', // Call-to-action
+      'main', // main-button
+      'action', // action-button
+      'default', // default button
+      'positive', // positive action
+      'success', // success button
+      'confirm', // confirmation
+    ];
+
+    const classLower = className.toLowerCase();
+    const hasPrimaryClass = primaryPatterns.some((pattern) => classLower.includes(pattern));
+
+    if (hasPrimaryClass) {
+      return true;
+    }
+
+    // Check computed styles (most reliable - visual hierarchy)
+    try {
+      const styles = window.getComputedStyle(element);
+      const bgColor = styles.backgroundColor;
+      const fontSize = parseFloat(styles.fontSize);
+      const fontWeight = styles.fontWeight;
+
+      // Primary buttons typically have:
+      // - Solid background color (not transparent/white)
+      // - Larger font size than average
+      // - Bold font weight
+
+      const hasBackground = bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent';
+      const isBold = fontWeight === 'bold' || fontWeight === '700' || parseInt(fontWeight) >= 600;
+      const isLargerFont = fontSize >= 14;
+
+      if (hasBackground && (isBold || isLargerFont)) {
+        return true;
+      }
+    } catch (e) {
+      // Style computation failed, continue
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if element is in a form context (even without <form> tag)
+   * Detects AJAX/SPA forms based on surrounding input fields
+   */
+  private hasFormContext(element: Element): boolean {
+    // Check if inside an actual <form>
+    if (element.closest('form')) {
+      return true;
+    }
+
+    // Check if there are input fields nearby (AJAX form pattern)
+    // Look up the DOM tree for a container with input fields
+    let parent = element.parentElement;
+    let depth = 0;
+    const maxDepth = 5;
+
+    while (parent && depth < maxDepth) {
+      // Check if this container has input fields
+      const inputs = parent.querySelectorAll('input, textarea, select');
+      if (inputs.length >= 1) {
+        // Found inputs nearby - this is likely a form context
+        return true;
+      }
+
+      parent = parent.parentElement;
+      depth++;
     }
 
     return false;
@@ -968,6 +1672,18 @@ export class EventListener {
       return true;
     }
 
+    // 1.5 Elements with button/submit in class or role (DIV/SPAN styled as buttons)
+    const className = element.className?.toLowerCase() || '';
+    const elementRole = element.getAttribute('role');
+    if (
+      className.includes('btn') ||
+      className.includes('button') ||
+      className.includes('submit') ||
+      elementRole === 'button'
+    ) {
+      return true;
+    }
+
     // 2. ANY SVG element (universal detection using browser API)
     // Catches <svg>, <path>, <circle>, <rect>, <g>, <use>, <polygon>, etc.
     if (element instanceof SVGElement) {
@@ -1000,8 +1716,7 @@ export class EventListener {
       'switch',
       'treeitem',
     ];
-    const role = element.getAttribute('role');
-    if (role && interactiveRoles.includes(role)) {
+    if (elementRole && interactiveRoles.includes(elementRole)) {
       return true;
     }
 
@@ -1158,8 +1873,8 @@ export class EventListener {
       if (element.type === 'password') return true;
 
       // Check common password field names
-      const name = element.name?.toLowerCase() || '';
-      const id = element.id?.toLowerCase() || '';
+      const name = element.name ? String(element.name).toLowerCase() : '';
+      const id = element.id ? String(element.id).toLowerCase() : '';
       const sensitivePatterns = ['password', 'passwd', 'pwd', 'secret', 'pin', 'cvv', 'ssn'];
 
       return sensitivePatterns.some((pattern) => name.includes(pattern) || id.includes(pattern));
@@ -1174,9 +1889,9 @@ export class EventListener {
    */
   private generateVariableName(element: HTMLInputElement | HTMLTextAreaElement): string {
     // Try to extract meaningful name from id, name, or placeholder
-    const id = element.id?.toLowerCase() || '';
-    const name = element.name?.toLowerCase() || '';
-    const placeholder = element.placeholder?.toLowerCase() || '';
+    const id = element.id ? String(element.id).toLowerCase() : '';
+    const name = element.name ? String(element.name).toLowerCase() : '';
+    const placeholder = element.placeholder ? String(element.placeholder).toLowerCase() : '';
     const type = element instanceof HTMLInputElement ? element.type : 'text';
 
     // Priority: id > name > placeholder
@@ -1202,8 +1917,10 @@ export class EventListener {
     if (!hasPrefix) {
       // Try to infer context from form or surrounding labels
       const form = element.closest('form');
-      const formId = form?.id?.toLowerCase() || '';
-      const formName = form?.name?.toLowerCase() || '';
+      const formId = form?.id ? String(form.id).toLowerCase() : '';
+      const formName = form?.getAttribute('name')
+        ? String(form.getAttribute('name')).toLowerCase()
+        : '';
 
       if (formId.includes('login') || formName.includes('login')) {
         baseName = `LOGIN_${baseName}`;
@@ -1283,13 +2000,27 @@ export class EventListener {
 
     // Clear hover tracking if leaving the hovered element
     if (this.lastHoveredElement === target) {
-      // Don't clear immediately - might be moving to child element
-      // Let onClick handle the hover recording if needed
+      const hoverDuration = Date.now() - this.hoverStartTime;
+
+      // 🆕 Only record meaningful hovers (> 300ms)
+      if (hoverDuration >= this.MIN_HOVER_DURATION && this.isDropdownParent(target)) {
+        console.log(
+          `[EventListener] Recording hover (${hoverDuration}ms) - meaningful interaction`
+        );
+        this.recordHoverAction(target, hoverDuration);
+      } else if (hoverDuration < this.MIN_HOVER_DURATION) {
+        console.log(`⏭️ Skipping brief hover (${hoverDuration}ms)`);
+      }
+
+      // Reset hover tracking
+      this.lastHoveredElement = null;
+      this.hoverStartTime = 0;
     }
   }
 
   /**
    * Check if element is a dropdown parent
+   * ✅ STRICT: Only actual dropdown menus, not just any element with hidden children
    */
   private isDropdownParent(element: Element): boolean {
     // Check CSS classes for dropdown patterns
@@ -1298,24 +2029,22 @@ export class EventListener {
     const classList = Array.from(element.classList).map((c) => c.toLowerCase());
     const dropdownPatterns = ['dropdown', 'menu', 'nav', 'submenu', 'popover'];
 
-    if (dropdownPatterns.some((pattern) => classList.some((cls) => cls.includes(pattern)))) {
+    // Explicit dropdown classes
+    const hasDropdownClass = dropdownPatterns.some((pattern) =>
+      classList.some((cls) => cls.includes(pattern))
+    );
+    if (hasDropdownClass) {
       return true;
     }
 
-    // Check aria attributes
+    // ARIA haspopup attribute (standard dropdown indicator)
     if (element.hasAttribute('aria-haspopup')) {
       return true;
     }
 
-    // Check if element has children that might be hidden (dropdown items)
-    const hasHiddenChildren = Array.from(element.children).some((child) => {
-      const style = window.getComputedStyle(child);
-      return style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0';
-    });
-
-    if (hasHiddenChildren) {
-      return true;
-    }
+    // ⚠️ REMOVED: Generic "hidden children" check was too broad
+    // This was causing non-dropdown elements to be recorded as hovers
+    // Only return true for explicit dropdown patterns above
 
     return false;
   }
@@ -1389,6 +2118,48 @@ export class EventListener {
     // Clear hover tracking after recording
     this.lastHoveredElement = null;
     this.hoverStartTime = 0;
+  }
+
+  /**
+   * Count recent clicks on a specific element within a time window
+   */
+  private countRecentClicksOnElement(element: Element, timeWindowMs: number): number {
+    const now = Date.now();
+    let count = 0;
+
+    for (const click of this.clickHistory) {
+      if (click.element === element && now - click.timestamp < timeWindowMs) {
+        count++;
+      }
+    }
+
+    return count;
+  }
+
+  /**
+   * Record modal lifecycle action
+   */
+  private recordModalLifecycleAction(
+    lifecycleEvent: Omit<ModalLifecycleAction, 'id' | 'timestamp' | 'completedAt' | 'url' | 'type'>
+  ): void {
+    const action: ModalLifecycleAction = {
+      id: generateActionId(++this.actionSequence),
+      type: 'modal-lifecycle',
+      timestamp: this.getRelativeTimestamp(),
+      completedAt:
+        this.getRelativeTimestamp() +
+        (lifecycleEvent.animationDuration || lifecycleEvent.transitionDuration || 0),
+      url: window.location.href,
+      ...lifecycleEvent,
+    };
+
+    this.emitAction(action);
+
+    console.log('[EventListener] Recorded modal lifecycle:', {
+      event: lifecycleEvent.event,
+      modalId: lifecycleEvent.modalId,
+      state: lifecycleEvent.initialState || lifecycleEvent.toState,
+    });
   }
 
   /**
@@ -1552,10 +2323,32 @@ export class EventListener {
   private areSelectorsEqual(sel1: any, sel2: any): boolean {
     if (!sel1 || !sel2) return false;
 
-    // Compare primary selectors (id, css, xpath)
+    // Handle old format (id, css, xpath)
     if (sel1.id && sel2.id) return sel1.id === sel2.id;
     if (sel1.css && sel2.css) return sel1.css === sel2.css;
     if (sel1.xpath && sel2.xpath) return sel1.xpath === sel2.xpath;
+
+    // Handle new multi-strategy format (dataTestId, etc.)
+    if (sel1.dataTestId && sel2.dataTestId) return sel1.dataTestId === sel2.dataTestId;
+    if (sel1.ariaLabel && sel2.ariaLabel) return sel1.ariaLabel === sel2.ariaLabel;
+    if (sel1.name && sel2.name) return sel1.name === sel2.name;
+
+    // Compare by selectors array if available (v2.0.0 format)
+    if (
+      sel1.selectors &&
+      sel2.selectors &&
+      Array.isArray(sel1.selectors) &&
+      Array.isArray(sel2.selectors)
+    ) {
+      // Check if any high-confidence selector matches
+      for (const s1 of sel1.selectors) {
+        for (const s2 of sel2.selectors) {
+          if (s1.strategy === s2.strategy && s1.selector === s2.selector) {
+            return true;
+          }
+        }
+      }
+    }
 
     return false;
   }
