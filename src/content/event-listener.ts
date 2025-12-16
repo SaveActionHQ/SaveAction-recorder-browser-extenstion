@@ -14,8 +14,8 @@ import type {
   WaitConditions,
   ActionContext,
   AlternativeSelector,
-  SelectorWithConfidence,
   ContentSignature,
+  SelectorStrategy,
 } from '@/types';
 import { generateActionId } from '@/types';
 import { SelectorGenerator } from './selector-generator';
@@ -71,6 +71,13 @@ export class EventListener {
   private clickHistory: Array<{ element: Element; timestamp: number }> = []; // Track recent clicks for carousel detection
   private readonly MAX_CLICK_HISTORY = 10; // Maximum clicks to track
 
+  // Dropdown state tracking
+  private dropdownObserver: MutationObserver | null = null; // Track dropdown visibility changes
+  private dropdownOpenEvents: Map<Element, { actionId: string; timestamp: number }> = new Map(); // Track which action opened each dropdown
+  private recentActions: Action[] = []; // Buffer of recent actions for linking
+  private readonly MAX_RECENT_ACTIONS = 20; // Maximum recent actions to track
+  private readonly DROPDOWN_LINK_TIMEOUT = 60000; // 60s - Max time to link dropdown opening to item click
+
   // Event handlers (need to be stored for removal)
   private handleClick: (e: MouseEvent) => void;
   private handleMouseDown: (e: MouseEvent) => void;
@@ -95,6 +102,9 @@ export class EventListener {
     this.modalTracker = new ModalTracker((lifecycleEvent) => {
       this.recordModalLifecycleAction(lifecycleEvent);
     });
+
+    // Initialize dropdown state observer
+    this.initializeDropdownObserver();
 
     // Bind event handlers
     this.handleClick = this.onClick.bind(this);
@@ -247,6 +257,17 @@ export class EventListener {
     this.isListening = true;
     this.attachEventListeners();
     this.modalTracker.start();
+
+    // Start dropdown observer
+    if (this.dropdownObserver) {
+      this.dropdownObserver.observe(document.body, {
+        attributes: true,
+        subtree: true,
+        attributeFilter: ['class', 'style', 'aria-expanded', 'hidden'],
+      });
+      console.log('[EventListener] 🔽 Dropdown observer started');
+    }
+
     console.log('[EventListener] Started listening (with modal tracking)');
   }
 
@@ -284,6 +305,12 @@ export class EventListener {
     this.isListening = false;
     this.removeEventListeners();
     this.modalTracker.stop();
+
+    // Stop dropdown observer
+    if (this.dropdownObserver) {
+      this.dropdownObserver.disconnect();
+      console.log('[EventListener] 🔽 Dropdown observer stopped');
+    }
   }
 
   /**
@@ -478,30 +505,57 @@ export class EventListener {
     const isSubmitButton = this.isSubmitButton(target);
 
     if (willNavigate || isSubmitButton) {
-      // ✅ CRITICAL: For ANY navigation or submit, record action FIRST
+      // 🆕 CRITICAL FIX #2: AJAX form detection
+      if (isSubmitButton) {
+        const form = target.closest('form');
+
+        // Log for debugging multi-step forms
+        console.log('[EventListener] Submit button detected - starting AJAX detection:', {
+          tagName: target.tagName,
+          type: (target as HTMLButtonElement).type,
+          className: target.className,
+          hasForm: !!form,
+        });
+
+        // Create initial click action WITHOUT expectsNavigation (will be updated)
+        const action = this.createClickAction(event, target, 1);
+
+        // Start AJAX detection in background (don't block the click)
+        this.detectAjaxForm(form, target).then((result) => {
+          // Update the action with AJAX detection results
+          action.expectsNavigation = result.expectsNavigation;
+          action.isAjaxForm = result.isAjaxForm;
+          action.ajaxIndicators = result.ajaxIndicators;
+
+          console.log('[EventListener] ⚡ AJAX detection complete:', {
+            actionId: action.id,
+            expectsNavigation: result.expectsNavigation,
+            isAjaxForm: result.isAjaxForm,
+          });
+
+          // Re-emit the updated action to sync with background
+          this.emitAction(action);
+        });
+
+        // Emit initial action immediately (don't wait for AJAX detection)
+        this.emitAction(action);
+
+        // Update previous URL before navigation happens
+        this.previousUrl = window.location.href;
+
+        // Don't prevent default for form submit buttons
+        // Let the browser/framework handle the submission
+        return;
+      }
+
+      // For links and other navigation clicks, record action FIRST
       const action = this.createClickAction(event, target, 1);
       this.emitAction(action);
 
       // Update previous URL before navigation happens
       this.previousUrl = window.location.href;
 
-      // ✅ IMPROVED LOGIC: Handle submit buttons correctly
-      if (isSubmitButton) {
-        // Log for debugging multi-step forms
-        console.log('[EventListener] Submit button detected:', {
-          tagName: target.tagName,
-          type: (target as HTMLButtonElement).type,
-          className: target.className,
-          hasForm: !!target.closest('form'),
-        });
-
-        // Don't prevent default for form submit buttons
-        // Let the browser/framework handle the submission
-        // Action is already recorded and inputs are already flushed
-        return;
-      }
-
-      // For links and other navigation clicks, prevent and re-trigger
+      // Prevent and re-trigger
       event.preventDefault();
       event.stopPropagation();
 
@@ -576,14 +630,6 @@ export class EventListener {
 
     const button = event.button === 0 ? 'left' : event.button === 1 ? 'middle' : 'right';
     const modifiers = this.getModifierKeys(event);
-
-    // 🆕 Generate multi-strategy selectors with confidence (v2.0.0)
-    let selectorsWithConfidence: SelectorWithConfidence[] | undefined;
-    try {
-      selectorsWithConfidence = this.selectorGenerator.generateSelectorsWithConfidence(target);
-    } catch (error) {
-      console.warn('[EventListener] Failed to generate selectors with confidence:', error);
-    }
 
     // 🆕 Generate content signature for list items (v2.0.0)
     let contentSignature: ContentSignature | undefined;
@@ -678,6 +724,34 @@ export class EventListener {
       console.warn('[EventListener] Failed to capture element state:', error);
     }
 
+    // 🆕 CRITICAL FIX #1: Detect checkbox/radio clicks
+    let clickType: 'standard' | 'toggle-input' | 'submit' = 'standard';
+    let inputType: 'checkbox' | 'radio' | undefined;
+    let checked: boolean | undefined;
+
+    if (
+      target instanceof HTMLInputElement &&
+      (target.type === 'checkbox' || target.type === 'radio')
+    ) {
+      clickType = 'toggle-input';
+      inputType = target.type;
+      checked = target.checked; // State AFTER the click
+      console.log('[EventListener] 🔲 Checkbox/Radio click metadata:', {
+        clickType,
+        inputType,
+        checked,
+      });
+    }
+
+    // Detect submit button clicks
+    const isSubmit = this.isSubmitButton(target);
+    if (isSubmit) {
+      clickType = 'submit';
+    }
+
+    // 🆕 CRITICAL FIX #3: Detect dropdown state
+    const dropdownState = this.analyzeDropdownState(target);
+
     return {
       id: generateActionId(++this.actionSequence),
       type: 'click',
@@ -698,7 +772,11 @@ export class EventListener {
       alternativeSelectors,
       // 🆕 v2.0.0 improvements
       contentSignature,
-      selectors: selectorsWithConfidence,
+      // 🆕 CRITICAL FIXES
+      clickType,
+      inputType,
+      checked,
+      ...dropdownState, // Spread dropdown metadata (isInDropdown, requiresParentOpen, etc.)
     };
   }
 
@@ -710,6 +788,22 @@ export class EventListener {
 
     const target = event.target as HTMLInputElement | HTMLTextAreaElement;
     if (!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) return;
+
+    // 🆕 CRITICAL FIX: Checkboxes and radios should be recorded as CLICKS, not inputs
+    // This fixes "cannot be filled" errors in Playwright
+    if (
+      target instanceof HTMLInputElement &&
+      (target.type === 'checkbox' || target.type === 'radio')
+    ) {
+      console.log('[EventListener] 🔲 Checkbox/Radio detected - routing to click handler:', {
+        id: target.id || 'no-id',
+        name: target.name || 'no-name',
+        type: target.type,
+        checked: target.checked,
+      });
+      // Don't process as input - this will be handled by the click event
+      return;
+    }
 
     // 🐛 DEBUG: Log every input event
     console.log('[EventListener] 🎯 onInput called:', {
@@ -734,7 +828,8 @@ export class EventListener {
 
     // Clear previous debounce timer for this input
     if (this.inputDebounceTimers.has(target)) {
-      clearTimeout(this.inputDebounceTimers.get(target)!);
+      const existingTimer = this.inputDebounceTimers.get(target);
+      if (existingTimer) clearTimeout(existingTimer);
     }
 
     // ✅ ADAPTIVE DEBOUNCE: Adjust timeout based on field type (universal for all websites)
@@ -1280,7 +1375,8 @@ export class EventListener {
         this.inputDebounceTimers.set(inputElement, timerId);
       } else {
         // Reset existing timer
-        clearTimeout(this.inputDebounceTimers.get(inputElement)!);
+        const existingTimer = this.inputDebounceTimers.get(inputElement);
+        if (existingTimer) clearTimeout(existingTimer);
 
         this.keystrokeTimes.push(Date.now());
 
@@ -1499,12 +1595,15 @@ export class EventListener {
       }
     }
 
-    // 2. Input submit buttons
+    // 2. Input submit buttons ONLY (NOT text/email/password inputs)
     if (element.tagName === 'INPUT') {
       const input = element as HTMLInputElement;
+      // CRITICAL FIX: Only detect input[type="submit"], not regular form inputs
       if (input.type === 'submit') {
         return true;
       }
+      // DO NOT detect other input types (text, email, password, etc.)
+      return false;
     }
 
     // 3. ARIA-based detection (works for React, Vue, Angular, etc.)
@@ -1628,6 +1727,383 @@ export class EventListener {
     }
 
     return false;
+  }
+
+  /**
+   * 🆕 CRITICAL FIX: Analyze dropdown state for clicks inside dropdown menus
+   * This fixes "element hidden" errors in Playwright
+   *
+   * Detects if element is inside a dropdown and captures parent state info
+   */
+  private analyzeDropdownState(element: Element): {
+    isInDropdown: boolean;
+    requiresParentOpen?: boolean;
+    parentSelector?: SelectorStrategy;
+    parentTrigger?: SelectorStrategy;
+    relatedAction?: string;
+  } {
+    // Common dropdown/menu selectors (framework-agnostic)
+    const dropdownSelectors = [
+      // Semantic HTML
+      '[role="menu"]',
+      '[role="listbox"]',
+      '[role="combobox"]',
+      '[aria-expanded]',
+
+      // Bootstrap patterns
+      '.dropdown-menu',
+      '.dropdown-content',
+      'ul.dropdown',
+
+      // Material UI / Ant Design patterns
+      '.MuiMenu-paper',
+      '.MuiPopover-paper',
+      '.ant-dropdown',
+      '.ant-select-dropdown',
+
+      // Custom select patterns
+      '.menu',
+      '.select-dropdown',
+      '.select-menu',
+      '.select-options',
+      '.menu-items',
+      '.autocomplete-dropdown',
+      'ul[data-dropdown]',
+      'div[data-dropdown]',
+      '[data-dropdown]',
+      '[aria-haspopup="true"]',
+
+      // Generic patterns for custom dropdowns
+      '[class*="dropdown"]',
+      '[class*="menu"]',
+      '[id*="dropdown"]',
+      '[id*="menu"]',
+      'ul[class*="dropdown"]', // Custom <ul> dropdowns
+      'ul[id*="dropdown"]',
+      'ul[id*="menu"]',
+      'div[class*="dropdown"]',
+      'div[id*="dropdown"]',
+      '.popover',
+      '.tooltip-content',
+    ];
+
+    // Find parent dropdown container
+    const dropdownParent = dropdownSelectors
+      .map((selector) => {
+        try {
+          return element.closest(selector);
+        } catch (e) {
+          return null;
+        }
+      })
+      .find((parent) => parent !== null) as Element | null;
+
+    if (!dropdownParent) {
+      return { isInDropdown: false };
+    }
+
+    console.log('[EventListener] 🔽 Element inside dropdown detected:', {
+      elementTag: element.tagName,
+      dropdownTag: dropdownParent.tagName,
+      dropdownClass: dropdownParent.className,
+      dropdownId: dropdownParent.id || 'no-id',
+    });
+
+    // Find the trigger button that opens this dropdown
+    const triggerButton = this.findDropdownTrigger(dropdownParent);
+
+    // Generate selectors for dropdown and trigger
+    const parentSelector = this.selectorGenerator.generateSelectors(dropdownParent);
+    const parentTrigger = triggerButton
+      ? this.selectorGenerator.generateSelectors(triggerButton)
+      : undefined;
+
+    // Find the action that opened this dropdown
+    const relatedAction = this.getDropdownOpeningAction(dropdownParent);
+
+    return {
+      isInDropdown: true,
+      requiresParentOpen: true,
+      parentSelector,
+      parentTrigger,
+      relatedAction,
+    };
+  }
+
+  /**
+   * 🆕 Initialize MutationObserver to track dropdown state changes
+   */
+  private initializeDropdownObserver(): void {
+    this.dropdownObserver = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (
+          mutation.type === 'attributes' &&
+          (mutation.attributeName === 'class' ||
+            mutation.attributeName === 'style' ||
+            mutation.attributeName === 'aria-expanded' ||
+            mutation.attributeName === 'hidden')
+        ) {
+          const element = mutation.target as Element;
+
+          // Check if this is a dropdown element
+          const isDropdown = element.matches(
+            [
+              '[role="menu"]',
+              '[role="listbox"]',
+              '.dropdown-menu',
+              '.dropdown-content',
+              '.MuiMenu-paper',
+              '.MuiPopover-paper',
+              '.ant-dropdown',
+              '[class*="dropdown"]',
+              '[class*="menu"]',
+              'ul[class*="menu"]', // Custom <ul> menus
+              'ul[id*="menu"]',
+              'ul[id*="dropdown"]',
+            ].join(',')
+          );
+
+          if (isDropdown && this.isListening) {
+            const isVisible = this.isElementVisibleForDropdown(element);
+
+            if (isVisible) {
+              // Dropdown just became visible - link to most recent action
+              const lastAction = this.recentActions[this.recentActions.length - 1];
+              if (lastAction && lastAction.type === 'click') {
+                this.onDropdownOpen(element, lastAction.id);
+                console.log('[EventListener] 🔽 Dropdown opened by action:', lastAction.id);
+              }
+            }
+          }
+        }
+      });
+    });
+  }
+
+  /**
+   * 🆕 Check if element is visible (for dropdown detection)
+   */
+  private isElementVisibleForDropdown(element: Element): boolean {
+    const style = window.getComputedStyle(element);
+
+    // Check display and visibility
+    if (style.display === 'none') return false;
+    if (style.visibility === 'hidden') return false;
+    if (style.opacity === '0') return false;
+
+    // Check hidden attribute
+    if ((element as HTMLElement).hidden) return false;
+
+    // Check dimensions
+    const rect = element.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return false;
+
+    // Check aria-hidden
+    if (element.getAttribute('aria-hidden') === 'true') return false;
+
+    return true;
+  }
+
+  /**
+   * 🆕 Record when a dropdown opens
+   */
+  private onDropdownOpen(dropdownElement: Element, actionId: string): void {
+    this.dropdownOpenEvents.set(dropdownElement, {
+      actionId,
+      timestamp: Date.now(),
+    });
+
+    // Clean up old entries (older than 60 seconds)
+    const now = Date.now();
+    for (const [element, event] of this.dropdownOpenEvents.entries()) {
+      if (now - event.timestamp > this.DROPDOWN_LINK_TIMEOUT) {
+        this.dropdownOpenEvents.delete(element);
+      }
+    }
+  }
+
+  /**
+   * 🆕 Get the action that opened a dropdown
+   */
+  private getDropdownOpeningAction(dropdownElement: Element): string | undefined {
+    const openEvent = this.dropdownOpenEvents.get(dropdownElement);
+
+    if (openEvent) {
+      // Check if the opening was recent (within timeout)
+      const timeSinceOpen = Date.now() - openEvent.timestamp;
+      if (timeSinceOpen < this.DROPDOWN_LINK_TIMEOUT) {
+        return openEvent.actionId;
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * 🆕 Find the button/element that triggers a dropdown
+   */
+  private findDropdownTrigger(dropdownContainer: Element): Element | null {
+    const dropdownId = dropdownContainer.id;
+
+    // Strategy 1: aria-controls attribute
+    if (dropdownId) {
+      const trigger = document.querySelector(`[aria-controls="${dropdownId}"]`);
+      if (trigger) {
+        console.log('[EventListener] Found trigger via aria-controls');
+        return trigger;
+      }
+    }
+
+    // Strategy 2: data-target attribute
+    if (dropdownId) {
+      const trigger = document.querySelector(`[data-target="#${dropdownId}"]`);
+      if (trigger) {
+        console.log('[EventListener] Found trigger via data-target');
+        return trigger;
+      }
+    }
+
+    // Strategy 3: Previous sibling with aria-expanded
+    const prevSibling = dropdownContainer.previousElementSibling;
+    if (prevSibling && prevSibling.hasAttribute('aria-expanded')) {
+      console.log('[EventListener] Found trigger via previous sibling');
+      return prevSibling;
+    }
+
+    // Strategy 4: Previous sibling that is a button
+    if (
+      prevSibling &&
+      (prevSibling.tagName === 'BUTTON' || prevSibling.getAttribute('role') === 'button')
+    ) {
+      console.log('[EventListener] Found trigger via button sibling');
+      return prevSibling;
+    }
+
+    // Strategy 5: Parent button with aria-haspopup
+    const parentButton = dropdownContainer.parentElement?.querySelector('button[aria-haspopup]');
+    if (parentButton) {
+      console.log('[EventListener] Found trigger via parent button');
+      return parentButton;
+    }
+
+    // Strategy 6: Search nearby for button with dropdown classes
+    const nearbyTrigger = dropdownContainer.parentElement?.querySelector(
+      [
+        'button.dropdown-toggle',
+        'button[data-toggle="dropdown"]',
+        'button[aria-haspopup]',
+        '.dropdown-button',
+        '[role="button"][aria-haspopup]',
+      ].join(',')
+    );
+    if (nearbyTrigger) {
+      console.log('[EventListener] Found trigger via nearby search');
+      return nearbyTrigger;
+    }
+
+    // Strategy 7: Check parent container for ANY button (for custom dropdowns)
+    const parentContainer = dropdownContainer.parentElement;
+    if (parentContainer) {
+      // Look for any button in the same parent container
+      const anyButton = parentContainer.querySelector('button');
+      if (anyButton && anyButton !== dropdownContainer) {
+        console.log('[EventListener] Found trigger via parent container button');
+        return anyButton;
+      }
+    }
+
+    // Strategy 8: Check for buttons with class containing 'dropdown' or 'btn'
+    const customButton = dropdownContainer.parentElement?.querySelector(
+      [
+        'button[class*="dropdown"]',
+        'button[class*="btn"]',
+        'button[onclick]', // Custom onclick handlers
+        '[class*="dropdown-btn"]',
+        '[class*="trigger"]',
+      ].join(',')
+    );
+    if (customButton) {
+      console.log('[EventListener] Found trigger via custom button patterns');
+      return customButton;
+    }
+
+    console.log('[EventListener] ⚠️ No trigger found for dropdown');
+    return null;
+  }
+
+  /**
+   * 🆕 CRITICAL FIX: Detect if form submission will cause navigation or is AJAX
+   * This fixes 30s timeout waits on AJAX forms (saves 150s+ per test)
+   *
+   * Strategy: Wait 2.5s after form submission to verify URL change
+   * Returns promise with navigation detection result
+   */
+  private async detectAjaxForm(
+    form: HTMLFormElement | null,
+    _submitButton: Element // Prefix with _ to indicate intentionally unused
+  ): Promise<{
+    expectsNavigation: boolean;
+    isAjaxForm: boolean;
+    ajaxIndicators?: {
+      hasPreventDefault: boolean;
+      hasAjaxAttributes: boolean;
+      hasFramework: boolean;
+    };
+  }> {
+    const urlBefore = window.location.href;
+
+    // Check for AJAX indicators BEFORE waiting
+    const ajaxIndicators = {
+      hasPreventDefault: false,
+      hasAjaxAttributes: false,
+      hasFramework: false,
+    };
+
+    if (form) {
+      // Check for preventDefault attached (React/Vue pattern)
+      const formOnSubmit = (form as any).onsubmit;
+      if (formOnSubmit) {
+        ajaxIndicators.hasPreventDefault = true;
+      }
+
+      // Check for AJAX attributes
+      const dataRemote = form.getAttribute('data-remote');
+      const dataAjax = form.getAttribute('data-ajax');
+
+      if (dataRemote === 'true' || dataAjax === 'true') {
+        ajaxIndicators.hasAjaxAttributes = true;
+      }
+
+      // Check for framework classes (React, Vue, Angular)
+      const formClass = form.className || '';
+      if (
+        formClass.includes('ng-') || // Angular
+        formClass.includes('v-') || // Vue
+        form.hasAttribute('data-reactid') || // React
+        form.hasAttribute('data-react-') // React
+      ) {
+        ajaxIndicators.hasFramework = true;
+      }
+    }
+
+    // Wait 2.5 seconds to see if URL changes
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+
+    const urlAfter = window.location.href;
+    const didNavigate = urlBefore !== urlAfter;
+
+    console.log('[EventListener] 🔍 AJAX form detection result:', {
+      urlBefore,
+      urlAfter,
+      didNavigate,
+      ajaxIndicators,
+    });
+
+    return {
+      expectsNavigation: didNavigate,
+      isAjaxForm: !didNavigate,
+      ajaxIndicators: !didNavigate ? ajaxIndicators : undefined,
+    };
   }
 
   /**
@@ -1782,7 +2258,9 @@ export class EventListener {
     if (element.tagName === 'LI') {
       const parent = element.parentElement;
       if (parent && parent.tagName === 'UL') {
-        const parentClasses = Array.from(parent.classList).map((c) => c.toLowerCase());
+        const parentClasses = Array.from(parent.classList)
+          .filter((c) => typeof c === 'string')
+          .map((c) => c.toLowerCase());
 
         // Check for known interactive list patterns
         const interactiveListPatterns = [
@@ -1824,7 +2302,9 @@ export class EventListener {
 
       // Check if parent is a known interactive container
       const parentClasses = element.parentElement
-        ? Array.from(element.parentElement.classList).map((c) => c.toLowerCase())
+        ? Array.from(element.parentElement.classList)
+            .filter((c) => typeof c === 'string')
+            .map((c) => c.toLowerCase())
         : [];
       const interactiveContainerPatterns = ['dropdown', 'menu', 'select', 'option'];
       if (
@@ -1840,7 +2320,9 @@ export class EventListener {
       if (parent && parent.tagName === 'LI') {
         const grandparent = parent.parentElement;
         if (grandparent) {
-          const grandparentClasses = Array.from(grandparent.classList).map((c) => c.toLowerCase());
+          const grandparentClasses = Array.from(grandparent.classList)
+            .filter((c) => typeof c === 'string')
+            .map((c) => c.toLowerCase());
           const interactiveListPatterns = [
             'menu',
             'dropdown',
@@ -2185,6 +2667,13 @@ export class EventListener {
 
     // Track last action for navigation trigger detection
     this.lastAction = action;
+
+    // 🆕 Track recent actions for dropdown linking
+    this.recentActions.push(action);
+    if (this.recentActions.length > this.MAX_RECENT_ACTIONS) {
+      this.recentActions.shift(); // Remove oldest
+    }
+
     this.actionCallback(action);
   }
 

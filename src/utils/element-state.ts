@@ -164,7 +164,9 @@ function calculateModalScore(element: Element): number {
   let score = 0;
   const id = element.id || '';
   const idLower = id.toLowerCase();
-  const classes = Array.from(element.classList).map((c) => c.toLowerCase());
+  const classes = Array.from(element.classList)
+    .filter((c) => typeof c === 'string')
+    .map((c) => c.toLowerCase());
   const role = element.getAttribute('role') || '';
 
   // Highest priority: Semantic HTML and ARIA
@@ -295,14 +297,16 @@ export function detectModalContext(element: Element): Partial<ActionContext> {
         if (closestStateElement.id) {
           context.modalState = closestStateElement.id;
         } else {
-          const stateClasses = Array.from(closestStateElement.classList).filter(
-            (cls) =>
-              cls.toLowerCase().includes('status') ||
-              cls.toLowerCase().includes('state') ||
-              cls.toLowerCase().includes('success') ||
-              cls.toLowerCase().includes('error') ||
-              cls.toLowerCase().includes('details')
-          );
+          const stateClasses = Array.from(closestStateElement.classList)
+            .filter((cls) => typeof cls === 'string')
+            .filter(
+              (cls) =>
+                cls.toLowerCase().includes('status') ||
+                cls.toLowerCase().includes('state') ||
+                cls.toLowerCase().includes('success') ||
+                cls.toLowerCase().includes('error') ||
+                cls.toLowerCase().includes('details')
+            );
           if (stateClasses.length > 0) {
             context.modalState = stateClasses[0];
           }
@@ -432,6 +436,7 @@ export function detectNavigationIntent(element: Element): NavigationIntent {
   const text = element.textContent?.trim().toLowerCase() || '';
   const id = element.id?.toLowerCase() || '';
   const classes = Array.from(element.classList)
+    .filter((c) => typeof c === 'string')
     .map((c) => c.toLowerCase())
     .join(' ');
   const type = (element as HTMLButtonElement).type?.toLowerCase() || '';

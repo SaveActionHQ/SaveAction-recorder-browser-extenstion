@@ -162,6 +162,27 @@ export interface ClickAction extends BaseAction {
   button: 'left' | 'right' | 'middle';
   clickCount: number; // 1 = single, 2 = double
   modifiers: ModifierKey[]; // ['ctrl', 'shift', 'alt', 'meta']
+
+  // 🆕 Checkbox/Radio support
+  clickType?: 'standard' | 'toggle-input' | 'submit'; // Differentiate click types
+  inputType?: 'checkbox' | 'radio'; // For toggle-input clicks
+  checked?: boolean; // Final state after toggle (for checkbox/radio)
+
+  // 🆕 AJAX form detection
+  expectsNavigation?: boolean; // TRUE = wait for nav, FALSE = don't wait
+  isAjaxForm?: boolean; // TRUE = form submits via AJAX without navigation
+  ajaxIndicators?: {
+    hasPreventDefault: boolean;
+    hasAjaxAttributes: boolean;
+    hasFramework: boolean;
+  };
+
+  // 🆕 Dropdown state management
+  isInDropdown?: boolean; // TRUE if element is inside a dropdown/menu
+  requiresParentOpen?: boolean; // TRUE if parent must be opened first
+  parentSelector?: SelectorStrategy; // Selector for dropdown container
+  parentTrigger?: SelectorStrategy; // Selector for button that opens dropdown
+  relatedAction?: string; // ID of action that opened the dropdown (action linking)
 }
 
 /**

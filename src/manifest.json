@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "SaveAction Recorder",
-  "version": "1.0.0",
-  "description": "Record user interactions on web pages and export them as JSON files for automated testing",
+  "version": "2.0.0",
+  "description": "Record user interactions with smart element matching and multi-strategy selectors for reliable test automation",
   "author": "SaveAction Team",
   "homepage_url": "https://github.com/rezwanahmedsami/SaveAction-recorder-browser-extenstion",
 

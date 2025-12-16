@@ -802,8 +802,9 @@ class ActionQueue {
       // Add new action with corrected ID
       actions.push(numberedAction);
 
-      // ✅ BUG FIX #1: Removed duplicate push - accumulatedActions is already updated at line 512
-      // state.accumulatedActions.push(action); // REMOVED to prevent duplication
+      // ✅ CRITICAL FIX: Add to accumulatedActions for cross-page persistence
+      // This ensures actions are available when STOP_RECORDING is called
+      state.accumulatedActions.push(numberedAction);
 
       // Save actions and counter to storage
       await chrome.storage.session.set({

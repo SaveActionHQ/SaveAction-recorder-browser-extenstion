@@ -40,6 +40,177 @@ export class SelectorGenerator {
   }
 
   /**
+   * Generate selectors with confidence scores (v2.0.0)
+   * Returns array of selector strategies sorted by confidence
+   */
+  public generateSelectorsWithConfidence(element: Element): Array<{
+    strategy: string;
+    value: string;
+    context?: string;
+    priority: number;
+    confidence: number;
+  }> {
+    const selectors: Array<{
+      strategy: string;
+      value: string;
+      context?: string;
+      priority: number;
+      confidence: number;
+    }> = [];
+
+    // Strategy 1: data-testid (highest confidence)
+    const testId =
+      element.getAttribute('data-testid') ||
+      element.getAttribute('data-test') ||
+      element.getAttribute('data-cy');
+    if (testId) {
+      selectors.push({
+        strategy: 'data-testid',
+        value: testId,
+        priority: 1,
+        confidence: 95,
+      });
+    }
+
+    // Strategy 2: ID (if not auto-generated)
+    const id = element.id;
+    if (id && !this.isDynamicId(id)) {
+      selectors.push({
+        strategy: 'id',
+        value: id,
+        priority: 2,
+        confidence: 90,
+      });
+    }
+
+    // Strategy 3: aria-label
+    const ariaLabel = element.getAttribute('aria-label');
+    if (ariaLabel && ariaLabel.length > 3) {
+      selectors.push({
+        strategy: 'aria-label',
+        value: ariaLabel,
+        priority: 3,
+        confidence: 88,
+      });
+    }
+
+    // Strategy 4: name attribute
+    if (element instanceof HTMLInputElement || element instanceof HTMLSelectElement) {
+      const name = element.name;
+      if (name) {
+        selectors.push({
+          strategy: 'name',
+          value: name,
+          priority: 4,
+          confidence: 85,
+        });
+      }
+    }
+
+    // Strategy 5: href pattern (for links)
+    if (element instanceof HTMLAnchorElement) {
+      const href = element.getAttribute('href');
+      if (href && href.length > 1 && !href.startsWith('#')) {
+        selectors.push({
+          strategy: 'href-pattern',
+          value: href,
+          priority: 5,
+          confidence: 82,
+        });
+      }
+    }
+
+    // Strategy 6: src pattern (for images)
+    if (element instanceof HTMLImageElement) {
+      const src = element.getAttribute('src');
+      const alt = element.getAttribute('alt');
+      if (src && src.length > 1) {
+        selectors.push({
+          strategy: 'src-pattern',
+          value: src,
+          context: alt || undefined,
+          priority: 6,
+          confidence: 80,
+        });
+      }
+    }
+
+    // Strategy 7: Text content (for buttons, links, list items)
+    const textContent = element.textContent?.trim();
+    if (textContent && textContent.length > 0 && textContent.length < 100) {
+      const shouldUseText = ['li', 'a', 'button', 'span', 'div'].includes(
+        element.tagName.toLowerCase()
+      );
+      if (shouldUseText) {
+        const parent = element.closest('[class*="card"], [class*="item"], li, div');
+        const parentContext = parent?.className || parent?.tagName.toLowerCase();
+
+        selectors.push({
+          strategy: 'text-content',
+          value: textContent,
+          context: parentContext,
+          priority: 7,
+          confidence: 75,
+        });
+      }
+    }
+
+    // Strategy 8: CSS semantic (class + text)
+    const cssClass = element.className;
+    if (cssClass && typeof cssClass === 'string' && textContent && textContent.length < 50) {
+      const primaryClass = cssClass.split(' ').filter((c) => !this.isDynamicClass(c))[0];
+      if (primaryClass) {
+        selectors.push({
+          strategy: 'css-semantic',
+          value: `.${primaryClass}:has-text('${textContent}')`,
+          priority: 8,
+          confidence: 70,
+        });
+      }
+    }
+
+    // Strategy 9: CSS selector
+    const css = this.generateCssSelector(element);
+    if (css) {
+      const isUnique = this.isSelectorUnique(css, element);
+      selectors.push({
+        strategy: 'css',
+        value: css,
+        priority: 9,
+        confidence: isUnique ? 65 : 45,
+      });
+    }
+
+    // Strategy 10: XPath
+    if (this.config.includeXPath) {
+      const xpath = this.generateRelativeXPath(element);
+      if (xpath) {
+        selectors.push({
+          strategy: 'xpath',
+          value: xpath,
+          priority: 10,
+          confidence: 55,
+        });
+      }
+    }
+
+    // Strategy 11: Position (lowest confidence)
+    if (this.config.includePosition) {
+      const position = this.generatePositionSelector(element);
+      if (position) {
+        selectors.push({
+          strategy: 'position',
+          value: `${position.parent} > :nth-child(${position.index + 1})`,
+          priority: 11,
+          confidence: 30,
+        });
+      }
+    }
+
+    return selectors.sort((a, b) => a.priority - b.priority);
+  }
+
+  /**
    * Generate all possible selectors for an element (internal)
    */
   private generateAllSelectors(element: Element): SelectorStrategy {
@@ -66,7 +237,9 @@ export class SelectorGenerator {
       const maxDepth = 15;
 
       while (parent && parent !== document.body && depth < maxDepth) {
-        const parentClasses = Array.from(parent.classList).map((c) => c.toLowerCase());
+        const parentClasses = Array.from(parent.classList)
+          .filter((c) => typeof c === 'string')
+          .map((c) => c.toLowerCase());
         const dropdownPatterns = [
           'dropdown',
           'menu',
