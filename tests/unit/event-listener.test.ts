@@ -184,8 +184,9 @@ describe('EventListener', () => {
       input.value = 'testuser';
       input.dispatchEvent(new Event('input', { bubbles: true }));
 
-      // Wait for debounce
+      // Wait for debounce then stop to flush
       await new Promise((resolve) => setTimeout(resolve, 600));
+      eventListener.stop();
 
       expect(capturedActions).toHaveLength(1);
       const action = capturedActions[0];
@@ -685,15 +686,20 @@ describe('EventListener', () => {
       input.value = 'test';
       input.dispatchEvent(new Event('input', { bubbles: true }));
 
-      // Wait for debounce
+      // Wait for debounce then stop to flush
       await new Promise((resolve) => setTimeout(resolve, 600));
+      eventListener.stop();
+
       const firstCount = capturedActions.length;
       expect(firstCount).toBeGreaterThan(0);
 
       // Different input value (will not be duplicate)
+      eventListener.start(); // Restart after stop
+      input.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       input.value = 'test2';
       input.dispatchEvent(new Event('input', { bubbles: true }));
       await new Promise((resolve) => setTimeout(resolve, 600));
+      eventListener.stop();
 
       // Should increase because value changed
       expect(capturedActions.length).toBeGreaterThan(firstCount);
