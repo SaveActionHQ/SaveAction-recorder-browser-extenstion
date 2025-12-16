@@ -1,0 +1,2025 @@
+{
+  "id": "rec_1765897608335",
+  "version": "1.0.0",
+  "testName": "test",
+  "url": "https://www.mosquepay.co.uk/mosques/login/",
+  "startTime": "2025-12-16T15:06:48.335Z",
+  "endTime": "2025-12-16T15:07:16.015Z",
+  "viewport": {
+    "width": 822,
+    "height": 695
+  },
+  "windowSize": {
+    "width": 1536,
+    "height": 816
+  },
+  "screenSize": {
+    "width": 1536,
+    "height": 864
+  },
+  "devicePixelRatio": 1.25,
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+  "actions": [
+    {
+      "id": "act_001",
+      "type": "click",
+      "timestamp": 494,
+      "completedAt": 544,
+      "url": "https://www.mosquepay.co.uk/mosques/login/",
+      "selector": {
+        "id": "email",
+        "name": "email",
+        "css": "section.login-section > div.container > div.login-box > form.login-form > div.login-form-group > input.form-control.w-full[type=\"email\"]",
+        "xpath": "//input[@id=\"email\"]",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/form[1]/div[1]/input[1]",
+        "position": {
+          "parent": "div.login-form-group",
+          "index": 1
+        },
+        "priority": ["id", "name", "css", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "input",
+      "text": "",
+      "coordinates": {
+        "x": 239.39999389648438,
+        "y": 27.79998779296875
+      },
+      "coordinatesRelativeTo": "element",
+      "button": "left",
+      "clickCount": 1,
+      "modifiers": [],
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "inline-block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false
+      },
+      "alternativeSelectors": [],
+      "clickType": "standard",
+      "isInDropdown": false
+    },
+    {
+      "id": "act_002",
+      "type": "input",
+      "timestamp": 497,
+      "completedAt": 1589,
+      "url": "https://www.mosquepay.co.uk/mosques/login/",
+      "selector": {
+        "id": "email",
+        "name": "email",
+        "css": "section.login-section > div.container > div.login-box > form.login-form > div.login-form-group > input.form-control.w-full[type=\"email\"]",
+        "xpath": "//input[@id=\"email\"]",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/form[1]/div[1]/input[1]",
+        "position": {
+          "parent": "div.login-form-group",
+          "index": 1
+        },
+        "priority": ["id", "name", "css", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "input",
+      "value": "lemonybananathefourth",
+      "inputType": "email",
+      "isSensitive": false,
+      "simulationType": "type",
+      "typingDelay": 52,
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "inline-block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false
+      },
+      "alternativeSelectors": []
+    },
+    {
+      "id": "act_003",
+      "type": "input",
+      "timestamp": 4939,
+      "completedAt": 7123,
+      "url": "https://www.mosquepay.co.uk/mosques/login/",
+      "selector": {
+        "id": "email",
+        "name": "email",
+        "css": "section.login-section > div.container > div.login-box > form.login-form > div.login-form-group > input.form-control.w-full[type=\"email\"]",
+        "xpath": "//input[@id=\"email\"]",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/form[1]/div[1]/input[1]",
+        "position": {
+          "parent": "div.login-form-group",
+          "index": 1
+        },
+        "priority": ["id", "name", "css", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "input",
+      "value": "lemonybananathefourth@gmail.",
+      "inputType": "email",
+      "isSensitive": false,
+      "simulationType": "type",
+      "typingDelay": 78,
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "inline-block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false
+      },
+      "alternativeSelectors": []
+    },
+    {
+      "id": "act_004",
+      "type": "input",
+      "timestamp": 6641,
+      "completedAt": 7974,
+      "url": "https://www.mosquepay.co.uk/mosques/login/",
+      "selector": {
+        "id": "email",
+        "name": "email",
+        "css": "section.login-section > div.container > div.login-box > form.login-form > div.login-form-group > input.form-control.w-full[type=\"email\"]",
+        "xpath": "//input[@id=\"email\"]",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/form[1]/div[1]/input[1]",
+        "position": {
+          "parent": "div.login-form-group",
+          "index": 1
+        },
+        "priority": ["id", "name", "css", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "input",
+      "value": "lemonybananathefourth@gmail.com",
+      "inputType": "email",
+      "isSensitive": false,
+      "simulationType": "type",
+      "typingDelay": 43,
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "inline-block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false
+      },
+      "alternativeSelectors": []
+    },
+    {
+      "id": "act_005",
+      "type": "click",
+      "timestamp": 8169,
+      "completedAt": 8219,
+      "url": "https://www.mosquepay.co.uk/mosques/login/",
+      "selector": {
+        "id": "password",
+        "name": "password",
+        "css": "div.container > div.login-box > form.login-form > div.login-form-group > div.login-form-password > input.form-control.w-full[type=\"password\"]",
+        "xpath": "//input[@id=\"password\"]",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/form[1]/div[2]/div[1]/input[1]",
+        "position": {
+          "parent": "div.login-form-password",
+          "index": 0
+        },
+        "priority": ["id", "name", "css", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "input",
+      "text": "",
+      "coordinates": {
+        "x": 24.399993896484375,
+        "y": 32.199981689453125
+      },
+      "coordinatesRelativeTo": "element",
+      "button": "left",
+      "clickCount": 1,
+      "modifiers": [],
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "inline-block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false
+      },
+      "alternativeSelectors": [],
+      "clickType": "standard",
+      "isInDropdown": false
+    },
+    {
+      "id": "act_006",
+      "type": "input",
+      "timestamp": 8173,
+      "completedAt": 8219,
+      "url": "https://www.mosquepay.co.uk/mosques/login/",
+      "selector": {
+        "id": "password",
+        "name": "password",
+        "css": "div.container > div.login-box > form.login-form > div.login-form-group > div.login-form-password > input.form-control.w-full[type=\"password\"]",
+        "xpath": "//input[@id=\"password\"]",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/form[1]/div[2]/div[1]/input[1]",
+        "position": {
+          "parent": "div.login-form-password",
+          "index": 0
+        },
+        "priority": ["id", "name", "css", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "input",
+      "value": "1",
+      "inputType": "password",
+      "isSensitive": true,
+      "simulationType": "type",
+      "typingDelay": 2,
+      "variableName": "PASSWORD",
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "inline-block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false
+      },
+      "alternativeSelectors": []
+    },
+    {
+      "id": "act_007",
+      "type": "click",
+      "timestamp": 9095,
+      "completedAt": 9145,
+      "url": "https://www.mosquepay.co.uk/mosques/login/",
+      "selector": {
+        "css": "section.login-section > div.container > div.login-box > form.login-form > button.btn.btn-blue.w-full",
+        "text": "Login",
+        "xpath": "//form[contains(@class, \"login-form\")]/button[text()='Login']",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/form[1]/button[1]",
+        "position": {
+          "parent": "form.login-form",
+          "index": 3
+        },
+        "priority": ["css", "text", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "button",
+      "text": "Login",
+      "coordinates": {
+        "x": 76.39999389648438,
+        "y": 25.5999755859375
+      },
+      "coordinatesRelativeTo": "element",
+      "button": "left",
+      "clickCount": 1,
+      "modifiers": [],
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "inline-flex",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false,
+        "navigationIntent": "submit-form",
+        "expectedUrlChange": {
+          "type": "same-page",
+          "patterns": [],
+          "isSuccessFlow": false,
+          "beforeUrl": "https://www.mosquepay.co.uk/mosques/login/"
+        }
+      },
+      "alternativeSelectors": [
+        {
+          "text": "Login",
+          "xpath": "//button[text()=\"Login\"]",
+          "priority": 1
+        }
+      ],
+      "clickType": "submit",
+      "isInDropdown": false
+    },
+    {
+      "id": "act_008",
+      "type": "submit",
+      "timestamp": 9211,
+      "completedAt": 9261,
+      "url": "https://www.mosquepay.co.uk/mosques/login/",
+      "selector": {
+        "css": "section.login-section > div.container > div.login-box > form.login-form",
+        "textContains": "Email address\n                ",
+        "xpath": "//form[contains(@class, \"login-form\")]",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/form[1]",
+        "position": {
+          "parent": "div.login-box",
+          "index": 2
+        },
+        "priority": ["css", "textContains", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "form"
+    },
+    {
+      "id": "act_009",
+      "type": "hover",
+      "timestamp": 11047,
+      "completedAt": 11801,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/?type=donation",
+      "selector": {
+        "css": "div.wrapper > div.container > div.row > div.sidebar.col-md-3 > div#sidebarLinks > a.nav-link.text-decoration-none",
+        "text": "Salah Timetable",
+        "xpath": "//div[contains(@class, \"nav\")]/a[text()='Salah Timetable']",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/div[1]/div[1]/div[1]/a[3]",
+        "position": {
+          "parent": "div#sidebarLinks",
+          "index": 2
+        },
+        "priority": ["css", "text", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "a",
+      "text": "Salah Timetable",
+      "duration": 754,
+      "isDropdownParent": true,
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false
+      },
+      "alternativeSelectors": [
+        {
+          "text": "Salah Timetable",
+          "xpath": "//a[text()=\"Salah Timetable\"]",
+          "priority": 1
+        }
+      ]
+    },
+    {
+      "id": "act_010",
+      "type": "navigation",
+      "timestamp": 11192,
+      "completedAt": 11192,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/?type=donation",
+      "from": "https://www.mosquepay.co.uk/mosques/login/",
+      "to": "https://www.mosquepay.co.uk/mosques/panel/?type=donation",
+      "navigationTrigger": "form-submit",
+      "waitUntil": "load",
+      "duration": 0,
+      "relatedAction": "act_008"
+    },
+    {
+      "id": "act_011",
+      "type": "scroll",
+      "timestamp": 11263,
+      "completedAt": 11801,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/?type=donation",
+      "scrollX": 0,
+      "scrollY": 500,
+      "element": "window"
+    },
+    {
+      "id": "act_012",
+      "type": "hover",
+      "timestamp": 11449,
+      "completedAt": 11832,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/?type=donation",
+      "selector": {
+        "css": "div.wrapper > div.container > div.row > div.sidebar.col-md-3 > div#sidebarLinks > a.nav-link.text-decoration-none",
+        "text": "Announce Janazah",
+        "xpath": "//div[contains(@class, \"nav\")]/a[text()='Announce Janazah']",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/div[1]/div[1]/div[1]/a[11]",
+        "position": {
+          "parent": "div#sidebarLinks",
+          "index": 10
+        },
+        "priority": ["css", "text", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "a",
+      "text": "Announce Janazah",
+      "duration": 383,
+      "isDropdownParent": true,
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false
+      },
+      "alternativeSelectors": [
+        {
+          "text": "Announce Janazah",
+          "xpath": "//a[text()=\"Announce Janazah\"]",
+          "priority": 1
+        }
+      ]
+    },
+    {
+      "id": "act_013",
+      "type": "click",
+      "timestamp": 11452,
+      "completedAt": 11832,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/?type=donation",
+      "selector": {
+        "css": "div.wrapper > div.container > div.row > div.sidebar.col-md-3 > div#sidebarLinks > a.nav-link.text-decoration-none",
+        "text": "Announce Janazah",
+        "xpath": "//div[contains(@class, \"nav\")]/a[text()='Announce Janazah']",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/div[1]/div[1]/div[1]/a[11]",
+        "position": {
+          "parent": "div#sidebarLinks",
+          "index": 10
+        },
+        "priority": ["css", "text", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "a",
+      "text": "Announce Janazah",
+      "coordinates": {
+        "x": 60,
+        "y": 24.199981689453125
+      },
+      "coordinatesRelativeTo": "element",
+      "button": "left",
+      "clickCount": 1,
+      "modifiers": [],
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false,
+        "navigationIntent": "navigate-to-page",
+        "expectedUrlChange": {
+          "type": "redirect",
+          "patterns": [],
+          "isSuccessFlow": false,
+          "beforeUrl": "https://www.mosquepay.co.uk/mosques/panel/?type=donation"
+        }
+      },
+      "alternativeSelectors": [
+        {
+          "text": "Announce Janazah",
+          "xpath": "//a[text()=\"Announce Janazah\"]",
+          "priority": 1
+        }
+      ],
+      "contentSignature": {
+        "elementType": "list-item",
+        "listContainer": {
+          "selector": "div.container",
+          "itemSelector": "div.row"
+        },
+        "contentFingerprint": {
+          "heading": "WhatsApp Message",
+          "subheading": "Manage donations, update timetables, and connect with your\n              community — all from your mosque dashboard.",
+          "imageAlt": "menue-arrow",
+          "imageSrc": "https://www.mosquepay.co.uk/images/Vector.svg",
+          "linkHref": "/mosques/panel/",
+          "buttonText": "Menu"
+        },
+        "visualHints": {
+          "hasImage": true,
+          "hasButton": true,
+          "hasLink": true,
+          "hasPrice": false,
+          "hasRating": false
+        },
+        "fallbackPosition": 0
+      },
+      "clickType": "standard",
+      "isInDropdown": false
+    },
+    {
+      "id": "act_014",
+      "type": "navigation",
+      "timestamp": 13552,
+      "completedAt": 13552,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "from": "https://www.mosquepay.co.uk/mosques/panel/?type=donation",
+      "to": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "navigationTrigger": "form-submit",
+      "waitUntil": "load",
+      "duration": 0,
+      "relatedAction": "act_008"
+    },
+    {
+      "id": "act_015",
+      "type": "scroll",
+      "timestamp": 13637,
+      "completedAt": 13837,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "scrollX": 0,
+      "scrollY": 0,
+      "element": "window"
+    },
+    {
+      "id": "act_016",
+      "type": "click",
+      "timestamp": 13788,
+      "completedAt": 13838,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "selector": {
+        "id": "add-janazah-btn",
+        "css": "div.row > div.col-md-8 > div#janazah-list-view > div.janazah-list-container > div.janazah-list-header > button.janazah-add-btn",
+        "text": "+ Add Janazah",
+        "xpath": "//button[@id=\"add-janazah-btn\"]",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/button[1]",
+        "position": {
+          "parent": "div.janazah-list-header",
+          "index": 1
+        },
+        "priority": ["id", "css", "text", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "button",
+      "text": "+ Add Janazah",
+      "coordinates": {
+        "x": 61.96246337890625,
+        "y": 4.1999969482421875
+      },
+      "coordinatesRelativeTo": "element",
+      "button": "left",
+      "clickCount": 1,
+      "modifiers": [],
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "flex",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false,
+        "navigationIntent": "submit-form",
+        "expectedUrlChange": {
+          "type": "same-page",
+          "patterns": [],
+          "isSuccessFlow": false,
+          "beforeUrl": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/"
+        }
+      },
+      "alternativeSelectors": [
+        {
+          "text": "+ Add Janazah",
+          "xpath": "//button[text()=\"+ Add Janazah\"]",
+          "priority": 1
+        }
+      ],
+      "contentSignature": {
+        "elementType": "list-item",
+        "listContainer": {
+          "selector": "div.janazah-list-header",
+          "itemSelector": "div.row"
+        },
+        "contentFingerprint": {
+          "heading": "WhatsApp Message",
+          "subheading": "test location",
+          "imageAlt": "menue-arrow",
+          "imageSrc": "https://www.mosquepay.co.uk/images/Vector.svg",
+          "linkHref": "/mosques/panel/",
+          "buttonText": "Menu"
+        },
+        "visualHints": {
+          "hasImage": true,
+          "hasButton": true,
+          "hasLink": true,
+          "hasPrice": false,
+          "hasRating": false
+        },
+        "fallbackPosition": 0
+      },
+      "clickType": "submit",
+      "isInDropdown": false
+    },
+    {
+      "id": "act_017",
+      "type": "click",
+      "timestamp": 13866,
+      "completedAt": 16347,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "selector": {
+        "id": "add-janazah-btn",
+        "css": "div.row > div.col-md-8 > div#janazah-list-view > div.janazah-list-container > div.janazah-list-header > button.janazah-add-btn",
+        "text": "+ Add Janazah",
+        "xpath": "//button[@id=\"add-janazah-btn\"]",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/button[1]",
+        "position": {
+          "parent": "div.janazah-list-header",
+          "index": 1
+        },
+        "priority": ["id", "css", "text", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "button",
+      "text": "+ Add Janazah",
+      "coordinates": {
+        "x": 60.96246337890625,
+        "y": 7.1999969482421875
+      },
+      "coordinatesRelativeTo": "element",
+      "button": "left",
+      "clickCount": 1,
+      "modifiers": [],
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "flex",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false,
+        "navigationIntent": "submit-form",
+        "expectedUrlChange": {
+          "type": "same-page",
+          "patterns": [],
+          "isSuccessFlow": false,
+          "beforeUrl": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/"
+        }
+      },
+      "alternativeSelectors": [
+        {
+          "text": "+ Add Janazah",
+          "xpath": "//button[text()=\"+ Add Janazah\"]",
+          "priority": 1
+        }
+      ],
+      "contentSignature": {
+        "elementType": "list-item",
+        "listContainer": {
+          "selector": "div.janazah-list-header",
+          "itemSelector": "div.row"
+        },
+        "contentFingerprint": {
+          "heading": "WhatsApp Message",
+          "subheading": "test location",
+          "imageAlt": "menue-arrow",
+          "imageSrc": "https://www.mosquepay.co.uk/images/Vector.svg",
+          "linkHref": "/mosques/panel/",
+          "buttonText": "Menu"
+        },
+        "visualHints": {
+          "hasImage": true,
+          "hasButton": true,
+          "hasLink": true,
+          "hasPrice": false,
+          "hasRating": false
+        },
+        "fallbackPosition": 0
+      },
+      "clickType": "submit",
+      "isInDropdown": false,
+      "expectsNavigation": false,
+      "isAjaxForm": true,
+      "ajaxIndicators": {
+        "hasPreventDefault": false,
+        "hasAjaxAttributes": false,
+        "hasFramework": false
+      }
+    },
+    {
+      "id": "act_018",
+      "type": "click",
+      "timestamp": 14768,
+      "completedAt": 14818,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "selector": {
+        "id": "janazah-person-name",
+        "name": "name",
+        "css": "div#janazah-form-view > div.janazah-create-form-wrapper > div.janazah-create-form-container > form#janazah-create-form > div.janazah-create-form-field > input.janazah-create-form-input[type=\"text\"]",
+        "xpath": "//input[@id=\"janazah-person-name\"]",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/div[2]/div[2]/div[1]/div[1]/form[1]/div[1]/input[1]",
+        "position": {
+          "parent": "div.janazah-create-form-field",
+          "index": 1
+        },
+        "priority": ["id", "name", "css", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "input",
+      "text": "",
+      "coordinates": {
+        "x": 132.19998168945312,
+        "y": 37.399993896484375
+      },
+      "coordinatesRelativeTo": "element",
+      "button": "left",
+      "clickCount": 1,
+      "modifiers": [],
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "inline-block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false
+      },
+      "alternativeSelectors": [],
+      "contentSignature": {
+        "elementType": "list-item",
+        "listContainer": {
+          "selector": "div.janazah-create-form-container",
+          "itemSelector": "div.row"
+        },
+        "contentFingerprint": {
+          "heading": "WhatsApp Message",
+          "subheading": "test location",
+          "imageAlt": "menue-arrow",
+          "imageSrc": "https://www.mosquepay.co.uk/images/Vector.svg",
+          "linkHref": "/mosques/panel/",
+          "buttonText": "Menu"
+        },
+        "visualHints": {
+          "hasImage": true,
+          "hasButton": true,
+          "hasLink": true,
+          "hasPrice": false,
+          "hasRating": false
+        },
+        "fallbackPosition": 0
+      },
+      "clickType": "standard",
+      "isInDropdown": false
+    },
+    {
+      "id": "act_019",
+      "type": "input",
+      "timestamp": 14769,
+      "completedAt": 14877,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "selector": {
+        "id": "janazah-person-name",
+        "name": "name",
+        "css": "div#janazah-form-view > div.janazah-create-form-wrapper > div.janazah-create-form-container > form#janazah-create-form > div.janazah-create-form-field > input.janazah-create-form-input[type=\"text\"]",
+        "xpath": "//input[@id=\"janazah-person-name\"]",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/div[2]/div[2]/div[1]/div[1]/form[1]/div[1]/input[1]",
+        "position": {
+          "parent": "div.janazah-create-form-field",
+          "index": 1
+        },
+        "priority": ["id", "name", "css", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "input",
+      "value": "test",
+      "inputType": "text",
+      "isSensitive": false,
+      "simulationType": "type",
+      "typingDelay": 27,
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "inline-block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false
+      },
+      "alternativeSelectors": []
+    },
+    {
+      "id": "act_020",
+      "type": "scroll",
+      "timestamp": 15956,
+      "completedAt": 16156,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "scrollX": 0,
+      "scrollY": 200,
+      "element": "window"
+    },
+    {
+      "id": "act_021",
+      "type": "click",
+      "timestamp": 16297,
+      "completedAt": 16347,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "selector": {
+        "id": "use-todays-date",
+        "name": "use-todays-date",
+        "css": "div.janazah-create-form-wrapper > div.janazah-create-form-container > form#janazah-create-form > div.janazah-create-form-field > div.easy-data-give > input[type=\"checkbox\"]",
+        "xpath": "//input[@id=\"use-todays-date\"]",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/div[2]/div[2]/div[1]/div[1]/form[1]/div[2]/div[1]/input[1]",
+        "position": {
+          "parent": "div.easy-data-give",
+          "index": 0
+        },
+        "priority": ["id", "name", "css", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "input",
+      "text": "",
+      "coordinates": {
+        "x": 8.199981689453125,
+        "y": 3.899993896484375
+      },
+      "coordinatesRelativeTo": "element",
+      "button": "left",
+      "clickCount": 1,
+      "modifiers": [],
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false
+      },
+      "alternativeSelectors": [],
+      "contentSignature": {
+        "elementType": "list-item",
+        "listContainer": {
+          "selector": "div.janazah-create-form-container",
+          "itemSelector": "div.row"
+        },
+        "contentFingerprint": {
+          "heading": "WhatsApp Message",
+          "subheading": "test location",
+          "imageAlt": "menue-arrow",
+          "imageSrc": "https://www.mosquepay.co.uk/images/Vector.svg",
+          "linkHref": "/mosques/panel/",
+          "buttonText": "Menu"
+        },
+        "visualHints": {
+          "hasImage": true,
+          "hasButton": true,
+          "hasLink": true,
+          "hasPrice": false,
+          "hasRating": false
+        },
+        "fallbackPosition": 0
+      },
+      "clickType": "toggle-input",
+      "inputType": "checkbox",
+      "checked": false,
+      "isInDropdown": false
+    },
+    {
+      "id": "act_022",
+      "type": "input",
+      "timestamp": 16301,
+      "completedAt": 17320,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "selector": {
+        "id": "use-todays-date",
+        "name": "use-todays-date",
+        "css": "div.janazah-create-form-wrapper > div.janazah-create-form-container > form#janazah-create-form > div.janazah-create-form-field > div.easy-data-give > input[type=\"checkbox\"]",
+        "xpath": "//input[@id=\"use-todays-date\"]",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/div[2]/div[2]/div[1]/div[1]/form[1]/div[2]/div[1]/input[1]",
+        "position": {
+          "parent": "div.easy-data-give",
+          "index": 0
+        },
+        "priority": ["id", "name", "css", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "input",
+      "value": "on",
+      "inputType": "checkbox",
+      "isSensitive": false,
+      "simulationType": "type",
+      "typingDelay": 50,
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false
+      },
+      "alternativeSelectors": []
+    },
+    {
+      "id": "act_023",
+      "type": "click",
+      "timestamp": 16384,
+      "completedAt": 16434,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "selector": {
+        "id": "use-todays-date",
+        "name": "use-todays-date",
+        "css": "div.janazah-create-form-wrapper > div.janazah-create-form-container > form#janazah-create-form > div.janazah-create-form-field > div.easy-data-give > input[type=\"checkbox\"]",
+        "xpath": "//input[@id=\"use-todays-date\"]",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/div[2]/div[2]/div[1]/div[1]/form[1]/div[2]/div[1]/input[1]",
+        "position": {
+          "parent": "div.easy-data-give",
+          "index": 0
+        },
+        "priority": ["id", "name", "css", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "input",
+      "text": "",
+      "coordinates": {
+        "x": 8.199981689453125,
+        "y": 3.899993896484375
+      },
+      "coordinatesRelativeTo": "element",
+      "button": "left",
+      "clickCount": 1,
+      "modifiers": [],
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false
+      },
+      "alternativeSelectors": [],
+      "contentSignature": {
+        "elementType": "list-item",
+        "listContainer": {
+          "selector": "div.janazah-create-form-container",
+          "itemSelector": "div.row"
+        },
+        "contentFingerprint": {
+          "heading": "WhatsApp Message",
+          "subheading": "test location",
+          "imageAlt": "menue-arrow",
+          "imageSrc": "https://www.mosquepay.co.uk/images/Vector.svg",
+          "linkHref": "/mosques/panel/",
+          "buttonText": "Menu"
+        },
+        "visualHints": {
+          "hasImage": true,
+          "hasButton": true,
+          "hasLink": true,
+          "hasPrice": false,
+          "hasRating": false
+        },
+        "fallbackPosition": 0
+      },
+      "clickType": "toggle-input",
+      "inputType": "checkbox",
+      "checked": true,
+      "isInDropdown": false
+    },
+    {
+      "id": "act_024",
+      "type": "scroll",
+      "timestamp": 17120,
+      "completedAt": 17320,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "scrollX": 0,
+      "scrollY": 400,
+      "element": "window"
+    },
+    {
+      "id": "act_025",
+      "type": "click",
+      "timestamp": 17256,
+      "completedAt": 17320,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "selector": {
+        "id": "janazah-time",
+        "name": "time",
+        "css": "div.janazah-create-form-wrapper > div.janazah-create-form-container > form#janazah-create-form > div.janazah-create-form-field > div.janazah-create-form-select-wrapper > select.janazah-create-form-select.janazah-create-form-input",
+        "textContains": "e.g: 9:45 AM\n                 ",
+        "xpath": "//select[@id=\"janazah-time\"]",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/div[2]/div[2]/div[1]/div[1]/form[1]/div[3]/div[1]/select[1]",
+        "position": {
+          "parent": "div.janazah-create-form-select-wrapper",
+          "index": 0
+        },
+        "priority": ["id", "name", "css", "textContains", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "select",
+      "text": "e.g: 9:45 AM\n                          \n                          12:00 AM\n                          12:30 AM\n                          1:00 AM\n                          1:30 AM\n                          2:00 AM\n                          2:30 AM\n                          3:00 AM\n                          3:30 AM\n                          4:00 AM\n                          4:30 AM\n                          5:00 AM\n                          5:30 AM\n                          6:00 AM\n                          6:30 AM\n                          7:00 AM\n                          7:30 AM\n                          8:00 AM\n                          8:30 AM\n                          9:00 AM\n                          9:30 AM\n                          9:45 AM\n                          10:00 AM\n                          10:30 AM\n                          11:00 AM\n                          11:30 AM\n                          12:00 PM\n                          12:30 PM\n                          1:00 PM\n                          1:30 PM\n                          2:00 PM\n                          2:30 PM\n                          3:00 PM\n                          3:30 PM\n                          4:00 PM\n                          4:30 PM\n                          5:00 PM\n                          5:30 PM\n                          6:00 PM\n                          6:30 PM\n                          7:00 PM\n                          7:30 PM\n                          8:00 PM\n                          8:30 PM\n                          9:00 PM\n                          9:30 PM\n                          10:00 PM\n                          10:30 PM\n                          11:00 PM\n                          11:30 PM",
+      "coordinates": {
+        "x": 62.199981689453125,
+        "y": 39.399993896484375
+      },
+      "coordinatesRelativeTo": "element",
+      "button": "left",
+      "clickCount": 1,
+      "modifiers": [],
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "inline-block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false
+      },
+      "alternativeSelectors": [],
+      "contentSignature": {
+        "elementType": "list-item",
+        "listContainer": {
+          "selector": "div.janazah-create-form-container",
+          "itemSelector": "div.row"
+        },
+        "contentFingerprint": {
+          "heading": "WhatsApp Message",
+          "subheading": "test location",
+          "imageAlt": "menue-arrow",
+          "imageSrc": "https://www.mosquepay.co.uk/images/Vector.svg",
+          "linkHref": "/mosques/panel/",
+          "buttonText": "Menu"
+        },
+        "visualHints": {
+          "hasImage": true,
+          "hasButton": true,
+          "hasLink": true,
+          "hasPrice": false,
+          "hasRating": false
+        },
+        "fallbackPosition": 0
+      },
+      "clickType": "submit",
+      "isInDropdown": false
+    },
+    {
+      "id": "act_026",
+      "type": "click",
+      "timestamp": 17331,
+      "completedAt": 17381,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "selector": {
+        "id": "janazah-time",
+        "name": "time",
+        "css": "div.janazah-create-form-wrapper > div.janazah-create-form-container > form#janazah-create-form > div.janazah-create-form-field > div.janazah-create-form-select-wrapper > select.janazah-create-form-select.janazah-create-form-input",
+        "textContains": "e.g: 9:45 AM\n                 ",
+        "xpath": "//select[@id=\"janazah-time\"]",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/div[2]/div[2]/div[1]/div[1]/form[1]/div[3]/div[1]/select[1]",
+        "position": {
+          "parent": "div.janazah-create-form-select-wrapper",
+          "index": 0
+        },
+        "priority": ["id", "name", "css", "textContains", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "select",
+      "text": "e.g: 9:45 AM\n                          \n                          12:00 AM\n                          12:30 AM\n                          1:00 AM\n                          1:30 AM\n                          2:00 AM\n                          2:30 AM\n                          3:00 AM\n                          3:30 AM\n                          4:00 AM\n                          4:30 AM\n                          5:00 AM\n                          5:30 AM\n                          6:00 AM\n                          6:30 AM\n                          7:00 AM\n                          7:30 AM\n                          8:00 AM\n                          8:30 AM\n                          9:00 AM\n                          9:30 AM\n                          9:45 AM\n                          10:00 AM\n                          10:30 AM\n                          11:00 AM\n                          11:30 AM\n                          12:00 PM\n                          12:30 PM\n                          1:00 PM\n                          1:30 PM\n                          2:00 PM\n                          2:30 PM\n                          3:00 PM\n                          3:30 PM\n                          4:00 PM\n                          4:30 PM\n                          5:00 PM\n                          5:30 PM\n                          6:00 PM\n                          6:30 PM\n                          7:00 PM\n                          7:30 PM\n                          8:00 PM\n                          8:30 PM\n                          9:00 PM\n                          9:30 PM\n                          10:00 PM\n                          10:30 PM\n                          11:00 PM\n                          11:30 PM",
+      "coordinates": {
+        "x": 62.199981689453125,
+        "y": 39.399993896484375
+      },
+      "coordinatesRelativeTo": "element",
+      "button": "left",
+      "clickCount": 1,
+      "modifiers": [],
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "inline-block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false
+      },
+      "alternativeSelectors": [],
+      "contentSignature": {
+        "elementType": "list-item",
+        "listContainer": {
+          "selector": "div.janazah-create-form-container",
+          "itemSelector": "div.row"
+        },
+        "contentFingerprint": {
+          "heading": "WhatsApp Message",
+          "subheading": "test location",
+          "imageAlt": "menue-arrow",
+          "imageSrc": "https://www.mosquepay.co.uk/images/Vector.svg",
+          "linkHref": "/mosques/panel/",
+          "buttonText": "Menu"
+        },
+        "visualHints": {
+          "hasImage": true,
+          "hasButton": true,
+          "hasLink": true,
+          "hasPrice": false,
+          "hasRating": false
+        },
+        "fallbackPosition": 0
+      },
+      "clickType": "submit",
+      "isInDropdown": false
+    },
+    {
+      "id": "act_027",
+      "type": "select",
+      "timestamp": 20281,
+      "completedAt": 20381,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "selector": {
+        "id": "janazah-time",
+        "name": "time",
+        "css": "div.janazah-create-form-wrapper > div.janazah-create-form-container > form#janazah-create-form > div.janazah-create-form-field > div.janazah-create-form-select-wrapper > select.janazah-create-form-select.janazah-create-form-input",
+        "textContains": "e.g: 9:45 AM\n                 ",
+        "xpath": "//select[@id=\"janazah-time\"]",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/div[2]/div[2]/div[1]/div[1]/form[1]/div[3]/div[1]/select[1]",
+        "position": {
+          "parent": "div.janazah-create-form-select-wrapper",
+          "index": 0
+        },
+        "priority": ["id", "name", "css", "textContains", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "select",
+      "selectedValue": "11:30 PM",
+      "selectedText": "11:30 PM",
+      "selectedIndex": 49
+    },
+    {
+      "id": "act_028",
+      "type": "click",
+      "timestamp": 20284,
+      "completedAt": 20381,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "selector": {
+        "id": "janazah-time",
+        "name": "time",
+        "css": "div.janazah-create-form-wrapper > div.janazah-create-form-container > form#janazah-create-form > div.janazah-create-form-field > div.janazah-create-form-select-wrapper > select.janazah-create-form-select.janazah-create-form-input",
+        "textContains": "e.g: 9:45 AM\n                 ",
+        "xpath": "//select[@id=\"janazah-time\"]",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/div[2]/div[2]/div[1]/div[1]/form[1]/div[3]/div[1]/select[1]",
+        "position": {
+          "parent": "div.janazah-create-form-select-wrapper",
+          "index": 0
+        },
+        "priority": ["id", "name", "css", "textContains", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "select",
+      "text": "e.g: 9:45 AM\n                          \n                          12:00 AM\n                          12:30 AM\n                          1:00 AM\n                          1:30 AM\n                          2:00 AM\n                          2:30 AM\n                          3:00 AM\n                          3:30 AM\n                          4:00 AM\n                          4:30 AM\n                          5:00 AM\n                          5:30 AM\n                          6:00 AM\n                          6:30 AM\n                          7:00 AM\n                          7:30 AM\n                          8:00 AM\n                          8:30 AM\n                          9:00 AM\n                          9:30 AM\n                          9:45 AM\n                          10:00 AM\n                          10:30 AM\n                          11:00 AM\n                          11:30 AM\n                          12:00 PM\n                          12:30 PM\n                          1:00 PM\n                          1:30 PM\n                          2:00 PM\n                          2:30 PM\n                          3:00 PM\n                          3:30 PM\n                          4:00 PM\n                          4:30 PM\n                          5:00 PM\n                          5:30 PM\n                          6:00 PM\n                          6:30 PM\n                          7:00 PM\n                          7:30 PM\n                          8:00 PM\n                          8:30 PM\n                          9:00 PM\n                          9:30 PM\n                          10:00 PM\n                          10:30 PM\n                          11:00 PM\n                          11:30 PM",
+      "coordinates": {
+        "x": -0.800018310546875,
+        "y": -0.600006103515625
+      },
+      "coordinatesRelativeTo": "element",
+      "button": "right",
+      "clickCount": 1,
+      "modifiers": [],
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "inline-block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false
+      },
+      "alternativeSelectors": [],
+      "contentSignature": {
+        "elementType": "list-item",
+        "listContainer": {
+          "selector": "div.janazah-create-form-container",
+          "itemSelector": "div.row"
+        },
+        "contentFingerprint": {
+          "heading": "WhatsApp Message",
+          "subheading": "test location",
+          "imageAlt": "menue-arrow",
+          "imageSrc": "https://www.mosquepay.co.uk/images/Vector.svg",
+          "linkHref": "/mosques/panel/",
+          "buttonText": "Menu"
+        },
+        "visualHints": {
+          "hasImage": true,
+          "hasButton": true,
+          "hasLink": true,
+          "hasPrice": false,
+          "hasRating": false
+        },
+        "fallbackPosition": 0
+      },
+      "clickType": "submit",
+      "isInDropdown": false
+    },
+    {
+      "id": "act_029",
+      "type": "click",
+      "timestamp": 20284,
+      "completedAt": 21674,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "selector": {
+        "id": "janazah-time",
+        "name": "time",
+        "css": "div.janazah-create-form-wrapper > div.janazah-create-form-container > form#janazah-create-form > div.janazah-create-form-field > div.janazah-create-form-select-wrapper > select.janazah-create-form-select.janazah-create-form-input",
+        "textContains": "e.g: 9:45 AM\n                 ",
+        "xpath": "//select[@id=\"janazah-time\"]",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/div[2]/div[2]/div[1]/div[1]/form[1]/div[3]/div[1]/select[1]",
+        "position": {
+          "parent": "div.janazah-create-form-select-wrapper",
+          "index": 0
+        },
+        "priority": ["id", "name", "css", "textContains", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "select",
+      "text": "e.g: 9:45 AM\n                          \n                          12:00 AM\n                          12:30 AM\n                          1:00 AM\n                          1:30 AM\n                          2:00 AM\n                          2:30 AM\n                          3:00 AM\n                          3:30 AM\n                          4:00 AM\n                          4:30 AM\n                          5:00 AM\n                          5:30 AM\n                          6:00 AM\n                          6:30 AM\n                          7:00 AM\n                          7:30 AM\n                          8:00 AM\n                          8:30 AM\n                          9:00 AM\n                          9:30 AM\n                          9:45 AM\n                          10:00 AM\n                          10:30 AM\n                          11:00 AM\n                          11:30 AM\n                          12:00 PM\n                          12:30 PM\n                          1:00 PM\n                          1:30 PM\n                          2:00 PM\n                          2:30 PM\n                          3:00 PM\n                          3:30 PM\n                          4:00 PM\n                          4:30 PM\n                          5:00 PM\n                          5:30 PM\n                          6:00 PM\n                          6:30 PM\n                          7:00 PM\n                          7:30 PM\n                          8:00 PM\n                          8:30 PM\n                          9:00 PM\n                          9:30 PM\n                          10:00 PM\n                          10:30 PM\n                          11:00 PM\n                          11:30 PM",
+      "coordinates": {
+        "x": -0.800018310546875,
+        "y": -0.600006103515625
+      },
+      "coordinatesRelativeTo": "element",
+      "button": "right",
+      "clickCount": 1,
+      "modifiers": [],
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "inline-block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false
+      },
+      "alternativeSelectors": [],
+      "contentSignature": {
+        "elementType": "list-item",
+        "listContainer": {
+          "selector": "div.janazah-create-form-container",
+          "itemSelector": "div.row"
+        },
+        "contentFingerprint": {
+          "heading": "WhatsApp Message",
+          "subheading": "test location",
+          "imageAlt": "menue-arrow",
+          "imageSrc": "https://www.mosquepay.co.uk/images/Vector.svg",
+          "linkHref": "/mosques/panel/",
+          "buttonText": "Menu"
+        },
+        "visualHints": {
+          "hasImage": true,
+          "hasButton": true,
+          "hasLink": true,
+          "hasPrice": false,
+          "hasRating": false
+        },
+        "fallbackPosition": 0
+      },
+      "clickType": "submit",
+      "isInDropdown": false,
+      "expectsNavigation": false,
+      "isAjaxForm": true,
+      "ajaxIndicators": {
+        "hasPreventDefault": false,
+        "hasAjaxAttributes": false,
+        "hasFramework": false
+      }
+    },
+    {
+      "id": "act_030",
+      "type": "scroll",
+      "timestamp": 21073,
+      "completedAt": 21273,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "scrollX": 0,
+      "scrollY": 600,
+      "element": "window"
+    },
+    {
+      "id": "act_031",
+      "type": "click",
+      "timestamp": 21561,
+      "completedAt": 21611,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "selector": {
+        "id": "janazah-location",
+        "name": "location",
+        "css": "div#janazah-form-view > div.janazah-create-form-wrapper > div.janazah-create-form-container > form#janazah-create-form > div.janazah-create-form-field > input.janazah-create-form-input[type=\"text\"]",
+        "xpath": "//input[@id=\"janazah-location\"]",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/div[2]/div[2]/div[1]/div[1]/form[1]/div[4]/input[1]",
+        "position": {
+          "parent": "div.janazah-create-form-field",
+          "index": 1
+        },
+        "priority": ["id", "name", "css", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "input",
+      "text": "",
+      "coordinates": {
+        "x": 109.19998168945312,
+        "y": 39.600006103515625
+      },
+      "coordinatesRelativeTo": "element",
+      "button": "left",
+      "clickCount": 1,
+      "modifiers": [],
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "inline-block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false
+      },
+      "alternativeSelectors": [],
+      "contentSignature": {
+        "elementType": "list-item",
+        "listContainer": {
+          "selector": "div.janazah-create-form-container",
+          "itemSelector": "div.row"
+        },
+        "contentFingerprint": {
+          "heading": "WhatsApp Message",
+          "subheading": "test location",
+          "imageAlt": "menue-arrow",
+          "imageSrc": "https://www.mosquepay.co.uk/images/Vector.svg",
+          "linkHref": "/mosques/panel/",
+          "buttonText": "Menu"
+        },
+        "visualHints": {
+          "hasImage": true,
+          "hasButton": true,
+          "hasLink": true,
+          "hasPrice": false,
+          "hasRating": false
+        },
+        "fallbackPosition": 0
+      },
+      "clickType": "standard",
+      "isInDropdown": false
+    },
+    {
+      "id": "act_032",
+      "type": "input",
+      "timestamp": 21562,
+      "completedAt": 21674,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "selector": {
+        "id": "janazah-location",
+        "name": "location",
+        "css": "div#janazah-form-view > div.janazah-create-form-wrapper > div.janazah-create-form-container > form#janazah-create-form > div.janazah-create-form-field > input.janazah-create-form-input[type=\"text\"]",
+        "xpath": "//input[@id=\"janazah-location\"]",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/div[2]/div[2]/div[1]/div[1]/form[1]/div[4]/input[1]",
+        "position": {
+          "parent": "div.janazah-create-form-field",
+          "index": 1
+        },
+        "priority": ["id", "name", "css", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "input",
+      "value": "test",
+      "inputType": "text",
+      "isSensitive": false,
+      "simulationType": "type",
+      "typingDelay": 28,
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "inline-block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false
+      },
+      "alternativeSelectors": []
+    },
+    {
+      "id": "act_033",
+      "type": "click",
+      "timestamp": 23218,
+      "completedAt": 23268,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "selector": {
+        "css": "div.col-md-8 > div#janazah-form-view > div.janazah-create-form-wrapper > div.janazah-create-form-container > form#janazah-create-form > button.janazah-create-form-submit-btn",
+        "text": "Add",
+        "xpath": "//button[text()='Add']",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/div[2]/div[2]/div[1]/div[1]/form[1]/button[1]",
+        "position": {
+          "parent": "form#janazah-create-form",
+          "index": 4
+        },
+        "priority": ["css", "text", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "button",
+      "text": "Add",
+      "coordinates": {
+        "x": 64.19998168945312,
+        "y": 36.199981689453125
+      },
+      "coordinatesRelativeTo": "element",
+      "button": "left",
+      "clickCount": 1,
+      "modifiers": [],
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "inline-block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false,
+        "navigationIntent": "checkout-complete",
+        "isTerminalAction": true,
+        "expectedUrlChange": {
+          "type": "success",
+          "patterns": [
+            "/account/",
+            "/orders/",
+            "/order/",
+            "/thank-you",
+            "/confirmation",
+            "/success"
+          ],
+          "isSuccessFlow": true,
+          "beforeUrl": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/"
+        }
+      },
+      "alternativeSelectors": [
+        {
+          "text": "Add",
+          "xpath": "//button[text()=\"Add\"]",
+          "priority": 1
+        }
+      ],
+      "contentSignature": {
+        "elementType": "list-item",
+        "listContainer": {
+          "selector": "div.janazah-create-form-container",
+          "itemSelector": "div.row"
+        },
+        "contentFingerprint": {
+          "heading": "WhatsApp Message",
+          "subheading": "test location",
+          "imageAlt": "menue-arrow",
+          "imageSrc": "https://www.mosquepay.co.uk/images/Vector.svg",
+          "linkHref": "/mosques/panel/",
+          "buttonText": "Menu"
+        },
+        "visualHints": {
+          "hasImage": true,
+          "hasButton": true,
+          "hasLink": true,
+          "hasPrice": false,
+          "hasRating": false
+        },
+        "fallbackPosition": 0
+      },
+      "clickType": "submit",
+      "isInDropdown": false
+    },
+    {
+      "id": "act_034",
+      "type": "click",
+      "timestamp": 23304,
+      "completedAt": 28062,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "selector": {
+        "css": "div.col-md-8 > div#janazah-form-view > div.janazah-create-form-wrapper > div.janazah-create-form-container > form#janazah-create-form > button.janazah-create-form-submit-btn",
+        "text": "Add",
+        "xpath": "//button[text()='Add']",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/div[2]/div[2]/div[1]/div[1]/form[1]/button[1]",
+        "position": {
+          "parent": "form#janazah-create-form",
+          "index": 4
+        },
+        "priority": ["css", "text", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "button",
+      "text": "Add",
+      "coordinates": {
+        "x": 64.19998168945312,
+        "y": 36.199981689453125
+      },
+      "coordinatesRelativeTo": "element",
+      "button": "left",
+      "clickCount": 1,
+      "modifiers": [],
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "inline-block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isLazyLoaded": false,
+        "navigationIntent": "checkout-complete",
+        "isTerminalAction": true,
+        "expectedUrlChange": {
+          "type": "success",
+          "patterns": [
+            "/account/",
+            "/orders/",
+            "/order/",
+            "/thank-you",
+            "/confirmation",
+            "/success"
+          ],
+          "isSuccessFlow": true,
+          "beforeUrl": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/"
+        }
+      },
+      "alternativeSelectors": [
+        {
+          "text": "Add",
+          "xpath": "//button[text()=\"Add\"]",
+          "priority": 1
+        }
+      ],
+      "contentSignature": {
+        "elementType": "list-item",
+        "listContainer": {
+          "selector": "div.janazah-create-form-container",
+          "itemSelector": "div.row"
+        },
+        "contentFingerprint": {
+          "heading": "WhatsApp Message",
+          "subheading": "test location",
+          "imageAlt": "menue-arrow",
+          "imageSrc": "https://www.mosquepay.co.uk/images/Vector.svg",
+          "linkHref": "/mosques/panel/",
+          "buttonText": "Menu"
+        },
+        "visualHints": {
+          "hasImage": true,
+          "hasButton": true,
+          "hasLink": true,
+          "hasPrice": false,
+          "hasRating": false
+        },
+        "fallbackPosition": 0
+      },
+      "clickType": "submit",
+      "isInDropdown": false,
+      "expectsNavigation": false,
+      "isAjaxForm": true,
+      "ajaxIndicators": {
+        "hasPreventDefault": false,
+        "hasAjaxAttributes": false,
+        "hasFramework": false
+      }
+    },
+    {
+      "id": "act_035",
+      "type": "submit",
+      "timestamp": 23341,
+      "completedAt": 23391,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "selector": {
+        "id": "janazah-create-form",
+        "css": "div.row > div.col-md-8 > div#janazah-form-view > div.janazah-create-form-wrapper > div.janazah-create-form-container > form",
+        "textContains": "Name of the deceased\n         ",
+        "xpath": "//form[@id=\"janazah-create-form\"]",
+        "xpathAbsolute": "/html/body[1]/section[1]/div[1]/div[1]/div[2]/div[2]/div[1]/div[1]/form[1]",
+        "position": {
+          "parent": "div.janazah-create-form-container",
+          "index": 2
+        },
+        "priority": ["id", "css", "textContains", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "form"
+    },
+    {
+      "id": "act_036",
+      "type": "modal-lifecycle",
+      "timestamp": 23809,
+      "completedAt": 23959,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "event": "modal-opened",
+      "modalId": "modal-0-0-1765897632144",
+      "modalSelector": "div",
+      "initialState": "swal2-popup",
+      "animationDuration": 150
+    },
+    {
+      "id": "act_037",
+      "type": "modal-lifecycle",
+      "timestamp": 23810,
+      "completedAt": 24110,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "event": "modal-opened",
+      "modalId": "modal-229-313-1765897632145",
+      "modalSelector": "div",
+      "initialState": "default",
+      "animationDuration": 300
+    },
+    {
+      "id": "act_038",
+      "type": "modal-lifecycle",
+      "timestamp": 23810,
+      "completedAt": 24560,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "event": "modal-opened",
+      "modalId": "modal-238-370-1765897632145",
+      "modalSelector": "span",
+      "initialState": "default",
+      "animationDuration": 750
+    },
+    {
+      "id": "act_039",
+      "type": "modal-lifecycle",
+      "timestamp": 23811,
+      "completedAt": 24561,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "event": "modal-opened",
+      "modalId": "modal-273-403-1765897632146",
+      "modalSelector": "span",
+      "initialState": "default",
+      "animationDuration": 750
+    },
+    {
+      "id": "act_040",
+      "type": "modal-lifecycle",
+      "timestamp": 23811,
+      "completedAt": 24561,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "event": "modal-opened",
+      "modalId": "modal-214-367-1765897632146",
+      "modalSelector": "div",
+      "initialState": "default",
+      "animationDuration": 300
+    },
+    {
+      "id": "act_041",
+      "type": "modal-lifecycle",
+      "timestamp": 23811,
+      "completedAt": 24561,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "event": "modal-opened",
+      "modalId": "modal-237-366-1765897632146",
+      "modalSelector": "div",
+      "initialState": "default",
+      "animationDuration": 300
+    },
+    {
+      "id": "act_042",
+      "type": "modal-lifecycle",
+      "timestamp": 23812,
+      "completedAt": 28062,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "event": "modal-opened",
+      "modalId": "modal-182-359-1765897632147",
+      "modalSelector": "div",
+      "initialState": "default",
+      "animationDuration": 4250
+    },
+    {
+      "id": "act_043",
+      "type": "modal-lifecycle",
+      "timestamp": 23812,
+      "completedAt": 28062,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "event": "modal-opened",
+      "modalId": "modal-0-0-1765897632147",
+      "modalSelector": "div",
+      "initialState": "default",
+      "animationDuration": 300
+    },
+    {
+      "id": "act_044",
+      "type": "modal-lifecycle",
+      "timestamp": 23812,
+      "completedAt": 28062,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "event": "modal-closed",
+      "modalId": "modal-0-0-1765897632147",
+      "modalSelector": "div"
+    },
+    {
+      "id": "act_045",
+      "type": "click",
+      "timestamp": 24952,
+      "completedAt": 28062,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "selector": {
+        "css": "div.swal2-container.swal2-center > div.swal2-popup.swal2-modal > div.swal2-actions > button.swal2-confirm.swal2-styled",
+        "text": "OK",
+        "xpath": "//div[contains(@class, \"swal2-actions\")]/button[text()='OK']",
+        "xpathAbsolute": "/html/body[1]/div[2]/div[1]/div[6]/button[1]",
+        "position": {
+          "parent": "div.swal2-actions",
+          "index": 1
+        },
+        "priority": ["css", "text", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "button",
+      "text": "OK",
+      "coordinates": {
+        "x": 40.73748779296875,
+        "y": 25.61248779296875
+      },
+      "coordinatesRelativeTo": "element",
+      "button": "left",
+      "clickCount": 1,
+      "modifiers": [],
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isInsideModal": true,
+        "modalId": "unknown-modal",
+        "isLazyLoaded": false,
+        "modalState": "default",
+        "requiresModalState": true,
+        "navigationIntent": "close-modal-and-redirect",
+        "expectedUrlChange": {
+          "type": "same-page",
+          "patterns": [],
+          "isSuccessFlow": false,
+          "beforeUrl": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/"
+        },
+        "actionGroup": "modal-unknown-modal",
+        "dependentActions": []
+      },
+      "alternativeSelectors": [
+        {
+          "text": "OK",
+          "xpath": "//button[text()=\"OK\"]",
+          "priority": 1
+        }
+      ],
+      "clickType": "submit",
+      "isInDropdown": false
+    },
+    {
+      "id": "act_046",
+      "type": "click",
+      "timestamp": 25016,
+      "completedAt": 28062,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "selector": {
+        "css": "div.swal2-container.swal2-center > div.swal2-popup.swal2-modal > div.swal2-actions > button.swal2-confirm.swal2-styled",
+        "text": "OK",
+        "xpath": "//div[contains(@class, \"swal2-actions\")]/button[text()='OK']",
+        "xpathAbsolute": "/html/body[1]/div[2]/div[1]/div[6]/button[1]",
+        "position": {
+          "parent": "div.swal2-actions",
+          "index": 1
+        },
+        "priority": ["css", "text", "xpath", "xpathAbsolute", "position"]
+      },
+      "tagName": "button",
+      "text": "OK",
+      "coordinates": {
+        "x": 40.73748779296875,
+        "y": 25.61248779296875
+      },
+      "coordinatesRelativeTo": "element",
+      "button": "left",
+      "clickCount": 1,
+      "modifiers": [],
+      "elementState": {
+        "visible": true,
+        "inViewport": true,
+        "opacity": "1",
+        "display": "block",
+        "zIndex": "auto",
+        "enabled": true
+      },
+      "waitConditions": {
+        "elementVisible": true,
+        "parentVisible": true,
+        "networkIdle": true,
+        "elementStable": true
+      },
+      "context": {
+        "isInsideModal": true,
+        "modalId": "unknown-modal",
+        "isLazyLoaded": false,
+        "modalState": "default",
+        "requiresModalState": true,
+        "navigationIntent": "close-modal-and-redirect",
+        "expectedUrlChange": {
+          "type": "same-page",
+          "patterns": [],
+          "isSuccessFlow": false,
+          "beforeUrl": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/"
+        },
+        "actionGroup": "modal-unknown-modal",
+        "dependentActions": ["act_045"]
+      },
+      "alternativeSelectors": [
+        {
+          "text": "OK",
+          "xpath": "//button[text()=\"OK\"]",
+          "priority": 1
+        }
+      ],
+      "clickType": "submit",
+      "isInDropdown": false,
+      "expectsNavigation": false,
+      "isAjaxForm": true,
+      "ajaxIndicators": {
+        "hasPreventDefault": false,
+        "hasAjaxAttributes": false,
+        "hasFramework": false
+      }
+    },
+    {
+      "id": "act_047",
+      "type": "scroll",
+      "timestamp": 27111,
+      "completedAt": 28062,
+      "url": "https://www.mosquepay.co.uk/mosques/panel/janazah-announce/",
+      "scrollX": 0,
+      "scrollY": 0,
+      "element": "window"
+    }
+  ],
+  "variables": [
+    {
+      "name": "PASSWORD",
+      "description": "password field (#password)",
+      "fieldType": "password",
+      "selector": "#password",
+      "placeholder": "${PASSWORD}"
+    }
+  ]
+}

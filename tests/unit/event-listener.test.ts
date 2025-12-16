@@ -293,32 +293,235 @@ describe('EventListener', () => {
   });
 
   describe('Select Events', () => {
-    it('should capture select dropdown changes', () => {
+    it('should capture basic select dropdown changes', () => {
       const select = document.createElement('select');
+      select.id = 'country';
+      select.name = 'country';
+
       const option1 = document.createElement('option');
-      option1.value = 'value1';
-      option1.textContent = 'Option 1';
+      option1.value = '';
+      option1.textContent = 'Select a country';
+
       const option2 = document.createElement('option');
-      option2.value = 'value2';
-      option2.textContent = 'Option 2';
+      option2.value = 'us';
+      option2.textContent = 'United States';
+
+      const option3 = document.createElement('option');
+      option3.value = 'uk';
+      option3.textContent = 'United Kingdom';
 
       select.appendChild(option1);
       select.appendChild(option2);
+      select.appendChild(option3);
       document.body.appendChild(select);
 
       eventListener.start();
 
-      select.value = 'value2';
+      select.value = 'uk';
       select.dispatchEvent(new Event('change', { bubbles: true }));
 
       expect(capturedActions).toHaveLength(1);
       const action = capturedActions[0];
 
       if (action?.type === 'select') {
-        expect(action.selectedValue).toBe('value2');
-        expect(action.selectedText).toBe('Option 2');
-        expect(action.selectedIndex).toBe(1);
+        expect(action.selectedValue).toBe('uk');
+        expect(action.selectedText).toBe('United Kingdom');
+        expect(action.selectedIndex).toBe(2);
+        expect(action.selectId).toBe('country');
+        expect(action.selectName).toBe('country');
+        expect(action.isMultiple).toBe(false);
+        expect(action.selectedOption).toBeDefined();
+        expect(action.selectedOption?.text).toBe('United Kingdom');
+        expect(action.selectedOption?.value).toBe('uk');
+        expect(action.selectedOption?.index).toBe(2);
       }
+
+      document.body.removeChild(select);
+    });
+
+    it('should handle multi-select dropdowns', () => {
+      const select = document.createElement('select');
+      select.id = 'tags';
+      select.name = 'tags';
+      select.multiple = true;
+
+      const option1 = document.createElement('option');
+      option1.value = 'tag1';
+      option1.textContent = 'Tag 1';
+
+      const option2 = document.createElement('option');
+      option2.value = 'tag2';
+      option2.textContent = 'Tag 2';
+
+      const option3 = document.createElement('option');
+      option3.value = 'tag3';
+      option3.textContent = 'Tag 3';
+
+      select.appendChild(option1);
+      select.appendChild(option2);
+      select.appendChild(option3);
+      document.body.appendChild(select);
+
+      eventListener.start();
+
+      // Select multiple options
+      option1.selected = true;
+      option3.selected = true;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+
+      expect(capturedActions).toHaveLength(1);
+      const action = capturedActions[0];
+
+      if (action?.type === 'select') {
+        expect(action.isMultiple).toBe(true);
+        expect(action.selectedOptions).toBeDefined();
+        expect(action.selectedOptions).toHaveLength(2);
+        expect(action.selectedOptions?.[0]?.text).toBe('Tag 1');
+        expect(action.selectedOptions?.[0]?.value).toBe('tag1');
+        expect(action.selectedOptions?.[1]?.text).toBe('Tag 3');
+        expect(action.selectedOptions?.[1]?.value).toBe('tag3');
+      }
+
+      document.body.removeChild(select);
+    });
+
+    it('should skip disabled select elements', () => {
+      const select = document.createElement('select');
+      select.id = 'country';
+      select.disabled = true;
+
+      const option1 = document.createElement('option');
+      option1.value = 'us';
+      option1.textContent = 'United States';
+
+      select.appendChild(option1);
+      document.body.appendChild(select);
+
+      eventListener.start();
+
+      select.value = 'us';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // Should not record disabled selects
+      expect(capturedActions).toHaveLength(0);
+
+      document.body.removeChild(select);
+    });
+
+    it('should skip empty select elements', () => {
+      const select = document.createElement('select');
+      select.id = 'country';
+      document.body.appendChild(select);
+
+      eventListener.start();
+
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // Should not record empty selects
+      expect(capturedActions).toHaveLength(0);
+
+      document.body.removeChild(select);
+    });
+
+    it('should skip select with no selected option', () => {
+      const select = document.createElement('select');
+      select.id = 'country';
+
+      const option1 = document.createElement('option');
+      option1.value = 'us';
+      option1.textContent = 'United States';
+
+      select.appendChild(option1);
+      document.body.appendChild(select);
+
+      eventListener.start();
+
+      // Force selectedIndex to -1 (no selection)
+      Object.defineProperty(select, 'selectedIndex', {
+        value: -1,
+        writable: true,
+      });
+
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // Should not record when no option is selected
+      expect(capturedActions).toHaveLength(0);
+
+      document.body.removeChild(select);
+    });
+
+    it('should skip hidden select elements', () => {
+      const select = document.createElement('select');
+      select.id = 'country';
+      select.style.display = 'none';
+
+      const option1 = document.createElement('option');
+      option1.value = 'us';
+      option1.textContent = 'United States';
+
+      select.appendChild(option1);
+      document.body.appendChild(select);
+
+      eventListener.start();
+
+      select.value = 'us';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // Should not record hidden selects
+      expect(capturedActions).toHaveLength(0);
+
+      document.body.removeChild(select);
+    });
+
+    it('should handle select with label attribute', () => {
+      const select = document.createElement('select');
+      select.id = 'country';
+
+      const option1 = document.createElement('option');
+      option1.value = 'uk';
+      option1.textContent = 'UK';
+      option1.label = 'United Kingdom';
+
+      select.appendChild(option1);
+      document.body.appendChild(select);
+
+      eventListener.start();
+
+      select.value = 'uk';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+
+      expect(capturedActions).toHaveLength(1);
+      const action = capturedActions[0];
+
+      if (action?.type === 'select') {
+        expect(action.selectedOption?.label).toBe('United Kingdom');
+      }
+
+      document.body.removeChild(select);
+    });
+
+    it('should include element state and wait conditions', () => {
+      const select = document.createElement('select');
+      select.id = 'country';
+
+      const option1 = document.createElement('option');
+      option1.value = 'us';
+      option1.textContent = 'United States';
+
+      select.appendChild(option1);
+      document.body.appendChild(select);
+
+      eventListener.start();
+
+      select.value = 'us';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+
+      expect(capturedActions).toHaveLength(1);
+      const action = capturedActions[0];
+
+      // Should include metadata for smart waits
+      expect(action?.elementState).toBeDefined();
+      expect(action?.waitConditions).toBeDefined();
 
       document.body.removeChild(select);
     });

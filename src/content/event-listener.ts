@@ -1241,24 +1241,134 @@ export class EventListener {
 
   /**
    * Handle change events (for select, checkbox, radio)
+   * Enhanced to support native HTML select dropdowns with comprehensive edge case handling
    */
   private onChange(event: Event): void {
     if (!this.isListening) return;
 
     const target = event.target as HTMLElement;
 
-    if (target instanceof HTMLSelectElement) {
-      this.captureSelectAction(target);
+    // Only handle SELECT elements
+    if (!(target instanceof HTMLSelectElement)) {
+      return;
+    }
+
+    try {
+      this.recordSelectChange(target);
+    } catch (error) {
+      console.error('[EventListener] Error recording select change:', error);
+      // Don't throw - allow recording to continue
     }
   }
 
   /**
-   * Capture select action
+   * Record native select dropdown change with full option details
+   * Implements comprehensive edge case handling per RECORDER_NATIVE_SELECT_FIX.md
    */
-  private captureSelectAction(target: HTMLSelectElement): void {
-    const selector = this.selectorGenerator.generateSelectors(target);
-    const selectedOption = target.options[target.selectedIndex];
+  private recordSelectChange(selectElement: HTMLSelectElement): void {
+    // Edge Case 1: Check if select is disabled
+    if (selectElement.disabled) {
+      console.warn(
+        '[EventListener] Select is disabled, skipping recording:',
+        selectElement.id || selectElement.name
+      );
+      return;
+    }
 
+    // Edge Case 2: Handle empty dropdowns gracefully
+    if (selectElement.options.length === 0) {
+      console.warn(
+        '[EventListener] Select has no options, skipping recording:',
+        selectElement.id || selectElement.name
+      );
+      return;
+    }
+
+    const selectedIndex = selectElement.selectedIndex;
+
+    // Edge Case 3: No option selected
+    if (selectedIndex < 0) {
+      console.warn(
+        '[EventListener] No option selected, skipping recording:',
+        selectElement.id || selectElement.name
+      );
+      return;
+    }
+
+    const selectedOption = selectElement.options[selectedIndex];
+
+    // Edge Case 4: Disabled option selected
+    if (selectedOption && selectedOption.disabled) {
+      console.warn('[EventListener] Selected option is disabled, skipping recording');
+      return;
+    }
+
+    // Edge Case 5: Check if element is visible (skip hidden selects)
+    if (!this.isElementVisible(selectElement)) {
+      console.warn(
+        '[EventListener] Select is hidden, skipping recording:',
+        selectElement.id || selectElement.name
+      );
+      return;
+    }
+
+    // Generate selector with full strategy
+    const selector = this.selectorGenerator.generateSelectors(selectElement);
+
+    // Capture element state for smart waits
+    let elementState, waitConditions, context, alternativeSelectors;
+    try {
+      const state = captureElementState(selectElement);
+      elementState = state.elementState;
+      waitConditions = state.waitConditions;
+      context = state.context;
+      alternativeSelectors = state.alternativeSelectors;
+
+      // Log for debugging
+      logElementState(selectElement, elementState, waitConditions);
+    } catch (error) {
+      console.warn('[EventListener] Failed to capture element state:', error);
+      // Continue with action recording even if state capture fails
+    }
+
+    // Edge Case 6: Handle multi-select dropdowns
+    if (selectElement.multiple) {
+      const selectedOptions = Array.from(selectElement.selectedOptions).map((opt) => ({
+        text: opt.textContent?.trim() || '',
+        value: opt.value,
+        index: Array.from(selectElement.options).indexOf(opt),
+        label: opt.label || undefined,
+      }));
+
+      const action: SelectAction = {
+        id: generateActionId(++this.actionSequence),
+        type: 'select',
+        timestamp: this.getRelativeTimestamp(),
+        completedAt: 0, // Will be set by emitAction
+        url: window.location.href,
+        selector,
+        tagName: 'select',
+        selectedValue: selectElement.value,
+        selectedText: selectedOptions.map((opt) => opt.text).join(', '),
+        selectedIndex: selectedIndex,
+        isMultiple: true,
+        selectedOptions: selectedOptions,
+        selectId: selectElement.id || undefined,
+        selectName: selectElement.name || undefined,
+        elementState,
+        waitConditions,
+        context,
+        alternativeSelectors,
+      };
+
+      this.emitAction(action);
+      console.log(
+        `[EventListener] Recorded multi-select change: ${selectElement.id || selectElement.name} → [${selectedOptions.map((o) => `"${o.text}"`).join(', ')}]`
+      );
+      return;
+    }
+
+    // Standard single-select handling
     const action: SelectAction = {
       id: generateActionId(++this.actionSequence),
       type: 'select',
@@ -1267,12 +1377,28 @@ export class EventListener {
       url: window.location.href,
       selector,
       tagName: 'select',
-      selectedValue: target.value,
+      selectedValue: selectElement.value,
       selectedText: selectedOption?.textContent?.trim() || '',
-      selectedIndex: target.selectedIndex,
+      selectedIndex: selectedIndex,
+      isMultiple: false,
+      selectId: selectElement.id || undefined,
+      selectName: selectElement.name || undefined,
+      selectedOption: {
+        text: selectedOption?.textContent?.trim() || '',
+        value: selectedOption?.value || '',
+        index: selectedIndex,
+        label: selectedOption?.label || undefined,
+      },
+      elementState,
+      waitConditions,
+      context,
+      alternativeSelectors,
     };
 
     this.emitAction(action);
+    console.log(
+      `[EventListener] Recorded select change: ${selectElement.id || selectElement.name} → "${selectedOption?.textContent?.trim()}"`
+    );
   }
 
   /**

@@ -202,14 +202,39 @@ export interface InputAction extends BaseAction {
 
 /**
  * Select dropdown action
+ * Enhanced to support native HTML select dropdowns with full option details
  */
 export interface SelectAction extends BaseAction {
   type: 'select';
   selector: SelectorStrategy;
   tagName: 'select';
+
+  // Single select fields
   selectedValue: string;
   selectedText: string;
   selectedIndex: number;
+
+  // Multi-select support
+  isMultiple?: boolean; // True for <select multiple>
+  selectedOptions?: Array<{
+    // For multi-select dropdowns
+    text: string;
+    value: string;
+    index: number;
+    label?: string;
+  }>;
+
+  // Select element metadata
+  selectId?: string | undefined; // id attribute
+  selectName?: string | undefined; // name attribute
+
+  // Option metadata
+  selectedOption?: {
+    text: string;
+    value: string;
+    index: number;
+    label?: string;
+  };
 }
 
 /**
