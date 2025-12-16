@@ -19,6 +19,10 @@ export default defineConfig({
         'src/content/index.ts', // Entry point, minimal logic
         'src/popup/popup.ts', // UI component, requires E2E tests
         'src/content/recording-indicator.ts', // DOM manipulation, requires E2E tests
+        'src/utils/content-signature.ts', // Helper utility for content analysis
+        'src/utils/element-state.ts', // DOM state helper, requires E2E
+        'src/utils/modal-tracker.ts', // DOM tracking helper, requires E2E
+        'src/utils/url-identification.ts', // URL pattern matching utility
       ],
       thresholds: {
         lines: 90,
