@@ -167,6 +167,7 @@ export interface ClickAction extends BaseAction {
   clickType?: 'standard' | 'toggle-input' | 'submit'; // Differentiate click types
   inputType?: 'checkbox' | 'radio'; // For toggle-input clicks
   checked?: boolean; // Final state after toggle (for checkbox/radio)
+  isProgrammatic?: boolean; // TRUE if change was triggered programmatically (not user click)
 
   // 🆕 AJAX form detection
   expectsNavigation?: boolean; // TRUE = wait for nav, FALSE = don't wait

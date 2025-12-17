@@ -78,6 +78,10 @@ export class EventListener {
   private readonly MAX_RECENT_ACTIONS = 20; // Maximum recent actions to track
   private readonly DROPDOWN_LINK_TIMEOUT = 60000; // 60s - Max time to link dropdown opening to item click
 
+  // Checkbox/Radio deduplication tracking (prevent double-recording of click + change events)
+  private recentCheckboxInteractions: Map<string, number> = new Map(); // Track recent checkbox/radio clicks
+  private readonly CHECKBOX_DEBOUNCE_MS = 100; // Time window to consider events as duplicates
+
   // Event handlers (need to be stored for removal)
   private handleClick: (e: MouseEvent) => void;
   private handleMouseDown: (e: MouseEvent) => void;
@@ -628,7 +632,31 @@ export class EventListener {
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
 
-    const button = event.button === 0 ? 'left' : event.button === 1 ? 'middle' : 'right';
+    let button: 'left' | 'right' | 'middle' =
+      event.button === 0 ? 'left' : event.button === 1 ? 'middle' : 'right';
+
+    // 🐛 FIX: Detect and correct false right-clicks on <select> elements
+    // Browser Issue: Chromium-based browsers generate synthetic right-click events (button=2)
+    // when native <select> dropdowns open, even though user clicked left button.
+    // These synthetic events have suspicious coordinates (negative or near-zero).
+    // Solution: Detect pattern and normalize to left-click while preserving genuine right-clicks.
+    if (target.tagName === 'SELECT' && button === 'right') {
+      const isSuspiciousCoords = Math.abs(x) < 2 && Math.abs(y) < 2;
+
+      if (isSuspiciousCoords) {
+        console.warn(
+          '[EventListener] 🔧 Correcting synthetic right-click on <select> element',
+          `(coords: ${x.toFixed(2)}, ${y.toFixed(2)}) → Converting to left-click`
+        );
+        button = 'left';
+      } else {
+        // Genuine right-click with normal coordinates (rare but valid - context menu)
+        console.log(
+          '[EventListener] Preserving genuine right-click on <select> element',
+          `(coords: ${x.toFixed(2)}, ${y.toFixed(2)})`
+        );
+      }
+    }
     const modifiers = this.getModifierKeys(event);
 
     // 🆕 Generate content signature for list items (v2.0.0)
@@ -736,6 +764,10 @@ export class EventListener {
       clickType = 'toggle-input';
       inputType = target.type;
       checked = target.checked; // State AFTER the click
+
+      // Mark checkbox/radio as recently clicked (for change event deduplication)
+      this.markCheckboxInteraction(target);
+
       console.log('[EventListener] 🔲 Checkbox/Radio click metadata:', {
         clickType,
         inputType,
@@ -934,6 +966,14 @@ export class EventListener {
     const target = event.target as HTMLInputElement | HTMLTextAreaElement;
     if (!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) return;
 
+    // Skip checkbox/radio inputs - they're handled by click events only
+    if (
+      target instanceof HTMLInputElement &&
+      (target.type === 'checkbox' || target.type === 'radio')
+    ) {
+      return;
+    }
+
     // Flush any pending input from a different element (rapid switching)
     for (const [otherInput, timerId] of this.inputDebounceTimers) {
       if (otherInput !== target) {
@@ -967,6 +1007,14 @@ export class EventListener {
 
     const target = event.target as HTMLInputElement | HTMLTextAreaElement;
     if (!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) return;
+
+    // Skip checkbox/radio inputs - they're handled by click events only
+    if (
+      target instanceof HTMLInputElement &&
+      (target.type === 'checkbox' || target.type === 'radio')
+    ) {
+      return;
+    }
 
     // LAYER 3: Stop polling the field
     this.stopFieldPolling();
@@ -1247,6 +1295,60 @@ export class EventListener {
     if (!this.isListening) return;
 
     const target = event.target as HTMLElement;
+
+    // Handle checkbox/radio changes with deduplication
+    if (
+      target instanceof HTMLInputElement &&
+      (target.type === 'checkbox' || target.type === 'radio')
+    ) {
+      // Check if this change is from a recent click (already recorded)
+      if (this.wasRecentlyClicked(target)) {
+        console.log(
+          '[EventListener] 🔧 Skipping duplicate checkbox/radio change event (already recorded click)'
+        );
+        return; // Skip - we already recorded the click
+      }
+
+      // Skip hidden checkbox/radio inputs (same logic as click handler)
+      if (!this.isElementVisible(target)) {
+        console.log('[EventListener] 🔧 Skipping hidden checkbox/radio change event');
+        return;
+      }
+
+      // This is a programmatic change (no user click) - record it
+      console.log('[EventListener] 📝 Recording programmatic checkbox/radio change');
+
+      // Create a click action for programmatic changes (for consistency)
+      const selector = this.selectorGenerator.generateSelectors(target);
+      const stateCapture = captureElementState(target);
+
+      const action: ClickAction = {
+        id: generateActionId(++this.actionSequence),
+        type: 'click',
+        timestamp: this.getRelativeTimestamp(),
+        completedAt: 0,
+        url: window.location.href,
+        selector,
+        tagName: 'input',
+        text: target.textContent?.trim(),
+        coordinates: { x: 0, y: 0 }, // No coordinates for programmatic change
+        coordinatesRelativeTo: 'element',
+        button: 'left',
+        clickCount: 1,
+        modifiers: [],
+        elementState: stateCapture.elementState,
+        waitConditions: stateCapture.waitConditions,
+        context: stateCapture.context,
+        alternativeSelectors: stateCapture.alternativeSelectors,
+        clickType: 'toggle-input',
+        inputType: target.type as 'checkbox' | 'radio',
+        checked: target.checked,
+        isProgrammatic: true, // Flag to indicate this wasn't a user click
+      };
+
+      this.emitAction(action);
+      return;
+    }
 
     // Only handle SELECT elements
     if (!(target instanceof HTMLSelectElement)) {
@@ -2260,6 +2362,53 @@ export class EventListener {
     }
 
     return null;
+  }
+
+  /**
+   * Generate unique identifier for element (for checkbox deduplication)
+   */
+  private getElementIdentifier(element: Element): string {
+    // Use ID if available (most reliable)
+    if (element.id) {
+      return `#${element.id}`;
+    }
+
+    // Use name attribute for form inputs
+    if (element instanceof HTMLInputElement && element.name) {
+      return `[name="${element.name}"]`;
+    }
+
+    // Fallback to xpath as unique identifier
+    const xpath = this.selectorGenerator.generateSelectors(element).xpath;
+    return xpath || `element_${Date.now()}`;
+  }
+
+  /**
+   * Mark checkbox/radio as recently clicked (for deduplication)
+   */
+  private markCheckboxInteraction(element: Element): void {
+    const identifier = this.getElementIdentifier(element);
+    this.recentCheckboxInteractions.set(identifier, Date.now());
+
+    // Auto-cleanup after debounce period
+    setTimeout(() => {
+      this.recentCheckboxInteractions.delete(identifier);
+    }, this.CHECKBOX_DEBOUNCE_MS);
+  }
+
+  /**
+   * Check if checkbox/radio was recently clicked (for deduplication)
+   */
+  private wasRecentlyClicked(element: Element): boolean {
+    const identifier = this.getElementIdentifier(element);
+    const clickTime = this.recentCheckboxInteractions.get(identifier);
+
+    if (!clickTime) {
+      return false;
+    }
+
+    const timeSinceClick = Date.now() - clickTime;
+    return timeSinceClick < this.CHECKBOX_DEBOUNCE_MS;
   }
 
   /**
