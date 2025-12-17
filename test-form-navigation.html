@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Form Navigation Detection Test</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 50px auto;
+        padding: 20px;
+        background: #f5f5f5;
+      }
+      .test-section {
+        background: white;
+        padding: 30px;
+        margin-bottom: 30px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      h1 {
+        color: #333;
+        border-bottom: 3px solid #4caf50;
+        padding-bottom: 10px;
+      }
+      h2 {
+        color: #666;
+        margin-top: 0;
+      }
+      form {
+        margin-top: 20px;
+      }
+      input,
+      button {
+        padding: 12px;
+        margin: 8px 0;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      button {
+        background: #4caf50;
+        color: white;
+        cursor: pointer;
+        font-weight: bold;
+        width: auto;
+        padding: 12px 30px;
+      }
+      button:hover {
+        background: #45a049;
+      }
+      .result {
+        margin-top: 15px;
+        padding: 15px;
+        border-radius: 4px;
+        display: none;
+      }
+      .result.success {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+        display: block;
+      }
+      .result.error {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+        display: block;
+      }
+      .badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: bold;
+        margin-left: 10px;
+      }
+      .badge.ajax {
+        background: #007bff;
+        color: white;
+      }
+      .badge.navigation {
+        background: #ffc107;
+        color: #000;
+      }
+      .instructions {
+        background: #e7f3ff;
+        border-left: 4px solid #2196f3;
+        padding: 15px;
+        margin-bottom: 30px;
+      }
+      .instructions ol {
+        margin: 10px 0;
+        padding-left: 20px;
+      }
+      code {
+        background: #f4f4f4;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-family: 'Courier New', monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🧪 Form Navigation Detection Test</h1>
+
+    <div class="instructions">
+      <strong>📋 Testing Instructions:</strong>
+      <ol>
+        <li>Load the SaveAction Recorder extension</li>
+        <li>Start recording on this page</li>
+        <li>Fill out and submit each form below</li>
+        <li>Stop recording and download the JSON</li>
+        <li>Verify the <code>expectsNavigation</code> flag is correct for each form</li>
+      </ol>
+    </div>
+
+    <!-- AJAX Form Test -->
+    <div class="test-section">
+      <h2>Test 1: AJAX Search Form <span class="badge ajax">AJAX</span></h2>
+      <p><strong>Expected:</strong> <code>expectsNavigation: false</code> (no page navigation)</p>
+
+      <form id="ajax-form">
+        <input type="text" id="search-query" placeholder="Search for something..." required />
+        <button type="submit">Search (AJAX)</button>
+      </form>
+
+      <div id="ajax-result" class="result"></div>
+    </div>
+
+    <!-- Traditional Form with Navigation -->
+    <div class="test-section">
+      <h2>Test 2: Traditional Login Form <span class="badge navigation">NAVIGATION</span></h2>
+      <p><strong>Expected:</strong> <code>expectsNavigation: true</code> (redirects to Google)</p>
+
+      <form id="navigation-form" action="https://www.google.com" method="GET">
+        <input type="text" name="q" placeholder="Enter search term" required />
+        <button type="submit">Submit (Navigation)</button>
+      </form>
+    </div>
+
+    <!-- AJAX Form with Validation -->
+    <div class="test-section">
+      <h2>Test 3: AJAX Form with Validation <span class="badge ajax">AJAX</span></h2>
+      <p>
+        <strong>Expected:</strong> <code>expectsNavigation: false</code> (shows error, no
+        navigation)
+      </p>
+
+      <form id="ajax-validation-form">
+        <input type="email" id="email" placeholder="Email address" required />
+        <input
+          type="password"
+          id="password"
+          placeholder="Password (min 6 chars)"
+          required
+          minlength="6"
+        />
+        <button type="submit">Login (AJAX with Validation)</button>
+      </form>
+
+      <div id="validation-result" class="result"></div>
+    </div>
+
+    <!-- AJAX Form with Delayed Response -->
+    <div class="test-section">
+      <h2>Test 4: AJAX Form with 1s Delay <span class="badge ajax">AJAX</span></h2>
+      <p><strong>Expected:</strong> <code>expectsNavigation: false</code> (simulates slow API)</p>
+
+      <form id="ajax-delayed-form">
+        <input type="text" id="message" placeholder="Enter a message..." required />
+        <button type="submit">Send Message (Delayed AJAX)</button>
+      </form>
+
+      <div id="delayed-result" class="result"></div>
+    </div>
+
+    <!-- Form with JavaScript Navigation -->
+    <div class="test-section">
+      <h2>Test 5: JavaScript Navigation (SPA) <span class="badge navigation">NAVIGATION</span></h2>
+      <p>
+        <strong>Expected:</strong> <code>expectsNavigation: true</code> (changes URL via history
+        API)
+      </p>
+
+      <form id="js-navigation-form">
+        <input type="text" id="page-name" placeholder="Page name" required />
+        <button type="submit">Navigate (JavaScript)</button>
+      </form>
+    </div>
+
+    <script>
+      // Test 1: AJAX Search Form
+      document.getElementById('ajax-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const query = document.getElementById('search-query').value;
+        const resultDiv = document.getElementById('ajax-result');
+
+        // Simulate AJAX request
+        resultDiv.className = 'result';
+        resultDiv.textContent = 'Searching...';
+        resultDiv.style.display = 'block';
+
+        await new Promise((resolve) => setTimeout(resolve, 300));
+
+        resultDiv.className = 'result success';
+        resultDiv.innerHTML = `✅ <strong>AJAX Success!</strong><br>Found results for: "${query}"<br><em>URL did not change (expectsNavigation should be false)</em>`;
+      });
+
+      // Test 2: Traditional form - no JavaScript needed, will actually navigate
+
+      // Test 3: AJAX Form with Validation
+      document.getElementById('ajax-validation-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        const resultDiv = document.getElementById('validation-result');
+
+        resultDiv.className = 'result';
+        resultDiv.textContent = 'Validating...';
+        resultDiv.style.display = 'block';
+
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        // Simulate validation
+        if (password.length < 6) {
+          resultDiv.className = 'result error';
+          resultDiv.innerHTML =
+            '❌ <strong>Validation Error!</strong><br>Password must be at least 6 characters<br><em>No navigation occurred (expectsNavigation should be false)</em>';
+        } else {
+          resultDiv.className = 'result success';
+          resultDiv.innerHTML = `✅ <strong>Login Successful!</strong><br>Email: ${email}<br><em>URL did not change (expectsNavigation should be false)</em>`;
+        }
+      });
+
+      // Test 4: AJAX with Delay
+      document.getElementById('ajax-delayed-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const message = document.getElementById('message').value;
+        const resultDiv = document.getElementById('delayed-result');
+
+        resultDiv.className = 'result';
+        resultDiv.textContent = '⏳ Sending message (1 second delay)...';
+        resultDiv.style.display = 'block';
+
+        // 1 second delay to test recorder's 500ms detection window
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        resultDiv.className = 'result success';
+        resultDiv.innerHTML = `✅ <strong>Message Sent!</strong><br>Message: "${message}"<br><em>URL did not change even after 1s (expectsNavigation should be false)</em>`;
+      });
+
+      // Test 5: JavaScript Navigation (SPA style)
+      document.getElementById('js-navigation-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const pageName = document.getElementById('page-name').value;
+
+        // Simulate SPA navigation by changing URL
+        window.history.pushState({}, '', `/${pageName.replace(/\s+/g, '-').toLowerCase()}`);
+
+        alert(
+          `✅ Navigation Complete!\n\nURL changed to: ${window.location.pathname}\n\n(expectsNavigation should be true)`
+        );
+      });
+    </script>
+  </body>
+</html>
