@@ -19,6 +19,8 @@ import type {
 } from '@/types';
 import { generateActionId } from '@/types';
 import { SelectorGenerator } from './selector-generator';
+import { IntentClassifier } from './intent-classifier';
+import { generateValidation } from '@/utils/validation-helpers';
 import {
   captureElementState,
   logElementState,
@@ -35,6 +37,7 @@ import { ModalTracker, findParentModal, detectModalState } from '@/utils/modal-t
 export class EventListener {
   private isListening = false;
   private selectorGenerator: SelectorGenerator;
+  private intentClassifier: IntentClassifier; // P1: Intent classification
   private actionCallback: (action: Action) => void;
   private actionSequence = 0;
   private inputDebounceTimer: NodeJS.Timeout | null = null;
@@ -82,6 +85,13 @@ export class EventListener {
   private recentCheckboxInteractions: Map<string, number> = new Map(); // Track recent checkbox/radio clicks
   private readonly CHECKBOX_DEBOUNCE_MS = 100; // Time window to consider events as duplicates
 
+  // OS Event Deduplication (P0 - Critical)
+  private pendingClick: {
+    actionId: string;
+    timestamp: number;
+    element: Element;
+  } | null = null; // Track pending click that might be updated by double-click event
+
   // Event handlers (need to be stored for removal)
   private handleClick: (e: MouseEvent) => void;
   private handleMouseDown: (e: MouseEvent) => void;
@@ -101,6 +111,7 @@ export class EventListener {
   constructor(actionCallback: (action: Action) => void) {
     this.actionCallback = actionCallback;
     this.selectorGenerator = new SelectorGenerator();
+    this.intentClassifier = new IntentClassifier(); // P1: Initialize intent classifier
 
     // Initialize modal tracker
     this.modalTracker = new ModalTracker((lifecycleEvent) => {
@@ -448,6 +459,27 @@ export class EventListener {
       this.clickHistory.shift();
     }
 
+    // ✅ P0: OS Event Deduplication - Check if this is part of double-click sequence
+    if (this.pendingClick) {
+      const timeDiff = now - this.pendingClick.timestamp;
+      const sameTarget = target === this.pendingClick.element;
+
+      // OS fires double-click events within ~50ms with event.detail > 1
+      if (sameTarget && timeDiff < 50 && event.detail > 1) {
+        console.log(
+          `[EventListener] 🔄 Merging OS double-click event (${timeDiff}ms, detail=${event.detail})`
+        );
+        this.updateClickCount(this.pendingClick.actionId, event.detail);
+        this.pendingClick = null;
+        return; // Don't create duplicate action
+      }
+
+      // Clear stale pending click (outside double-click window)
+      if (timeDiff > 100) {
+        this.pendingClick = null;
+      }
+    }
+
     // Skip if this is part of a double-click (handled by dblclick event)
     if (isDoubleClick) return;
 
@@ -552,6 +584,20 @@ export class EventListener {
         // Emit initial action immediately (don't wait for AJAX detection)
         this.emitAction(action);
 
+        // ✅ Store as pending click (might be updated by subsequent double-click)
+        this.pendingClick = {
+          actionId: action.id,
+          timestamp: now,
+          element: target,
+        };
+
+        // Clear pending after 100ms if no double-click happens
+        setTimeout(() => {
+          if (this.pendingClick?.actionId === action.id) {
+            this.pendingClick = null;
+          }
+        }, 100);
+
         // Update previous URL before navigation happens
         this.previousUrl = window.location.href;
 
@@ -563,6 +609,20 @@ export class EventListener {
       // For links and other navigation clicks, record action FIRST
       const action = this.createClickAction(event, target, 1);
       this.emitAction(action);
+
+      // ✅ Store as pending click (might be updated by subsequent double-click)
+      this.pendingClick = {
+        actionId: action.id,
+        timestamp: now,
+        element: target,
+      };
+
+      // Clear pending after 100ms if no double-click happens
+      setTimeout(() => {
+        if (this.pendingClick?.actionId === action.id) {
+          this.pendingClick = null;
+        }
+      }, 100);
 
       // Update previous URL before navigation happens
       this.previousUrl = window.location.href;
@@ -580,6 +640,20 @@ export class EventListener {
     } else {
       const action = this.createClickAction(event, target, 1);
       this.emitAction(action);
+
+      // ✅ Store as pending click (might be updated by subsequent double-click)
+      this.pendingClick = {
+        actionId: action.id,
+        timestamp: now,
+        element: target,
+      };
+
+      // Clear pending after 100ms if no double-click happens
+      setTimeout(() => {
+        if (this.pendingClick?.actionId === action.id) {
+          this.pendingClick = null;
+        }
+      }, 100);
     }
   }
 
@@ -625,6 +699,17 @@ export class EventListener {
     const target = this.findInteractiveElement(clickedElement);
     if (!target) return;
 
+    // ✅ P0: Merge with pending click instead of creating new action
+    if (this.pendingClick && this.pendingClick.element === target) {
+      console.log(`[EventListener] 🔄 Updating pending click to double-click (clickCount=2)`);
+      this.updateClickCount(this.pendingClick.actionId, 2);
+      this.pendingClick = null;
+      return; // Don't create duplicate dblclick action
+    }
+
+    // Fallback: Create double-click action if no pending click found
+    // (shouldn't happen in normal flow, but defensive programming)
+    console.warn('[EventListener] ⚠️ Double-click without pending click - creating new action');
     const action = this.createClickAction(event, target, 2);
     this.emitAction(action);
   }
@@ -633,7 +718,14 @@ export class EventListener {
    * Create click action
    */
   private createClickAction(event: MouseEvent, target: Element, clickCount: number): ClickAction {
-    const selector = this.selectorGenerator.generateSelectors(target);
+    // 🆕 Detect if element is a carousel control
+    const isCarousel = this.selectorGenerator.isCarouselControl(target);
+
+    // Generate selectors (use carousel-specific logic if needed)
+    const selector = isCarousel
+      ? this.selectorGenerator.generateCarouselSelectors(target)
+      : this.selectorGenerator.generateSelectors(target);
+
     const rect = target.getBoundingClientRect();
 
     // Calculate coordinates relative to element
@@ -761,7 +853,7 @@ export class EventListener {
     }
 
     // 🆕 CRITICAL FIX #1: Detect checkbox/radio clicks
-    let clickType: 'standard' | 'toggle-input' | 'submit' = 'standard';
+    let clickType: 'standard' | 'toggle-input' | 'submit' | 'carousel-navigation' = 'standard';
     let inputType: 'checkbox' | 'radio' | undefined;
     let checked: boolean | undefined;
 
@@ -789,8 +881,29 @@ export class EventListener {
       clickType = 'submit';
     }
 
+    // 🆕 Detect carousel controls and generate metadata
+    let carouselContext: import('@/types').CarouselContext | undefined;
+    if (isCarousel) {
+      clickType = 'carousel-navigation';
+      carouselContext = this.generateCarouselContext(target);
+      console.log('[EventListener] 🎠 Carousel control detected:', carouselContext);
+    }
+
     // 🆕 CRITICAL FIX #3: Detect dropdown state
     const dropdownState = this.analyzeDropdownState(target);
+
+    // ✅ P1: Classify click intent
+    const clickIntent = this.intentClassifier.classifyClick(target, {
+      isCarousel: !!carouselContext?.isCarouselControl,
+      isFormSubmit: clickType === 'submit',
+      isPagination: false, // TODO: Add pagination detection
+    });
+
+    // ✅ P1: Generate validation metadata
+    const validation = generateValidation(event, target, clickIntent, {
+      clickHistory: this.clickHistory,
+      recordingStartTime: this.recordingStartTime,
+    });
 
     return {
       id: generateActionId(++this.actionSequence),
@@ -816,7 +929,11 @@ export class EventListener {
       clickType,
       inputType,
       checked,
+      carouselContext,
       ...dropdownState, // Spread dropdown metadata (isInDropdown, requiresParentOpen, etc.)
+      // ✅ P1: Intent classification and validation
+      clickIntent,
+      validation,
     };
   }
 
@@ -2067,6 +2184,124 @@ export class EventListener {
   }
 
   /**
+   * 🆕 Generate carousel context metadata
+   * Enhanced with detection method, confidence, and page type
+   */
+  private generateCarouselContext(element: Element): import('@/types').CarouselContext {
+    // 🆕 Get detection metadata from selector generator
+    const detectionResult = this.selectorGenerator.detectCarouselWithConfidence(element);
+
+    // Determine carousel direction - use safe className helper
+    const className = this.getElementClassName(element);
+    const ariaLabel = element.getAttribute('aria-label') || '';
+    const direction: 'next' | 'prev' =
+      className.includes('next') ||
+      className.includes('right') ||
+      ariaLabel.toLowerCase().includes('next')
+        ? 'next'
+        : 'prev';
+
+    // Detect carousel library (enhanced from detection result)
+    let carouselLibrary: string | undefined = detectionResult.carouselLibrary;
+    if (!carouselLibrary) {
+      // Fallback detection
+      if (className.includes('swiper')) {
+        carouselLibrary = 'swiper';
+      } else if (className.includes('slick')) {
+        carouselLibrary = 'slick';
+      } else if (className.includes('carousel-control')) {
+        carouselLibrary = 'bootstrap';
+      } else if (className.includes('owl')) {
+        carouselLibrary = 'owl';
+      } else if (className.includes('flickity')) {
+        carouselLibrary = 'flickity';
+      }
+    }
+
+    // 🆕 Detect if custom implementation
+    const isCustomImplementation = !carouselLibrary;
+
+    // Detect carousel type
+    let carouselType = 'image-gallery';
+    let parent = element.parentElement;
+    let depth = 0;
+    while (parent && depth < 5) {
+      const parentClasses = this.getElementClassName(parent);
+      if (/product|listing|item/i.test(parentClasses)) {
+        carouselType = 'product-gallery';
+        break;
+      } else if (/hero|banner/i.test(parentClasses)) {
+        carouselType = 'hero-slider';
+        break;
+      } else if (/testimonial|review/i.test(parentClasses)) {
+        carouselType = 'testimonial-slider';
+        break;
+      }
+      parent = parent.parentElement;
+      depth++;
+    }
+
+    // Find container selector
+    const parentContainer = this.selectorGenerator.findUniqueParentContainer(element);
+    const containerSelector = parentContainer.selector || null;
+    const pageType = parentContainer.pageType || 'unknown';
+
+    // 🆕 Check if disabled
+    const isDisabled =
+      element.hasAttribute('disabled') ||
+      element.classList.contains('disabled') ||
+      element.getAttribute('aria-disabled') === 'true' ||
+      (element.parentElement?.classList.contains('disabled') ?? false);
+
+    // Find affected element (the carousel/slider content)
+    let affectsElement: string | undefined;
+    let searchParent = element.parentElement;
+    depth = 0;
+    while (searchParent && depth < 5) {
+      const carouselContent =
+        searchParent.querySelector('.swiper-slide') ||
+        searchParent.querySelector('.carousel-item') ||
+        searchParent.querySelector('.slick-slide') ||
+        searchParent.querySelector('[class*="slide"]') ||
+        searchParent.querySelector('img');
+
+      if (carouselContent) {
+        affectsElement = this.selectorGenerator.getElementSelectorPart(carouselContent);
+        break;
+      }
+      searchParent = searchParent.parentElement;
+      depth++;
+    }
+
+    return {
+      isCarouselControl: true,
+      carouselType,
+      direction,
+      containerSelector,
+      affectsElement,
+      carouselLibrary,
+      // 🆕 Enhanced metadata
+      detectionMethod: detectionResult.detectionMethod || 'heuristic',
+      confidence: detectionResult.confidence,
+      isCustomImplementation,
+      isDisabled,
+      pageType,
+    };
+  }
+
+  /**
+   * 🆕 Count recent clicks on a specific element within a time window
+   */
+  private countRecentClicksOnElement(element: Element, timeWindowMs: number): number {
+    const now = Date.now();
+    const cutoffTime = now - timeWindowMs;
+
+    return this.clickHistory.filter(
+      (entry) => entry.element === element && entry.timestamp > cutoffTime
+    ).length;
+  }
+
+  /**
    * 🆕 Initialize MutationObserver to track dropdown state changes
    */
   private initializeDropdownObserver(): void {
@@ -2343,11 +2578,25 @@ export class EventListener {
   /**
    * Find the closest interactive element by traversing up the DOM tree
    * No depth limit - traverse entire ancestor chain for maximum capture rate
+   * Special handling for carousel controls with nested SVG/icons
    */
   private findInteractiveElement(element: Element): Element | null {
     let current: Element | null = element;
     let depth = 0;
     const maxDepth = 20; // Safety limit to prevent infinite loops
+
+    // 🆕 Special case: If clicking on SVG/icon inside carousel arrow
+    // Traverse up to find the actual carousel control element
+    // Wrapped in try-catch to ensure carousel detection never breaks normal flow
+    try {
+      const carouselControl = this.findCarouselControlParent(element);
+      if (carouselControl) {
+        return carouselControl;
+      }
+    } catch (error) {
+      console.warn('[EventListener] Carousel parent detection failed, using fallback:', error);
+      // Continue to normal traversal
+    }
 
     // Traverse up the DOM tree until we find an interactive element or reach body
     while (current && current !== document.body && depth < maxDepth) {
@@ -2368,6 +2617,46 @@ export class EventListener {
     }
 
     return null;
+  }
+
+  /**
+   * 🆕 Find carousel control parent when clicking on nested SVG/icon
+   * Handles cases like: <span class="img-arrow"><svg>...</svg></span>
+   */
+  private findCarouselControlParent(element: Element): Element | null {
+    try {
+      // Check if we're inside an SVG or icon element
+      const isSvgOrIcon =
+        element.tagName === 'SVG' ||
+        element.tagName === 'PATH' ||
+        element.tagName === 'USE' ||
+        element.tagName === 'I' ||
+        /fa-|icon|material-icons/i.test(element.className || '');
+
+      if (!isSvgOrIcon) {
+        return null; // Not a nested icon click
+      }
+
+      // Traverse up to find carousel control
+      let parent = element.parentElement;
+      let depth = 0;
+
+      while (parent && depth < 5) {
+        // Check if parent is a carousel control
+        const detectionResult = this.selectorGenerator.detectCarouselWithConfidence(parent);
+        if (detectionResult.isCarousel) {
+          return parent;
+        }
+
+        parent = parent.parentElement;
+        depth++;
+      }
+
+      return null;
+    } catch (error) {
+      console.warn('[EventListener] Error in findCarouselControlParent:', error);
+      return null;
+    }
   }
 
   /**
@@ -2418,11 +2707,47 @@ export class EventListener {
   }
 
   /**
+   * 🆕 Safely get element className as string
+   * Handles both HTMLElement.className (string) and SVGElement.className (SVGAnimatedString)
+   */
+  private getElementClassName(element: Element): string {
+    if (!element.className) {
+      return '';
+    }
+
+    // For SVG elements, className is an SVGAnimatedString object with baseVal property
+    if (typeof element.className === 'object') {
+      return String((element.className as any).baseVal || '');
+    }
+
+    // For HTML elements, className is a string
+    return String(element.className || '');
+  }
+
+  /**
    * Check if element is interactive
    * Comprehensive detection covering 99.9% of real-world scenarios
    * Multi-layer detection with intelligent fallbacks
+   * 🚨 CRITICAL: Carousel detection MUST come first to catch ALL carousel arrows
    */
   private isInteractiveElement(element: Element): boolean {
+    // 🆕 PRIORITY 0: CAROUSEL DETECTION (catches custom implementations)
+    // This MUST be first because carousel arrows might be ANY element (span, div, etc.)
+    // Without this check, custom carousel arrows would be filtered out before detection runs
+    try {
+      const carouselCheck = this.selectorGenerator.isCarouselControl(element);
+      if (carouselCheck) {
+        console.log('[EventListener] ✅ Detected carousel control:', {
+          tagName: element.tagName,
+          className: this.getElementClassName(element),
+        });
+        return true;
+      }
+    } catch (error) {
+      console.warn('[EventListener] Carousel detection error (non-blocking):', error);
+      // Continue to other checks
+    }
+
     // 1. Standard interactive HTML elements
     const interactiveTags = ['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'LABEL'];
     if (interactiveTags.includes(element.tagName)) {
@@ -2430,7 +2755,8 @@ export class EventListener {
     }
 
     // 1.5 Elements with button/submit in class or role (DIV/SPAN styled as buttons)
-    const className = element.className?.toLowerCase() || '';
+    // Use helper method to safely get className (handles SVG elements)
+    const className = this.getElementClassName(element).toLowerCase();
     const elementRole = element.getAttribute('role');
     if (
       className.includes('btn') ||
@@ -2886,19 +3212,6 @@ export class EventListener {
   /**
    * Count recent clicks on a specific element within a time window
    */
-  private countRecentClicksOnElement(element: Element, timeWindowMs: number): number {
-    const now = Date.now();
-    let count = 0;
-
-    for (const click of this.clickHistory) {
-      if (click.element === element && now - click.timestamp < timeWindowMs) {
-        count++;
-      }
-    }
-
-    return count;
-  }
-
   /**
    * Record modal lifecycle action
    */
@@ -2923,6 +3236,24 @@ export class EventListener {
       modalId: lifecycleEvent.modalId,
       state: lifecycleEvent.initialState || lifecycleEvent.toState,
     });
+  }
+
+  /**
+   * P0: Update click count for OS double-click event deduplication
+   */
+  private updateClickCount(actionId: string, clickCount: number): void {
+    // Find the action in recent actions
+    const action = this.recentActions.find((a) => a.id === actionId);
+
+    if (action && action.type === 'click') {
+      (action as ClickAction).clickCount = clickCount;
+      console.log(`[EventListener] Updated ${actionId} clickCount to ${clickCount}`);
+
+      // Re-emit the updated action to sync with background
+      this.actionCallback(action);
+    } else {
+      console.warn(`[EventListener] Could not find action ${actionId} to update clickCount`);
+    }
   }
 
   /**
@@ -3037,12 +3368,37 @@ export class EventListener {
         const clickAction = action as ClickAction;
         const lastClickAction = this.lastEmittedAction as ClickAction;
 
-        // Don't treat double-clicks as duplicates
+        // P0: CAROUSEL EXCEPTION - Allow carousel navigation clicks
+        // Users naturally click carousel arrows multiple times to browse
+        if (clickAction.carouselContext?.isCarouselControl) {
+          // Still filter if TOO rapid (< 150ms = accidental double-tap)
+          if (timeDiff < 150) {
+            console.log(`[Duplicate] Filtered accidental carousel double-tap (${timeDiff}ms)`);
+            return true; // Is duplicate
+          }
+          console.log(`[EventListener] Allowing carousel click (${timeDiff}ms):`, {
+            direction: clickAction.carouselContext.direction,
+          });
+          return false; // Not a duplicate
+        }
+
+        // P0: FORM SUBMIT PROTECTION - Never allow duplicate submits
+        // Prevent double-submission bugs that break tests
+        if (clickAction.clickType === 'submit' || lastClickAction.clickType === 'submit') {
+          // Extended protection window for form submits (2 seconds)
+          const SUBMIT_PROTECTION_WINDOW = 2000;
+          if (timeDiff < SUBMIT_PROTECTION_WINDOW) {
+            console.log(`[Duplicate] Blocked duplicate form submit (${timeDiff}ms)`);
+            return true; // Is duplicate
+          }
+        }
+
+        // Don't treat double-clicks as duplicates (different clickCount)
         if (clickAction.clickCount !== lastClickAction.clickCount) {
           return false;
         }
 
-        // Check selector and button match
+        // Standard duplicate check: same element + button within debounce window
         return (
           clickAction.button === lastClickAction.button &&
           this.areSelectorsEqual(clickAction.selector, lastClickAction.selector)
