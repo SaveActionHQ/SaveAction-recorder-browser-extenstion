@@ -653,7 +653,18 @@ export function logElementState(
 ): void {
   const tagName = element.tagName.toLowerCase();
   const id = element.id ? `#${element.id}` : '';
-  const classes = element.className ? `.${element.className.split(' ').join('.')}` : '';
+
+  // Safely get className (handles both HTML and SVG elements)
+  const getClassName = (el: Element): string => {
+    if (!el.className) return '';
+    if (typeof el.className === 'object') {
+      return String((el.className as any).baseVal || '');
+    }
+    return String(el.className || '');
+  };
+
+  const classNameStr = getClassName(element);
+  const classes = classNameStr ? `.${classNameStr.split(' ').join('.')}` : '';
 
   console.log(`[ElementState] ${tagName}${id}${classes}:`, {
     visible: state.visible,

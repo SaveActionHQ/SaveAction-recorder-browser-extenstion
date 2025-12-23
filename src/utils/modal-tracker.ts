@@ -155,7 +155,19 @@ export function detectModalState(modalElement: Element): string {
   });
 
   if (visibleContent) {
-    return visibleContent.id || visibleContent.className.split(' ')[0] || 'default';
+    // Safely get className (handles both HTML and SVG elements)
+    const getClassName = (el: Element): string => {
+      if (!el.className) return '';
+      if (typeof el.className === 'object') {
+        return String((el.className as any).baseVal || '');
+      }
+      return String(el.className || '');
+    };
+
+    const classNameStr = getClassName(visibleContent);
+    return (
+      visibleContent.id || (classNameStr ? classNameStr.split(' ')[0] : 'default') || 'default'
+    );
   }
 
   return 'default';

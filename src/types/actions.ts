@@ -150,6 +150,75 @@ export interface BaseAction {
 }
 
 /**
+ * Click intent classification (P1 - High Priority)
+ */
+export type ClickIntentType =
+  | 'carousel-navigation'
+  | 'pagination'
+  | 'form-submit'
+  | 'increment'
+  | 'toggle'
+  | 'navigation'
+  | 'generic-click';
+
+export interface ClickIntent {
+  type: ClickIntentType;
+  allowMultiple: boolean; // Can user intentionally click multiple times?
+  requiresDelay: boolean; // Should runner wait after click?
+  confidence: number; // 0-100 detection confidence
+}
+
+/**
+ * Action validation metadata (P1 - High Priority)
+ */
+export interface ActionValidation {
+  isDuplicate: boolean; // True if detected as duplicate
+  duplicateOf: string | null; // Action ID of original (if duplicate)
+  isOsEvent: boolean; // True if OS-generated (double-click, etc.)
+  confidence: number; // 0-100 action confidence score
+  flags: string[]; // ['rapid-fire', 'moving-target', 'too-soon-after-load', etc.]
+}
+
+/**
+ * Action group metadata (P2 - Nice to have)
+ */
+export interface ActionGroup {
+  groupId: string; // e.g., 'carousel-navigation_1256'
+  groupType: string; // e.g., 'carousel-navigation'
+  sequence: number; // Position in group (1, 2, 3...)
+  total: number; // Total actions in group
+}
+
+/**
+ * Detection method for carousel controls
+ */
+export type CarouselDetectionMethod = 'framework' | 'pattern' | 'heuristic';
+
+/**
+ * Page type where carousel is located
+ */
+export type CarouselPageType = 'listing-grid' | 'detail-page' | 'hero-banner' | 'unknown';
+
+/**
+ * Carousel context metadata for carousel navigation clicks
+ */
+export interface CarouselContext {
+  isCarouselControl: boolean; // True if element is a carousel control
+  carouselType: string; // 'image-gallery', 'slider', 'swiper', etc.
+  direction: 'next' | 'prev'; // Direction of navigation
+  containerSelector: string | null; // Selector for parent container
+  affectsElement?: string; // Selector for element affected by carousel
+  carouselLibrary?: string; // Detected library ('swiper', 'slick', 'bootstrap', etc.)
+
+  // Enhanced detection metadata
+  detectionMethod: CarouselDetectionMethod; // How carousel was detected
+  confidence: number; // Detection confidence score (0-100)
+  isCustomImplementation: boolean; // True if not a known framework
+  isDisabled: boolean; // True if carousel control is disabled
+  pageType: CarouselPageType; // Type of page where carousel is located
+}
+
+/**
  * Click action (left, right, middle, double-click)
  */
 export interface ClickAction extends BaseAction {
@@ -164,10 +233,18 @@ export interface ClickAction extends BaseAction {
   modifiers: ModifierKey[]; // ['ctrl', 'shift', 'alt', 'meta']
 
   // 🆕 Checkbox/Radio support
-  clickType?: 'standard' | 'toggle-input' | 'submit'; // Differentiate click types
+  clickType?: 'standard' | 'toggle-input' | 'submit' | 'carousel-navigation'; // Differentiate click types
   inputType?: 'checkbox' | 'radio'; // For toggle-input clicks
   checked?: boolean; // Final state after toggle (for checkbox/radio)
   isProgrammatic?: boolean; // TRUE if change was triggered programmatically (not user click)
+
+  // 🆕 Carousel support
+  carouselContext?: CarouselContext; // Metadata for carousel controls
+
+  // ✅ P1: Intent classification and validation (NEW)
+  clickIntent?: ClickIntent; // Classified click intent
+  validation?: ActionValidation; // Validation metadata (confidence, flags)
+  actionGroup?: ActionGroup; // Action grouping for sequences
 
   // 🆕 AJAX form detection
   expectsNavigation?: boolean; // TRUE = wait for nav, FALSE = don't wait

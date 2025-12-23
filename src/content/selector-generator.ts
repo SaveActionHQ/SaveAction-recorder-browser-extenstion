@@ -40,6 +40,669 @@ export class SelectorGenerator {
   }
 
   /**
+   * Detect if element is a carousel control
+   * Three-tier detection system:
+   * 1. Framework detection (known libraries)
+   * 2. Pattern matching (custom implementations)
+   * 3. Heuristic analysis (structural detection)
+   */
+  public isCarouselControl(element: Element): boolean {
+    const result = this.detectCarouselWithConfidence(element);
+    return result.isCarousel;
+  }
+
+  /**
+   * Detect carousel with confidence scoring and metadata
+   */
+  public detectCarouselWithConfidence(element: Element): {
+    isCarousel: boolean;
+    confidence: number;
+    detectionMethod: 'framework' | 'pattern' | 'heuristic' | null;
+    carouselLibrary?: string;
+  } {
+    try {
+      // Check if disabled - skip disabled carousel controls
+      if (this.isDisabledCarouselControl(element)) {
+        return { isCarousel: false, confidence: 0, detectionMethod: null };
+      }
+
+      // Tier 1: Framework detection (highest confidence)
+      const frameworkResult = this.detectKnownFramework(element);
+      if (frameworkResult.detected) {
+        return {
+          isCarousel: true,
+          confidence: 95,
+          detectionMethod: 'framework',
+          carouselLibrary: frameworkResult.library,
+        };
+      }
+
+      // Tier 2: Pattern matching (high confidence)
+      const patternResult = this.detectCarouselPattern(element);
+      if (patternResult.detected) {
+        return {
+          isCarousel: true,
+          confidence: patternResult.confidence,
+          detectionMethod: 'pattern',
+        };
+      }
+
+      // Tier 3: Heuristic analysis (medium confidence)
+      const heuristicResult = this.detectCarouselByStructure(element);
+      if (heuristicResult.detected) {
+        return {
+          isCarousel: true,
+          confidence: heuristicResult.confidence,
+          detectionMethod: 'heuristic',
+        };
+      }
+
+      return { isCarousel: false, confidence: 0, detectionMethod: null };
+    } catch (error) {
+      console.warn('[SelectorGenerator] Error in detectCarouselWithConfidence:', error);
+      // Fallback to simple detection
+      return { isCarousel: false, confidence: 0, detectionMethod: null };
+    }
+  }
+
+  /**
+   * Check if carousel control is disabled
+   */
+  private isDisabledCarouselControl(element: Element): boolean {
+    try {
+      // Check disabled attribute
+      if (element.hasAttribute('disabled')) return true;
+
+      // Check disabled class
+      if (element.classList && element.classList.contains('disabled')) return true;
+
+      // Check aria-disabled
+      if (element.getAttribute('aria-disabled') === 'true') return true;
+
+      // Check if parent has disabled class (common pattern)
+      const parent = element.parentElement;
+      if (parent && parent.classList && parent.classList.contains('disabled')) return true;
+
+      return false;
+    } catch (error) {
+      // If any error, assume not disabled (safer default)
+      console.warn('[SelectorGenerator] Error checking disabled state:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Tier 1: Detect known carousel frameworks
+   */
+  private detectKnownFramework(element: Element): {
+    detected: boolean;
+    library?: string;
+  } {
+    const className = this.getElementClassName(element);
+
+    // Swiper.js
+    if (/swiper[-_]?button/i.test(className)) {
+      return { detected: true, library: 'swiper' };
+    }
+
+    // Bootstrap Carousel
+    if (/carousel[-_]?control/i.test(className)) {
+      return { detected: true, library: 'bootstrap' };
+    }
+
+    // Slick Carousel
+    if (/slick[-_]?(arrow|next|prev)/i.test(className)) {
+      return { detected: true, library: 'slick' };
+    }
+
+    // Owl Carousel
+    if (/owl[-_]?(next|prev|nav)/i.test(className)) {
+      return { detected: true, library: 'owl' };
+    }
+
+    // Flickity
+    if (/flickity[-_]?(button|prev|next)/i.test(className)) {
+      return { detected: true, library: 'flickity' };
+    }
+
+    // Check parent containers for framework classes
+    let parent = element.parentElement;
+    let depth = 0;
+    while (parent && depth < 3) {
+      const parentClasses = this.getElementClassName(parent);
+      if (/swiper[-_]?container/i.test(parentClasses)) {
+        return { detected: true, library: 'swiper' };
+      }
+      if (
+        /carousel/i.test(parentClasses) &&
+        /bootstrap|bs-/.test(document.documentElement.className)
+      ) {
+        return { detected: true, library: 'bootstrap' };
+      }
+      if (/slick[-_]?(slider|list)/i.test(parentClasses)) {
+        return { detected: true, library: 'slick' };
+      }
+      parent = parent.parentElement;
+      depth++;
+    }
+
+    return { detected: false };
+  }
+
+  /**
+   * Tier 2: Pattern-based detection for custom implementations
+   */
+  private detectCarouselPattern(element: Element): {
+    detected: boolean;
+    confidence: number;
+  } {
+    const className = this.getElementClassName(element);
+    const ariaLabel = element.getAttribute('aria-label') || '';
+
+    // Enhanced carousel class patterns (catches custom implementations)
+    const carouselPatterns = [
+      // Image/photo carousel patterns (custom implementations)
+      /img[-_]arrow/i, // ✅ Matches content__body__item-img-arrow
+      /image[-_]arrow/i,
+      /photo[-_]arrow/i,
+      /pic[-_]arrow/i,
+      /picture[-_]arrow/i,
+
+      // Gallery patterns
+      /gallery[-_](arrow|nav|button|control)/i,
+      /lightbox[-_](arrow|nav|button)/i,
+
+      // Generic slider patterns
+      /slider[-_](arrow|nav|button|control)/i,
+      /slide[-_](arrow|nav|button|control)/i,
+
+      // Direction + control patterns
+      /(next|prev|previous)[-_]?(btn|button|arrow|icon|control)/i,
+      /(arrow|icon|btn|button|control)[-_]?(next|prev|previous)/i,
+
+      // Compound patterns (very specific)
+      /carousel[-_]?(arrow|nav|button|control)/i,
+      /(arrow|nav|button)[-_]?carousel/i,
+    ];
+
+    // Check class names against patterns
+    let matchedPattern = false;
+    let confidence = 75; // Base confidence for pattern matching
+
+    for (const pattern of carouselPatterns) {
+      if (pattern.test(className)) {
+        matchedPattern = true;
+
+        // Higher confidence for more specific patterns
+        if (/img[-_]arrow|image[-_]arrow|photo[-_]arrow/i.test(className)) {
+          confidence = 90; // Very specific pattern
+        } else if (/gallery|slider|carousel/i.test(className)) {
+          confidence = 85; // Specific carousel terms
+        }
+        break;
+      }
+    }
+
+    // 🆕 Check parent elements (for nested structures like <span><span><svg>)
+    if (!matchedPattern) {
+      let parent = element.parentElement;
+      let depth = 0;
+      while (parent && depth < 3) {
+        const parentClassName = this.getElementClassName(parent);
+
+        for (const pattern of carouselPatterns) {
+          if (pattern.test(parentClassName)) {
+            matchedPattern = true;
+
+            // Adjust confidence based on depth (closer = higher confidence)
+            if (depth === 0)
+              confidence = 90; // Direct parent
+            else if (depth === 1)
+              confidence = 85; // Grandparent
+            else confidence = 75; // Great-grandparent
+
+            break;
+          }
+        }
+
+        if (matchedPattern) break;
+        parent = parent.parentElement;
+        depth++;
+      }
+    }
+
+    // Check ARIA labels for carousel indicators
+    if (!matchedPattern && /next|prev|previous|slide|image|carousel|swipe/i.test(ariaLabel)) {
+      matchedPattern = true;
+      confidence = 80; // ARIA labels are reliable
+    }
+
+    // Check for SVG icons (common in custom implementations)
+    if (matchedPattern) {
+      const hasSvgIcon =
+        element.querySelector('svg, use') !== null || element.tagName.toLowerCase() === 'svg';
+      if (hasSvgIcon) {
+        confidence += 5; // SVG icons increase confidence
+      }
+    }
+
+    return { detected: matchedPattern, confidence };
+  }
+
+  /**
+   * Tier 3: Heuristic structural analysis (fallback)
+   */
+  private detectCarouselByStructure(element: Element): {
+    detected: boolean;
+    confidence: number;
+  } {
+    const className = element.className || '';
+
+    // Check for directional indicators
+    const hasDirectionClass = /next|prev|previous|forward|backward|left|right/i.test(className);
+
+    if (!hasDirectionClass) {
+      return { detected: false, confidence: 0 };
+    }
+
+    let confidence = 50; // Base confidence for heuristic detection
+
+    // Look for carousel/slider/gallery container in parents
+    let parent = element.parentElement;
+    let depth = 0;
+    let foundCarouselContainer = false;
+
+    while (parent && depth < 8) {
+      const parentClasses = parent.className || '';
+
+      // Check for carousel-related container classes
+      if (/carousel|slider|gallery|swiper|slideshow|img|image|photo/i.test(parentClasses)) {
+        foundCarouselContainer = true;
+        confidence += 15;
+        break;
+      }
+
+      parent = parent.parentElement;
+      depth++;
+    }
+
+    if (!foundCarouselContainer) {
+      return { detected: false, confidence: 0 };
+    }
+
+    // Check for multiple images or items (strong indicator of carousel)
+    const nearestContainer = element.closest(
+      '[class*="carousel"], [class*="slider"], [class*="gallery"], [class*="swiper"], [class*="img"], [class*="image"], [class*="photo"]'
+    );
+
+    if (nearestContainer) {
+      const images = nearestContainer.querySelectorAll('img, [class*="slide"], [class*="item"]');
+      if (images.length > 1) {
+        confidence += 15; // Multiple items = definitely a carousel
+      }
+
+      // Check for navigation siblings (next/prev pair)
+      const siblings = Array.from(element.parentElement?.children || []);
+      const hasNavSiblings = siblings.some((sibling) => {
+        if (sibling === element) return false;
+        const siblingClass = sibling.className || '';
+        return (
+          /next|prev|previous|arrow/i.test(siblingClass) &&
+          /next|prev|previous|arrow/i.test(className) &&
+          siblingClass !== className
+        );
+      });
+
+      if (hasNavSiblings) {
+        confidence += 10; // Navigation pair increases confidence
+      }
+    }
+
+    // Minimum confidence threshold for heuristic detection
+    const detected = confidence >= 60;
+
+    return { detected, confidence: detected ? confidence : 0 };
+  }
+
+  /**
+   * Find unique parent container for carousel elements
+   * Enhanced to handle both listing grids and detail pages
+   */
+  public findUniqueParentContainer(element: Element): {
+    type: 'id' | 'data-attribute' | 'nth-child' | 'detail-page' | null;
+    selector: string | null;
+    element: Element | null;
+    index?: number;
+    pageType?: 'listing-grid' | 'detail-page' | 'hero-banner' | 'unknown';
+  } {
+    // 🆕 Detect page type first
+    const pageType = this.detectPageType(element);
+
+    let parent = element.parentElement;
+    let depth = 0;
+
+    // 🆕 PRIORITY: Look for <LI> element FIRST (for listing grids)
+    while (parent && depth < 10) {
+      if (parent.tagName === 'LI' && parent.parentElement) {
+        const listParent = parent.parentElement;
+        const siblings = Array.from(listParent.children);
+        const index = siblings.indexOf(parent);
+
+        // Build full selector including list parent (ul/ol)
+        const listSelector = this.getElementSelectorPart(listParent); // "ul#listings_cn" or "ul.list-class"
+
+        return {
+          type: 'nth-child',
+          selector: `${listSelector} > li:nth-child(${index + 1})`,
+          element: parent,
+          index: index,
+          pageType,
+        };
+      }
+      parent = parent.parentElement;
+      depth++;
+    }
+
+    // Reset and continue with other container patterns
+    parent = element.parentElement;
+    depth = 0;
+
+    while (parent && depth < 10) {
+      // Check for ID
+      if (parent.id && !this.isDynamicId(parent.id)) {
+        return {
+          type: 'id',
+          selector: `#${cssEscape(parent.id)}`,
+          element: parent,
+          pageType,
+        };
+      }
+
+      // Check for data attributes
+      const dataId =
+        parent.getAttribute('data-id') ||
+        parent.getAttribute('data-item-id') ||
+        parent.getAttribute('data-listing-id') ||
+        parent.getAttribute('data-product-id');
+      if (dataId) {
+        const attrName = parent.hasAttribute('data-id')
+          ? 'data-id'
+          : parent.hasAttribute('data-item-id')
+            ? 'data-item-id'
+            : parent.hasAttribute('data-listing-id')
+              ? 'data-listing-id'
+              : 'data-product-id';
+        return {
+          type: 'data-attribute',
+          selector: `[${attrName}="${dataId}"]`,
+          element: parent,
+          pageType,
+        };
+      }
+
+      // 🆕 DETAIL PAGE HANDLING: If on detail page, stop at main content container
+      if (pageType === 'detail-page') {
+        // Look for main/article/section containers
+        if (
+          parent.tagName === 'MAIN' ||
+          parent.tagName === 'ARTICLE' ||
+          (parent.tagName === 'SECTION' && parent.classList.length > 0)
+        ) {
+          return {
+            type: 'detail-page',
+            selector: this.getElementSelectorPart(parent),
+            element: parent,
+            pageType,
+          };
+        }
+
+        // Look for common detail page container classes
+        if (
+          parent.classList.length > 0 &&
+          Array.from(parent.classList).some((cls) =>
+            /detail|product[-_]?page|item[-_]?page|content[-_]?body|main[-_]?content/i.test(cls)
+          )
+        ) {
+          return {
+            type: 'detail-page',
+            selector: this.getElementSelectorPart(parent),
+            element: parent,
+            pageType,
+          };
+        }
+      }
+
+      // Check for common container patterns (div.item, div.card, article, etc.)
+      if (
+        parent.classList.length > 0 &&
+        Array.from(parent.classList).some((cls) => /item|card|listing|product|slide/i.test(cls))
+      ) {
+        const siblings = Array.from(parent.parentElement?.children || []).filter(
+          (el) => el.className === parent?.className
+        );
+        const index = siblings.indexOf(parent);
+        if (index !== -1 && parent.parentElement) {
+          const parentSelector = this.getElementSelectorPart(parent.parentElement);
+          const itemClass = Array.from(parent.classList).filter(
+            (cls) => !this.isDynamicClass(cls)
+          )[0];
+          if (itemClass) {
+            return {
+              type: 'nth-child',
+              selector: `${parentSelector} > .${cssEscape(itemClass)}:nth-child(${index + 1})`,
+              element: parent,
+              index: index,
+              pageType,
+            };
+          }
+        }
+      }
+
+      parent = parent.parentElement;
+      depth++;
+    }
+
+    // 🆕 Fallback for detail pages - use body as container
+    if (pageType === 'detail-page') {
+      return {
+        type: 'detail-page',
+        selector: 'body',
+        element: document.body,
+        pageType,
+      };
+    }
+
+    return { type: null, selector: null, element: null, pageType };
+  }
+
+  /**
+   * 🆕 Detect page type (listing grid vs detail page)
+   */
+  private detectPageType(
+    element: Element
+  ): 'listing-grid' | 'detail-page' | 'hero-banner' | 'unknown' {
+    // Check URL patterns first (most reliable)
+    const url = window.location.pathname.toLowerCase();
+
+    // Detail page patterns
+    if (
+      /\/(product|item|listing|detail|view)\/[^/]+/i.test(url) ||
+      /\/p\/[^/]+/i.test(url) ||
+      /\/id\/\d+/i.test(url)
+    ) {
+      return 'detail-page';
+    }
+
+    // Listing page patterns
+    if (/\/(listings?|search|browse|gallery|catalog)/i.test(url)) {
+      return 'listing-grid';
+    }
+
+    // Check DOM structure
+    const carouselContainer = element.closest(
+      '[class*="carousel"], [class*="slider"], [class*="gallery"], [class*="swiper"]'
+    );
+
+    if (!carouselContainer) {
+      return 'unknown';
+    }
+
+    // Check if carousel is in hero banner (top of page)
+    const rect = carouselContainer.getBoundingClientRect();
+    const isAtTop = rect.top < window.innerHeight * 0.5; // Top half of viewport
+
+    if (isAtTop) {
+      // Count if there are multiple similar carousels on page (indicates listing grid)
+      const allCarousels = document.querySelectorAll(
+        '[class*="carousel"], [class*="slider"], [class*="gallery"], [class*="swiper"]'
+      );
+
+      if (allCarousels.length > 5) {
+        return 'listing-grid'; // Multiple carousels = listing grid
+      } else if (allCarousels.length === 1) {
+        return 'hero-banner'; // Single carousel at top = hero banner
+      }
+    }
+
+    // Check container structure
+    const parentClasses = carouselContainer.className || '';
+
+    // Listing grid indicators
+    if (/item|card|listing|product/i.test(parentClasses)) {
+      // Count similar siblings
+      const siblings = Array.from(carouselContainer.parentElement?.children || []);
+      const similarSiblings = siblings.filter(
+        (el) => el !== carouselContainer && el.className === carouselContainer.className
+      );
+
+      if (similarSiblings.length > 2) {
+        return 'listing-grid'; // Multiple similar items = grid
+      }
+    }
+
+    // Detail page indicators
+    if (/detail|product[-_]?page|main[-_]?content|content[-_]?body/i.test(parentClasses)) {
+      return 'detail-page';
+    }
+
+    return 'unknown';
+  }
+
+  /**
+   * Get relative selector from container to element
+   */
+  private getRelativeSelector(container: Element, element: Element): string {
+    const parts: string[] = [];
+    let current: Element | null = element;
+
+    while (current && current !== container && current !== document.body) {
+      const part = this.getElementSelectorPart(current);
+      parts.unshift(part);
+      current = current.parentElement;
+    }
+
+    return parts.join(' > ');
+  }
+
+  /**
+   * Generate carousel-specific selectors with container scoping
+   */
+  public generateCarouselSelectors(element: Element): SelectorStrategy {
+    const parentContainer = this.findUniqueParentContainer(element);
+
+    if (!parentContainer.selector || !parentContainer.element) {
+      // Fallback to regular selector
+      return this.generateSelectors(element);
+    }
+
+    // Get relative selector from container to element
+    const relativePath = this.getRelativeSelector(parentContainer.element, element);
+
+    // Build container-scoped CSS selector with child combinator (>)
+    const containerScopedCss = `${parentContainer.selector} > ${relativePath}`;
+
+    // Generate other selectors normally
+    const baseStrategy = this.generateAllSelectors(element);
+
+    // 🆕 Build container-scoped XPath
+    let containerScopedXPath = baseStrategy.xpath;
+
+    // If we have a list item container, make XPath more specific
+    if (parentContainer.type === 'nth-child' && parentContainer.index !== undefined) {
+      // Extract list container (ul/ol) from parent selector
+      const listMatch = parentContainer.selector.match(/(ul|ol)([#.][\w-]+)?/i);
+      if (listMatch) {
+        const listSelector = listMatch[0];
+        const listIndex = parentContainer.index + 1; // XPath is 1-indexed
+
+        // Detect direction from element classes
+        const className = this.getElementClassName(element);
+        const direction = /next|right/i.test(className)
+          ? 'next'
+          : /prev|left/i.test(className)
+            ? 'prev'
+            : '';
+
+        // Build XPath that includes list item context
+        if (direction) {
+          containerScopedXPath = `//${listSelector}/li[${listIndex}]/descendant::span[contains(@class, 'img-arrow') and contains(@class, '${direction}')]/descendant::svg[1]`;
+        } else {
+          containerScopedXPath = `//${listSelector}/li[${listIndex}]${baseStrategy.xpath?.replace(/^\/\//, '//') || ''}`;
+        }
+      }
+    }
+
+    // Override CSS and XPath with container-scoped versions
+    const carouselStrategy: SelectorStrategy = {
+      ...baseStrategy,
+      css: containerScopedCss,
+      xpath: containerScopedXPath,
+      // Adjust priority for carousel elements: css FIRST (most specific), then xpathAbsolute, position, xpath
+      priority: [
+        'css',
+        'xpathAbsolute',
+        'position',
+        'xpath',
+        'id',
+        'dataTestId',
+        'ariaLabel',
+        'name',
+        'text',
+        'textContains',
+      ].filter(
+        (type) => baseStrategy[type as keyof SelectorStrategy] !== undefined
+      ) as SelectorType[],
+    };
+
+    console.log('[SelectorGenerator] Generated carousel selectors:', {
+      containerType: parentContainer.type,
+      containerSelector: parentContainer.selector,
+      containerIndex: parentContainer.index,
+      css: containerScopedCss,
+      xpath: containerScopedXPath,
+      priority: carouselStrategy.priority,
+    });
+
+    return carouselStrategy;
+  }
+
+  /**
+   * 🆕 Safely get element className as string
+   * Handles both HTMLElement.className (string) and SVGElement.className (SVGAnimatedString)
+   */
+  private getElementClassName(element: Element): string {
+    if (!element.className) {
+      return '';
+    }
+
+    // For SVG elements, className is an SVGAnimatedString object with baseVal property
+    if (typeof element.className === 'object') {
+      return String((element.className as any).baseVal || '');
+    }
+
+    // For HTML elements, className is a string
+    return String(element.className || '');
+  } /**
    * Generate selectors with confidence scores (v2.0.0)
    * Returns array of selector strategies sorted by confidence
    */
@@ -626,9 +1289,9 @@ export class SelectorGenerator {
   }
 
   /**
-   * Get a simple selector part for an element
+   * Get a simple selector part for an element (public for carousel detection)
    */
-  private getElementSelectorPart(element: Element): string {
+  public getElementSelectorPart(element: Element): string {
     const tagName = element.tagName.toLowerCase();
 
     if (element.id && !this.isDynamicId(element.id)) {
