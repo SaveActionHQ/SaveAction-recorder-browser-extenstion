@@ -50,6 +50,11 @@ export function isModal(element: Element): boolean {
   }
 
   // Check z-index alone for high values with modal-like positioning
+  // Safety check for window availability (can be undefined during test teardown)
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
   const style = window.getComputedStyle(element);
   const zIndex = parseInt(style.zIndex, 10);
   const position = style.position;

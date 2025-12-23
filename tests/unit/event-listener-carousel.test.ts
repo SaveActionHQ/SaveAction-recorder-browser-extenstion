@@ -235,7 +235,7 @@ describe('EventListener - Carousel Detection', () => {
       expect(action.selector.xpathAbsolute).toBeDefined();
     });
 
-    it('should generate unique selectors for multiple carousels on same page', () => {
+    it('should generate unique selectors for multiple carousels on same page', async () => {
       const ul = document.createElement('ul');
       ul.id = 'products';
 
@@ -244,6 +244,7 @@ describe('EventListener - Carousel Detection', () => {
         const li = document.createElement('li');
         li.className = 'product-item';
         const arrow = document.createElement('button');
+        arrow.type = 'button'; // Avoid submit button detection
         arrow.className = 'carousel-next';
         li.appendChild(arrow);
         ul.appendChild(li);
@@ -257,14 +258,19 @@ describe('EventListener - Carousel Detection', () => {
       const arrows = document.querySelectorAll('.carousel-next');
       const selectors: string[] = [];
 
-      arrows.forEach((arrow) => {
+      for (const arrow of arrows) {
         capturedActions = []; // Clear
         const event = new MouseEvent('click', { bubbles: true, clientX: 10, clientY: 10 });
         arrow.dispatchEvent(event);
 
-        const action = capturedActions[0] as ClickAction;
-        selectors.push(action.selector.css || '');
-      });
+        // Wait for async form navigation detection to complete
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        if (capturedActions.length > 0) {
+          const action = capturedActions[0] as ClickAction;
+          selectors.push(action.selector?.css || '');
+        }
+      }
 
       // All selectors should be unique
       expect(new Set(selectors).size).toBe(3);
