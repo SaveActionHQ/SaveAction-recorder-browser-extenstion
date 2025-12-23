@@ -538,7 +538,9 @@ export class EventListener {
     const willNavigate = this.isNavigationClick(target);
 
     // ✅ FIX: Check if this is a submit button (form OR AJAX-based)
-    const isSubmitButton = this.isSubmitButton(target);
+    // 🆕 CAROUSEL FIX: Carousel controls should NOT be treated as submit buttons
+    const isCarouselControl = this.selectorGenerator.isCarouselControl(target);
+    const isSubmitButton = !isCarouselControl && this.isSubmitButton(target);
 
     if (willNavigate || isSubmitButton) {
       // 🆕 CRITICAL FIX #2: AJAX form detection
@@ -3371,8 +3373,8 @@ export class EventListener {
         // P0: CAROUSEL EXCEPTION - Allow carousel navigation clicks
         // Users naturally click carousel arrows multiple times to browse
         if (clickAction.carouselContext?.isCarouselControl) {
-          // Still filter if TOO rapid (< 150ms = accidental double-tap)
-          if (timeDiff < 150) {
+          // Still filter if TOO rapid (< 200ms = accidental double-tap)
+          if (timeDiff < 200) {
             console.log(`[Duplicate] Filtered accidental carousel double-tap (${timeDiff}ms)`);
             return true; // Is duplicate
           }

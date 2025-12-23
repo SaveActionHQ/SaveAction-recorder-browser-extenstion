@@ -221,7 +221,7 @@ export class SelectorGenerator {
       /(arrow|icon|btn|button|control)[-_]?(next|prev|previous)/i,
 
       // Compound patterns (very specific)
-      /carousel[-_]?(arrow|nav|button|control)/i,
+      /carousel[-_]?(arrow|nav|button|control|next|prev|previous)/i, // Fixed: Added next/prev/previous
       /(arrow|nav|button)[-_]?carousel/i,
     ];
 
@@ -657,11 +657,11 @@ export class SelectorGenerator {
       ...baseStrategy,
       css: containerScopedCss,
       xpath: containerScopedXPath,
-      // Adjust priority for carousel elements: css FIRST (most specific), then xpathAbsolute, position, xpath
+      // Adjust priority for carousel elements: xpathAbsolute FIRST (most stable), then position, then css
       priority: [
-        'css',
         'xpathAbsolute',
         'position',
+        'css',
         'xpath',
         'id',
         'dataTestId',
