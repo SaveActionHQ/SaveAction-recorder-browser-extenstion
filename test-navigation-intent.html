@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Navigation Intent Test Page</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 1200px;
+        margin: 50px auto;
+        padding: 20px;
+      }
+      .test-section {
+        margin: 30px 0;
+        padding: 20px;
+        border: 2px solid #ddd;
+        border-radius: 8px;
+      }
+      .test-section h2 {
+        margin-top: 0;
+        color: #333;
+      }
+      button {
+        padding: 12px 24px;
+        margin: 10px 10px 10px 0;
+        font-size: 16px;
+        cursor: pointer;
+        border: none;
+        border-radius: 4px;
+        transition: background-color 0.3s;
+      }
+      .btn-checkout {
+        background-color: #28a745;
+        color: white;
+      }
+      .btn-checkout:hover {
+        background-color: #218838;
+      }
+      .btn-submit {
+        background-color: #007bff;
+        color: white;
+      }
+      .btn-submit:hover {
+        background-color: #0056b3;
+      }
+      .btn-close {
+        background-color: #6c757d;
+        color: white;
+      }
+      .btn-close:hover {
+        background-color: #5a6268;
+      }
+      .btn-logout {
+        background-color: #dc3545;
+        color: white;
+      }
+      .btn-logout:hover {
+        background-color: #c82333;
+      }
+      .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+      }
+      .modal-content {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: white;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        min-width: 400px;
+      }
+      .modal.active {
+        display: block;
+      }
+      .success-indicator {
+        display: none;
+        padding: 15px;
+        margin: 15px 0;
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+        border-radius: 4px;
+      }
+      .success-indicator.active {
+        display: block;
+      }
+      .order-checkout-status-action {
+        padding: 10px;
+        margin: 10px 0;
+        background-color: #f8f9fa;
+        border-left: 4px solid #007bff;
+      }
+      .info-box {
+        background-color: #e7f3ff;
+        padding: 15px;
+        border-radius: 4px;
+        margin: 20px 0;
+      }
+      .code {
+        background-color: #f5f5f5;
+        padding: 10px;
+        border-radius: 4px;
+        font-family: 'Courier New', monospace;
+        margin: 10px 0;
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🧪 Navigation Intent Detection Test Page</h1>
+
+    <div class="info-box">
+      <strong>How to test:</strong>
+      <ol>
+        <li>Load the SaveAction Recorder extension</li>
+        <li>Start recording</li>
+        <li>Click buttons below and observe the console</li>
+        <li>Stop recording and export JSON</li>
+        <li>Verify the new fields in the JSON output</li>
+      </ol>
+    </div>
+
+    <!-- Test 1: Checkout Complete (Terminal Action) -->
+    <div class="test-section">
+      <h2>Test 1: Checkout Complete (Terminal Action)</h2>
+      <p>
+        Expected: <code>navigationIntent: "checkout-complete"</code>,
+        <code>isTerminalAction: true</code>
+      </p>
+      <button id="complete-order-btn" class="btn-checkout" onclick="simulateCheckout()">
+        Complete Order
+      </button>
+      <button class="btn-checkout" onclick="simulateCheckout()">Place Order</button>
+      <button class="btn-checkout" onclick="simulateCheckout()">Confirm Payment</button>
+      <button class="btn-checkout" onclick="simulateCheckout()">Pay Now</button>
+    </div>
+
+    <!-- Test 2: Modal with Terminal Action -->
+    <div class="test-section">
+      <h2>Test 2: Modal with Dependent Actions</h2>
+      <p>Expected: Close button has <code>dependentActions</code> array after checkout</p>
+      <button class="btn-submit" onclick="openPaymentModal()">Open Payment Modal</button>
+    </div>
+
+    <!-- Test 3: Form Submit -->
+    <div class="test-section">
+      <h2>Test 3: Form Submission</h2>
+      <p>Expected: <code>navigationIntent: "submit-form"</code></p>
+      <form onsubmit="handleFormSubmit(event)">
+        <input type="text" placeholder="Name" style="padding: 8px; margin-right: 10px" />
+        <input type="email" placeholder="Email" style="padding: 8px; margin-right: 10px" />
+        <button type="submit" class="btn-submit">Submit Form</button>
+      </form>
+    </div>
+
+    <!-- Test 4: Navigation Link -->
+    <div class="test-section">
+      <h2>Test 4: Regular Navigation</h2>
+      <p>Expected: <code>navigationIntent: "navigate-to-page"</code></p>
+      <a
+        href="#products"
+        style="
+          padding: 12px 24px;
+          background-color: #17a2b8;
+          color: white;
+          text-decoration: none;
+          border-radius: 4px;
+          display: inline-block;
+        "
+      >
+        Go to Products
+      </a>
+    </div>
+
+    <!-- Test 5: Logout -->
+    <div class="test-section">
+      <h2>Test 5: Logout</h2>
+      <p>Expected: <code>navigationIntent: "logout"</code></p>
+      <button class="btn-logout" onclick="simulateLogout()">Log Out</button>
+    </div>
+
+    <!-- Payment Modal -->
+    <div id="paymentModal" class="modal">
+      <div class="modal-content">
+        <h2>Payment Modal</h2>
+        <div id="order-checkout-status-action" class="order-checkout-status-action">
+          <p>Order Status: Ready for checkout</p>
+        </div>
+        <div id="success-message" class="success-indicator">✅ Order completed successfully!</div>
+        <button id="checkout-complete" class="btn-checkout" onclick="completeCheckoutInModal()">
+          Complete Order
+        </button>
+        <button class="btn-close" onclick="closePaymentModal()">Close</button>
+      </div>
+    </div>
+
+    <script>
+      function openPaymentModal() {
+        document.getElementById('paymentModal').classList.add('active');
+        console.log('📋 Modal opened');
+      }
+
+      function closePaymentModal() {
+        document.getElementById('paymentModal').classList.remove('active');
+        console.log('❌ Modal closed');
+      }
+
+      function completeCheckoutInModal() {
+        console.log('🎉 Checkout completed in modal!');
+
+        // Show success indicator
+        document.getElementById('success-message').classList.add('active');
+        document.getElementById('order-checkout-status-action').style.display = 'none';
+
+        // Simulate navigation after 1 second
+        setTimeout(() => {
+          console.log('🔄 Navigating to orders page...');
+          // In real scenario, this would navigate to /account/customer/order/
+          // For demo, just log it
+          alert(
+            '✅ Navigation to /account/customer/order/ (simulated)\n\nIn production, the platform would:\n1. Detect success URL\n2. Skip remaining Close button actions\n3. Mark test as PASSED'
+          );
+          closePaymentModal();
+        }, 1000);
+      }
+
+      function simulateCheckout() {
+        console.log('🛒 Checkout button clicked!');
+        alert(
+          '✅ Checkout complete!\n\nExpected JSON fields:\n{\n  "navigationIntent": "checkout-complete",\n  "isTerminalAction": true,\n  "expectedUrlChange": {\n    "type": "success",\n    "patterns": ["/account/", "/orders/"],\n    "isSuccessFlow": true\n  }\n}'
+        );
+
+        // Simulate navigation
+        setTimeout(() => {
+          console.log('🔄 Simulating navigation to success page...');
+        }, 500);
+      }
+
+      function handleFormSubmit(event) {
+        event.preventDefault();
+        console.log('📝 Form submitted!');
+        alert('Form submitted!\n\nExpected: navigationIntent: "submit-form"');
+      }
+
+      function simulateLogout() {
+        console.log('👋 Logging out...');
+        alert('Logged out!\n\nExpected: navigationIntent: "logout"');
+      }
+
+      // Log page ready
+      console.log('✅ Navigation Intent Test Page Ready!');
+      console.log('📊 Open DevTools to see action detection logs');
+    </script>
+
+    <!-- Expected JSON Output Example -->
+    <div class="test-section">
+      <h2>Expected JSON Output</h2>
+      <p>When you click "Complete Order" in the modal, you should see:</p>
+      <div class="code">
+        { "id": "act_001", "type": "click", "selector": { "id": "#checkout-complete" }, "text":
+        "Complete Order", "context": { "isInsideModal": true, "modalId": "paymentModal",
+        "modalState": "order-checkout-status-action", "actionGroup": "modal-paymentModal",
+        "navigationIntent": "checkout-complete", "isTerminalAction": true, "expectedUrlChange": {
+        "type": "success", "patterns": ["/account/", "/orders/", "/order/", "/thank-you"],
+        "isSuccessFlow": true, "beforeUrl": "http://localhost/test-page.html", "afterUrl":
+        "http://localhost/account/customer/order/" } } }
+      </div>
+
+      <p>When you click "Close" button:</p>
+      <div class="code">
+        { "id": "act_002", "type": "click", "text": "Close", "context": { "isInsideModal": true,
+        "modalId": "paymentModal", "actionGroup": "modal-paymentModal", "dependentActions":
+        ["act_001"], "navigationIntent": "close-modal-and-redirect" } }
+      </div>
+    </div>
+  </body>
+</html>

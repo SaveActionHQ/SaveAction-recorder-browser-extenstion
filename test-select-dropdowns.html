@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Test Native Select Dropdowns - SaveAction Recorder</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 40px auto;
+        padding: 20px;
+        background: #f5f5f5;
+      }
+
+      .test-section {
+        background: white;
+        padding: 20px;
+        margin-bottom: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+
+      h1 {
+        color: #333;
+        border-bottom: 3px solid #4caf50;
+        padding-bottom: 10px;
+      }
+
+      h2 {
+        color: #4caf50;
+        margin-top: 0;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+        color: #555;
+      }
+
+      select {
+        width: 100%;
+        padding: 10px;
+        margin-bottom: 15px;
+        border: 2px solid #ddd;
+        border-radius: 4px;
+        font-size: 16px;
+        background: white;
+      }
+
+      select:focus {
+        outline: none;
+        border-color: #4caf50;
+      }
+
+      select:disabled {
+        background: #f0f0f0;
+        color: #999;
+        cursor: not-allowed;
+      }
+
+      button {
+        background: #4caf50;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 16px;
+      }
+
+      button:hover {
+        background: #45a049;
+      }
+
+      .hidden {
+        display: none;
+      }
+
+      .info {
+        background: #e3f2fd;
+        padding: 10px;
+        border-left: 4px solid #2196f3;
+        margin-bottom: 15px;
+        font-size: 14px;
+      }
+
+      .result {
+        margin-top: 20px;
+        padding: 15px;
+        background: #f9f9f9;
+        border-left: 4px solid #4caf50;
+        display: none;
+      }
+
+      .result.show {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🧪 Native Select Dropdown Test Suite</h1>
+    <p class="info">
+      <strong>Instructions:</strong> Start recording in SaveAction Recorder, then interact with each
+      dropdown below. Stop recording and verify the JSON export contains
+      <code>select-change</code> actions with full option details.
+    </p>
+
+    <!-- Test Case 1: Basic Select -->
+    <div class="test-section">
+      <h2>Test 1: Basic Single Select</h2>
+      <p>
+        Should record: <code>type: "select"</code>, <code>selectedValue</code>,
+        <code>selectedText</code>, <code>selectedIndex</code>
+      </p>
+
+      <label for="country">Select a Country:</label>
+      <select id="country" name="country">
+        <option value="">-- Select a country --</option>
+        <option value="us">United States</option>
+        <option value="uk">United Kingdom</option>
+        <option value="ca">Canada</option>
+        <option value="au">Australia</option>
+      </select>
+    </div>
+
+    <!-- Test Case 2: Multiple Selects on Same Page -->
+    <div class="test-section">
+      <h2>Test 2: Multiple Selects (Unique Selectors)</h2>
+      <p>Should record TWO separate actions with unique selectors</p>
+
+      <form id="address-form">
+        <label for="shipping-country">Shipping Country:</label>
+        <select id="shipping-country" name="shipping-country">
+          <option value="">-- Select --</option>
+          <option value="us">United States</option>
+          <option value="uk">United Kingdom</option>
+        </select>
+
+        <label for="billing-country">Billing Country:</label>
+        <select id="billing-country" name="billing-country">
+          <option value="">-- Select --</option>
+          <option value="us">United States</option>
+          <option value="uk">United Kingdom</option>
+        </select>
+      </form>
+    </div>
+
+    <!-- Test Case 3: Dynamic Options (AJAX Simulation) -->
+    <div class="test-section">
+      <h2>Test 3: Dynamic Options Loading</h2>
+      <p>Select country first, then wait 1 second for cities to load</p>
+
+      <label for="dynamic-country">Country:</label>
+      <select id="dynamic-country" name="dynamic-country">
+        <option value="">-- Select a country --</option>
+        <option value="us">United States</option>
+        <option value="uk">United Kingdom</option>
+      </select>
+
+      <label for="dynamic-city">City:</label>
+      <select id="dynamic-city" name="dynamic-city" disabled>
+        <option value="">-- Select a country first --</option>
+      </select>
+    </div>
+
+    <!-- Test Case 4: Multi-Select -->
+    <div class="test-section">
+      <h2>Test 4: Multi-Select Dropdown</h2>
+      <p>Should record: <code>isMultiple: true</code>, <code>selectedOptions</code> array</p>
+
+      <label for="tags">Select Multiple Tags (hold Ctrl/Cmd):</label>
+      <select id="tags" name="tags" multiple size="5">
+        <option value="tag1">JavaScript</option>
+        <option value="tag2">TypeScript</option>
+        <option value="tag3">React</option>
+        <option value="tag4">Vue</option>
+        <option value="tag5">Angular</option>
+      </select>
+    </div>
+
+    <!-- Test Case 5: Disabled Select (Should NOT Record) -->
+    <div class="test-section">
+      <h2>Test 5: Disabled Select (Should NOT Record)</h2>
+      <p>This should NOT create a select-change action</p>
+
+      <label for="disabled-select">Disabled Dropdown:</label>
+      <select id="disabled-select" name="disabled-select" disabled>
+        <option value="opt1">Option 1</option>
+        <option value="opt2">Option 2</option>
+      </select>
+      <button onclick="enableDisabledSelect()">Enable Dropdown</button>
+    </div>
+
+    <!-- Test Case 6: Hidden Select (Should NOT Record) -->
+    <div class="test-section">
+      <h2>Test 6: Hidden Select (Should NOT Record)</h2>
+      <p>This should NOT create a select-change action when hidden</p>
+
+      <label for="hidden-select">Hidden Dropdown:</label>
+      <select id="hidden-select" name="hidden-select" class="hidden">
+        <option value="opt1">Option 1</option>
+        <option value="opt2">Option 2</option>
+      </select>
+      <button onclick="toggleHiddenSelect()">Show Dropdown</button>
+    </div>
+
+    <!-- Test Case 7: Form Submit After Select -->
+    <div class="test-section">
+      <h2>Test 7: Form Submit After Select</h2>
+      <p>Should record BOTH select-change AND submit actions</p>
+
+      <form id="test-form" onsubmit="handleSubmit(event)">
+        <label for="form-country">Country:</label>
+        <select id="form-country" name="form-country" required>
+          <option value="">-- Required --</option>
+          <option value="us">United States</option>
+          <option value="uk">United Kingdom</option>
+        </select>
+
+        <button type="submit">Submit Form</button>
+      </form>
+      <div id="submit-result" class="result"></div>
+    </div>
+
+    <!-- Test Case 8: Programmatic Change (Should NOT Record) -->
+    <div class="test-section">
+      <h2>Test 8: Programmatic Change (Should NOT Record)</h2>
+      <p>Button click should NOT create select-change action (only the button click)</p>
+
+      <label for="programmatic-select">Auto-Select Dropdown:</label>
+      <select id="programmatic-select" name="programmatic-select">
+        <option value="">-- Select --</option>
+        <option value="opt1">Option 1</option>
+        <option value="opt2">Option 2</option>
+        <option value="opt3">Option 3</option>
+      </select>
+      <button onclick="programmaticChange()">Auto-Select Option 2</button>
+    </div>
+
+    <script>
+      // Test Case 3: Dynamic city loading
+      document.getElementById('dynamic-country').addEventListener('change', function (e) {
+        const citySelect = document.getElementById('dynamic-city');
+        const country = e.target.value;
+
+        if (!country) {
+          citySelect.disabled = true;
+          citySelect.innerHTML = '<option value="">-- Select a country first --</option>';
+          return;
+        }
+
+        citySelect.disabled = true;
+        citySelect.innerHTML = '<option value="">Loading cities...</option>';
+
+        // Simulate AJAX delay
+        setTimeout(() => {
+          const cities = {
+            us: [
+              { value: 'nyc', text: 'New York' },
+              { value: 'la', text: 'Los Angeles' },
+              { value: 'chicago', text: 'Chicago' },
+            ],
+            uk: [
+              { value: 'london', text: 'London' },
+              { value: 'manchester', text: 'Manchester' },
+              { value: 'birmingham', text: 'Birmingham' },
+            ],
+          };
+
+          citySelect.innerHTML = '<option value="">-- Select a city --</option>';
+          cities[country].forEach((city) => {
+            const option = document.createElement('option');
+            option.value = city.value;
+            option.textContent = city.text;
+            citySelect.appendChild(option);
+          });
+
+          citySelect.disabled = false;
+        }, 1000);
+      });
+
+      // Test Case 5: Enable disabled select
+      function enableDisabledSelect() {
+        const select = document.getElementById('disabled-select');
+        select.disabled = false;
+        event.target.textContent = 'Dropdown Enabled!';
+        event.target.disabled = true;
+      }
+
+      // Test Case 6: Toggle hidden select
+      function toggleHiddenSelect() {
+        const select = document.getElementById('hidden-select');
+        select.classList.toggle('hidden');
+        event.target.textContent = select.classList.contains('hidden')
+          ? 'Show Dropdown'
+          : 'Hide Dropdown';
+      }
+
+      // Test Case 7: Form submit
+      function handleSubmit(event) {
+        event.preventDefault();
+        const country = document.getElementById('form-country').value;
+        const resultDiv = document.getElementById('submit-result');
+        resultDiv.textContent = `Form submitted with country: ${country}`;
+        resultDiv.classList.add('show');
+
+        setTimeout(() => {
+          resultDiv.classList.remove('show');
+        }, 3000);
+      }
+
+      // Test Case 8: Programmatic change
+      function programmaticChange() {
+        const select = document.getElementById('programmatic-select');
+        select.value = 'opt2';
+
+        // Note: This programmatic change should NOT be recorded
+        // Only user-initiated changes should be recorded
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+
+        alert(
+          'Programmatically changed to Option 2. This should NOT create a select-change action.'
+        );
+      }
+    </script>
+  </body>
+</html>

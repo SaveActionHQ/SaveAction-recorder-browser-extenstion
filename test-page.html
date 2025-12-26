@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smart Waits Test Page</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+
+      .section {
+        margin: 30px 0;
+        padding: 20px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+      }
+
+      h2 {
+        color: #333;
+      }
+
+      /* Lazy loaded images */
+      .product-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 20px;
+      }
+
+      .product-card img {
+        width: 100%;
+        height: 200px;
+        object-fit: cover;
+        loading: lazy;
+      }
+
+      /* Modal */
+      .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+      }
+
+      .modal.active {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .modal-content {
+        background: white;
+        padding: 30px;
+        border-radius: 10px;
+        max-width: 500px;
+      }
+
+      .modal.success .modal-details {
+        display: none;
+      }
+      .modal.details .modal-success {
+        display: none;
+      }
+
+      /* Dropdown */
+      .dropdown {
+        position: relative;
+        display: inline-block;
+      }
+
+      .dropdown-content {
+        display: none;
+        position: absolute;
+        background-color: #f9f9f9;
+        min-width: 160px;
+        box-shadow: 0px 8px 16px rgba(0, 0, 0, 0.2);
+        z-index: 1;
+      }
+
+      .dropdown:hover .dropdown-content {
+        display: block;
+      }
+
+      .dropdown-content a {
+        color: black;
+        padding: 12px 16px;
+        text-decoration: none;
+        display: block;
+      }
+
+      button {
+        padding: 10px 20px;
+        margin: 5px;
+        cursor: pointer;
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 5px;
+      }
+
+      button:hover {
+        background: #0056b3;
+      }
+
+      input {
+        padding: 10px;
+        margin: 5px;
+        border: 1px solid #ddd;
+        border-radius: 3px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Smart Waits Test Page</h1>
+    <p>This page demonstrates scenarios that smart waits should handle:</p>
+
+    <!-- Test 1: Lazy Loaded Images -->
+    <div class="section">
+      <h2>1. Lazy Loaded Images (Product Grid)</h2>
+      <div class="product-grid">
+        <div class="product-card">
+          <a href="/products/rose-bouquet">
+            <img
+              src="https://picsum.photos/300/200?random=1"
+              alt="Rose Bouquet"
+              loading="lazy"
+              data-product-id="101"
+            />
+          </a>
+          <h3>Rose Bouquet</h3>
+        </div>
+        <div class="product-card">
+          <a href="/products/tulip-arrangement">
+            <img
+              src="https://picsum.photos/300/200?random=2"
+              alt="Tulip Arrangement"
+              loading="lazy"
+              data-product-id="102"
+            />
+          </a>
+          <h3>Tulip Arrangement</h3>
+        </div>
+        <div class="product-card">
+          <a href="/products/lily-basket">
+            <img
+              src="https://picsum.photos/300/200?random=3"
+              alt="Lily Basket"
+              loading="lazy"
+              data-product-id="103"
+            />
+          </a>
+          <h3>Lily Basket</h3>
+        </div>
+      </div>
+      <p>
+        <em>Click on any image - recorder should capture imageLoaded and isLazyLoaded metadata</em>
+      </p>
+    </div>
+
+    <!-- Test 2: Modal with State Transitions -->
+    <div class="section">
+      <h2>2. Modal State Transitions</h2>
+      <button onclick="openModal('details')">Open Modal (Details State)</button>
+
+      <div id="checkout-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-details">
+            <h3>Order Details</h3>
+            <input type="text" placeholder="Name" id="customer-name" />
+            <input type="email" placeholder="Email" id="customer-email" />
+            <button onclick="submitOrder()">Submit Order</button>
+            <button onclick="closeModal()">Cancel</button>
+          </div>
+          <div class="modal-success">
+            <h3>✓ Order Submitted!</h3>
+            <p>Your order has been placed successfully.</p>
+            <button onclick="closeModal()">Close</button>
+          </div>
+        </div>
+      </div>
+      <p>
+        <em
+          >Click "Submit Order" button - recorder should capture modalId, modalState, and
+          isInsideModal metadata</em
+        >
+      </p>
+    </div>
+
+    <!-- Test 3: Dropdown Menu -->
+    <div class="section">
+      <h2>3. Dropdown Menu (Hover-activated)</h2>
+      <div class="dropdown">
+        <button>Select Category</button>
+        <div class="dropdown-content">
+          <a href="#" onclick="selectCategory('Roses'); return false;">Roses</a>
+          <a href="#" onclick="selectCategory('Tulips'); return false;">Tulips</a>
+          <a href="#" onclick="selectCategory('Lilies'); return false;">Lilies</a>
+        </div>
+      </div>
+      <div id="selected-category"></div>
+      <p>
+        <em
+          >Hover and click a dropdown item - recorder should capture hover action with parent
+          context</em
+        >
+      </p>
+    </div>
+
+    <!-- Test 4: Input Fields -->
+    <div class="section">
+      <h2>4. Input Fields (Various Types)</h2>
+      <input type="text" placeholder="Username" id="username" />
+      <input type="password" placeholder="Password" id="password" />
+      <input type="email" placeholder="Email" id="email" />
+      <button onclick="alert('Form submitted!')">Submit</button>
+      <p>
+        <em>Type in input fields - recorder should capture elementVisible and enabled state</em>
+      </p>
+    </div>
+
+    <script>
+      // Modal functions
+      function openModal(state) {
+        const modal = document.getElementById('checkout-modal');
+        modal.className = 'modal active ' + state;
+      }
+
+      function closeModal() {
+        const modal = document.getElementById('checkout-modal');
+        modal.className = 'modal';
+      }
+
+      function submitOrder() {
+        // Simulate API call delay
+        setTimeout(() => {
+          openModal('success');
+        }, 100);
+      }
+
+      // Dropdown function
+      function selectCategory(category) {
+        document.getElementById('selected-category').innerHTML =
+          `<strong>Selected:</strong> ${category}`;
+      }
+
+      // Simulate slow image loading
+      window.addEventListener('load', () => {
+        console.log('Page loaded - all lazy images should be complete');
+      });
+    </script>
+  </body>
+</html>

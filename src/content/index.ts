@@ -17,6 +17,22 @@ if (window.self !== window.top) {
   let restorationComplete = false;
   let restorationPromise: Promise<void> | null = null;
 
+  // CRITICAL FIX: Buffer early clicks during initialization to prevent data loss
+  let earlyClicksBuffer: MouseEvent[] = [];
+  let isInitializing = true;
+
+  // Capture clicks immediately (even before recorder is ready)
+  document.addEventListener(
+    'click',
+    (event: MouseEvent) => {
+      if (isInitializing && !restorationComplete) {
+        console.log('[Content] Buffering early click during initialization');
+        earlyClicksBuffer.push(event);
+      }
+    },
+    true
+  );
+
   /**
    * Initialize recorder and restore state if needed
    */
@@ -99,6 +115,24 @@ if (window.self !== window.top) {
       }
 
       restorationComplete = true;
+      isInitializing = false;
+
+      // CRITICAL FIX: Process buffered early clicks after initialization
+      if (earlyClicksBuffer.length > 0 && recorder && recorder.isRecording()) {
+        console.log(
+          `[Content] Processing ${earlyClicksBuffer.length} buffered clicks from initialization`
+        );
+        // Give recorder a moment to fully initialize, then replay buffered clicks
+        setTimeout(() => {
+          earlyClicksBuffer.forEach((event) => {
+            // Manually trigger the click handler
+            const clickEvent = new MouseEvent('click', event);
+            event.target?.dispatchEvent(clickEvent);
+          });
+          earlyClicksBuffer = []; // Clear buffer
+          console.log('[Content] Buffered clicks processed');
+        }, 100);
+      }
     })();
 
     return restorationPromise;
@@ -361,8 +395,18 @@ if (window.self !== window.top) {
     restorationPromise = null;
   });
 
-  // Initialize and restore state on load
-  ensureRecorderReady().then(() => {
-    console.log('[Content] Content script loaded and ready');
-  });
+  // CRITICAL FIX: Initialize and restore state IMMEDIATELY on load (synchronous initialization)
+  // This ensures event listeners are attached BEFORE user can interact with the page
+  // Previously, async initialization caused race condition where clicks were lost
+  (async () => {
+    await ensureRecorderReady();
+    console.log('[Content] Content script loaded and ready - event listeners active');
+  })();
+
+  // BACKUP: Also ensure ready on DOMContentLoaded (if script loads late)
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      ensureRecorderReady();
+    });
+  }
 } // End of main frame check
