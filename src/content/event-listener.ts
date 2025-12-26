@@ -400,9 +400,16 @@ export class EventListener {
 
     const clickedElement = event.target as Element;
 
-    // Find the interactive element (could be the target or a parent)
+    // 🆕 P0 FIX: Find the interactive element (handles SVG/decorative children)
     const target = this.findInteractiveElement(clickedElement);
-    if (!target) return;
+    if (!target) {
+      console.log('[EventListener] ⚠️ No interactive parent found for click - skipping');
+      return;
+    }
+
+    // Track if we redirected from decorative child to parent
+    // @ts-expect-error - Used in createClickAction call below
+    const _wasRedirected = clickedElement !== target;
 
     // Skip hidden radio/checkbox inputs - they're typically clicked via labels
     // Recording them causes "Element is not visible" errors during replay
@@ -556,7 +563,7 @@ export class EventListener {
         });
 
         // Create initial click action WITHOUT expectsNavigation (will be updated)
-        const action = this.createClickAction(event, target, 1);
+        const action = this.createClickAction(event, target, clickedElement, 1);
 
         // Start AJAX detection in background (don't block the click)
         this.detectAjaxForm(form, target).then((result) => {
@@ -609,7 +616,7 @@ export class EventListener {
       }
 
       // For links and other navigation clicks, record action FIRST
-      const action = this.createClickAction(event, target, 1);
+      const action = this.createClickAction(event, target, clickedElement, 1);
       this.emitAction(action);
 
       // ✅ Store as pending click (might be updated by subsequent double-click)
@@ -640,7 +647,7 @@ export class EventListener {
         }
       }, 50);
     } else {
-      const action = this.createClickAction(event, target, 1);
+      const action = this.createClickAction(event, target, clickedElement, 1);
       this.emitAction(action);
 
       // ✅ Store as pending click (might be updated by subsequent double-click)
@@ -685,7 +692,7 @@ export class EventListener {
     if (willNavigate) return;
 
     // Record the action
-    const action = this.createClickAction(event, target, 1);
+    const action = this.createClickAction(event, target, clickedElement, 1);
     this.emitAction(action);
   }
 
@@ -712,14 +719,22 @@ export class EventListener {
     // Fallback: Create double-click action if no pending click found
     // (shouldn't happen in normal flow, but defensive programming)
     console.warn('[EventListener] ⚠️ Double-click without pending click - creating new action');
-    const action = this.createClickAction(event, target, 2);
+    const action = this.createClickAction(event, target, clickedElement, 2);
     this.emitAction(action);
   }
 
   /**
    * Create click action
    */
-  private createClickAction(event: MouseEvent, target: Element, clickCount: number): ClickAction {
+  private createClickAction(
+    event: MouseEvent,
+    target: Element,
+    clickedElement: Element,
+    clickCount: number
+  ): ClickAction {
+    // 🆕 P0 FIX: Track if we redirected from decorative child to interactive parent
+    const wasRedirected = clickedElement !== target;
+
     // 🆕 Detect if element is a carousel control
     const isCarousel = this.selectorGenerator.isCarouselControl(target);
 
@@ -905,6 +920,8 @@ export class EventListener {
     const validation = generateValidation(event, target, clickIntent, {
       clickHistory: this.clickHistory,
       recordingStartTime: this.recordingStartTime,
+      clickedElement, // Pass original clicked element
+      wasRedirected, // Pass redirection flag
     });
 
     return {
@@ -2193,15 +2210,24 @@ export class EventListener {
     // 🆕 Get detection metadata from selector generator
     const detectionResult = this.selectorGenerator.detectCarouselWithConfidence(element);
 
-    // Determine carousel direction - use safe className helper
+    // Determine carousel direction - check element AND parent classes
+    // (Parent might have .next/.prev while child is just a wrapper)
     const className = this.getElementClassName(element);
+    const parentClassName = element.parentElement
+      ? this.getElementClassName(element.parentElement)
+      : '';
+    const combinedClassName = `${className} ${parentClassName}`.toLowerCase();
     const ariaLabel = element.getAttribute('aria-label') || '';
-    const direction: 'next' | 'prev' =
-      className.includes('next') ||
-      className.includes('right') ||
-      ariaLabel.toLowerCase().includes('next')
-        ? 'next'
-        : 'prev';
+
+    // Explicit direction detection (check both directions)
+    const hasPrev =
+      combinedClassName.includes('prev') ||
+      combinedClassName.includes('previous') ||
+      combinedClassName.includes('back') ||
+      combinedClassName.includes('left') ||
+      ariaLabel.toLowerCase().includes('prev');
+
+    const direction: 'next' | 'prev' = hasPrev ? 'prev' : 'next';
 
     // Detect carousel library (enhanced from detection result)
     let carouselLibrary: string | undefined = detectionResult.carouselLibrary;
@@ -2582,35 +2608,179 @@ export class EventListener {
    * No depth limit - traverse entire ancestor chain for maximum capture rate
    * Special handling for carousel controls with nested SVG/icons
    */
-  private findInteractiveElement(element: Element): Element | null {
-    let current: Element | null = element;
-    let depth = 0;
-    const maxDepth = 20; // Safety limit to prevent infinite loops
-
-    // 🆕 Special case: If clicking on SVG/icon inside carousel arrow
-    // Traverse up to find the actual carousel control element
-    // Wrapped in try-catch to ensure carousel detection never breaks normal flow
-    try {
-      const carouselControl = this.findCarouselControlParent(element);
-      if (carouselControl) {
-        return carouselControl;
-      }
-    } catch (error) {
-      console.warn('[EventListener] Carousel parent detection failed, using fallback:', error);
-      // Continue to normal traversal
+  /**
+   * 🆕 P0 - CRITICAL FIX: Check if element is SVG or SVG descendant
+   * SVG elements should NEVER be recorded as click targets - they're decorative
+   */
+  private isSvgDescendant(element: Element): boolean {
+    // Direct SVG element tags
+    const svgTags = [
+      'svg',
+      'path',
+      'circle',
+      'rect',
+      'polygon',
+      'line',
+      'polyline',
+      'ellipse',
+      'use',
+      'g',
+    ];
+    if (svgTags.includes(element.tagName.toLowerCase())) {
+      return true;
     }
 
-    // Traverse up the DOM tree until we find an interactive element or reach body
-    while (current && current !== document.body && depth < maxDepth) {
-      // Skip the recording indicator
-      if (
-        current.id === 'saveaction-recording-indicator' ||
-        current.closest('#saveaction-recording-indicator')
-      ) {
-        return null;
+    // Check if element is inside SVG
+    return element.closest('svg') !== null;
+  }
+
+  /**
+   * 🆕 P0 - CRITICAL FIX: Check if element has click handler
+   * Helps identify interactive elements that aren't semantic HTML
+   */
+  private hasClickHandler(element: Element): boolean {
+    // Check for inline onclick
+    if (element.hasAttribute('onclick')) {
+      return true;
+    }
+
+    // Check for cursor:pointer (indicates clickable)
+    try {
+      const computedStyle = window.getComputedStyle(element);
+      if (computedStyle.cursor === 'pointer') {
+        return true;
+      }
+    } catch (error) {
+      // getComputedStyle may fail for disconnected elements
+    }
+
+    return false;
+  }
+
+  /**
+   * 🆕 P0 - CRITICAL FIX: Check if element is a carousel control
+   * Expanded detection beyond existing selectorGenerator.isCarouselControl
+   */
+  private isCarouselControlElement(element: Element): boolean {
+    const carouselClasses = [
+      'carousel-control',
+      'carousel-arrow',
+      'slider-arrow',
+      'item-img-arrow',
+      'next',
+      'prev',
+      'previous',
+      'slick-arrow',
+      'swiper-button',
+    ];
+
+    const className = this.getElementClassName(element).toLowerCase();
+    const hasCarouselClass = carouselClasses.some((cls) => className.includes(cls));
+
+    if (hasCarouselClass) {
+      return true;
+    }
+
+    // Use existing carousel detection as fallback
+    try {
+      return this.selectorGenerator.isCarouselControl(element);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * 🆕 P0 - CRITICAL FIX: Find clickable ancestor when clicking SVG child
+   * Traverses up from SVG element to find the actual button/link/span
+   */
+  private findSvgClickableAncestor(svgElement: Element): Element | null {
+    let parent = svgElement.parentElement;
+    let depth = 0;
+    const maxDepth = 10;
+
+    while (parent && parent !== document.body && depth < maxDepth) {
+      // Stop at first non-SVG element
+      if (!this.isSvgDescendant(parent)) {
+        // Check if this parent is interactive
+        if (this.isInteractiveElementStrict(parent)) {
+          console.log('[EventListener] 🎯 Found interactive parent for SVG:', {
+            svg: svgElement.tagName,
+            parent: parent.tagName,
+            parentClasses: this.getElementClassName(parent),
+          });
+          return parent;
+        }
+
+        // Check for carousel control
+        if (this.isCarouselControlElement(parent)) {
+          console.log('[EventListener] 🎯 Found carousel control parent for SVG:', {
+            svg: svgElement.tagName,
+            parent: parent.tagName,
+            parentClasses: this.getElementClassName(parent),
+          });
+          return parent;
+        }
+
+        // Check if parent has click handler
+        if (this.hasClickHandler(parent)) {
+          console.log('[EventListener] 🎯 Found clickable parent for SVG (cursor:pointer):', {
+            svg: svgElement.tagName,
+            parent: parent.tagName,
+          });
+          return parent;
+        }
       }
 
-      if (this.isInteractiveElement(current)) {
+      parent = parent.parentElement;
+      depth++;
+    }
+
+    return null; // No clickable parent found
+  }
+
+  /**
+   * 🆕 P0 - CRITICAL FIX: Find the actual interactive parent element
+   * Main entry point for DOM traversal - handles SVG, icons, decorative elements
+   */
+  private findInteractiveParent(element: Element): Element | null {
+    // @ts-expect-error - Kept for documentation, used in isInteractiveElementStrict
+    const _INTERACTIVE_TAGS = ['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'LABEL'];
+    // @ts-expect-error - Kept for documentation, used in isInteractiveElementStrict
+    const _CLICKABLE_ROLES = [
+      'button',
+      'link',
+      'menuitem',
+      'tab',
+      'option',
+      'radio',
+      'checkbox',
+      'switch',
+    ];
+
+    // STEP 1: If element is SVG/decorative, ALWAYS traverse to parent
+    if (this.isSvgDescendant(element)) {
+      console.log('[EventListener] ⚠️ Detected SVG click - finding interactive parent');
+      const ancestor = this.findSvgClickableAncestor(element);
+      if (ancestor) {
+        return ancestor;
+      }
+      // If no clickable ancestor found, return null (don't record SVG clicks)
+      return null;
+    }
+
+    // STEP 2: Check if clicked element itself is interactive
+    if (this.isInteractiveElementStrict(element)) {
+      return element;
+    }
+
+    // STEP 3: Walk up DOM tree to find interactive parent
+    let current: Element | null = element.parentElement;
+    let depth = 0;
+    const maxDepth = 10;
+
+    while (current && current !== document.body && depth < maxDepth) {
+      // Use the strict check which includes commonly clickable elements
+      if (this.isInteractiveElementStrict(current)) {
         return current;
       }
 
@@ -2618,13 +2788,79 @@ export class EventListener {
       depth++;
     }
 
+    // STEP 4: No interactive parent found
+    // Only return the element if it's actually interactive (not just a plain div)
+    if (this.isInteractiveElementStrict(element)) {
+      return element;
+    }
+
+    // Not interactive and no interactive parent - return null (don't record)
     return null;
+  }
+
+  /**
+   * 🆕 Strict interactive element check (for internal use by findInteractiveParent)
+   * Separated from main isInteractiveElement to avoid recursion
+   */
+  private isInteractiveElementStrict(element: Element): boolean {
+    const INTERACTIVE_TAGS = ['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'LABEL'];
+    const CLICKABLE_ROLES = [
+      'button',
+      'link',
+      'menuitem',
+      'tab',
+      'option',
+      'radio',
+      'checkbox',
+      'switch',
+    ];
+
+    // Commonly clickable elements in web apps
+    const COMMONLY_CLICKABLE = ['LI', 'TR', 'TD'];
+
+    // Check tag name
+    if (
+      INTERACTIVE_TAGS.includes(element.tagName) ||
+      COMMONLY_CLICKABLE.includes(element.tagName)
+    ) {
+      return true;
+    }
+
+    // Check ARIA role
+    const role = element.getAttribute('role');
+    if (role && CLICKABLE_ROLES.includes(role)) {
+      return true;
+    }
+
+    // Check for button/submit classes
+    const className = this.getElementClassName(element).toLowerCase();
+    if (className.includes('btn') || className.includes('button') || className.includes('submit')) {
+      return true;
+    }
+
+    // Check for click handlers
+    if (this.hasClickHandler(element)) {
+      return true;
+    }
+
+    // Check for carousel controls
+    if (this.isCarouselControlElement(element)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  private findInteractiveElement(element: Element): Element | null {
+    // 🆕 P0 - CRITICAL FIX: Use new findInteractiveParent logic
+    return this.findInteractiveParent(element);
   }
 
   /**
    * 🆕 Find carousel control parent when clicking on nested SVG/icon
    * Handles cases like: <span class="img-arrow"><svg>...</svg></span>
    */
+  // @ts-expect-error - Old implementation kept for reference
   private findCarouselControlParent(element: Element): Element | null {
     try {
       // Check if we're inside an SVG or icon element
@@ -2732,6 +2968,7 @@ export class EventListener {
    * Multi-layer detection with intelligent fallbacks
    * 🚨 CRITICAL: Carousel detection MUST come first to catch ALL carousel arrows
    */
+  // @ts-expect-error - Old implementation kept for reference
   private isInteractiveElement(element: Element): boolean {
     // 🆕 PRIORITY 0: CAROUSEL DETECTION (catches custom implementations)
     // This MUST be first because carousel arrows might be ANY element (span, div, etc.)

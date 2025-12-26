@@ -624,31 +624,89 @@ export class SelectorGenerator {
     // Generate other selectors normally
     const baseStrategy = this.generateAllSelectors(element);
 
-    // 🆕 Build container-scoped XPath
+    // 🆕 Build container-scoped XPath using direction-aware generation
+    // This ensures next/prev buttons get unique XPath selectors
     let containerScopedXPath = baseStrategy.xpath;
 
-    // If we have a list item container, make XPath more specific
-    if (parentContainer.type === 'nth-child' && parentContainer.index !== undefined) {
-      // Extract list container (ul/ol) from parent selector
-      const listMatch = parentContainer.selector.match(/(ul|ol)([#.][\w-]+)?/i);
-      if (listMatch) {
-        const listSelector = listMatch[0];
-        const listIndex = parentContainer.index + 1; // XPath is 1-indexed
+    // Use the new contextual XPath generator for better direction specificity
+    if (this.isCarouselControl(element)) {
+      const contextualXPath = this.generateContextualXPath(element);
 
-        // Detect direction from element classes
-        const className = this.getElementClassName(element);
-        const direction = /next|right/i.test(className)
-          ? 'next'
-          : /prev|left/i.test(className)
-            ? 'prev'
-            : '';
+      // If we have a list item container, enhance XPath with container context
+      if (parentContainer.type === 'nth-child' && parentContainer.index !== undefined) {
+        const listMatch = parentContainer.selector.match(/(ul|ol)([#.][\w-]+)?/i);
+        if (listMatch) {
+          const listSelector = listMatch[0];
+          const listIndex = parentContainer.index + 1; // XPath is 1-indexed
 
-        // Build XPath that includes list item context
-        if (direction) {
-          containerScopedXPath = `//${listSelector}/li[${listIndex}]/descendant::span[contains(@class, 'img-arrow') and contains(@class, '${direction}')]/descendant::svg[1]`;
+          // Extract direction and carousel classes from element AND parent (element may be child wrapper)
+          // DOM structure: <span class="arrow next"><span (clicked)><svg/></span></span>
+          //                      ↑ parent has classes    ↑ this element often has no classes
+          const directionClasses = this.extractDirectionClasses(element);
+          const carouselKeywords = ['arrow', 'control', 'button', 'slider', 'carousel', 'swiper'];
+
+          // Check both element and parent for carousel classes
+          const classList = Array.from(element.classList || []);
+          const parentClassList = element.parentElement
+            ? Array.from(element.parentElement.classList || [])
+            : [];
+          const combinedClassList = [...classList, ...parentClassList];
+
+          const carouselClasses = combinedClassList.filter((cls) =>
+            carouselKeywords.some((keyword) => cls.toLowerCase().includes(keyword))
+          );
+
+          // Build conditions array
+          const conditions: string[] = [];
+          directionClasses.forEach((cls) => conditions.push(`contains(@class, '${cls}')`));
+          carouselClasses.forEach((cls) => {
+            const condition = `contains(@class, '${cls}')`;
+            if (!conditions.includes(condition)) {
+              conditions.push(condition);
+            }
+          });
+
+          if (conditions.length > 0) {
+            // 🔧 FIX: Generate precise XPath that matches parent arrow span, then selects child
+            // DOM structure: <span class="arrow next"><span (clicked)><svg/></span></span>
+            // Old (BROKEN): //ul#listings_cn/li[4]/descendant::span[contains(@class, 'next')]
+            //   → Matches ANY descendant span with 'next' (too broad, matches multiple carousels)
+            // New (FIXED): //ul[@id='listings_cn']/li[4]//span[contains(@class, 'arrow') and contains(@class, 'next')]/span[1]
+            //   → Matches parent span with BOTH arrow AND direction classes, then selects first child
+
+            // Build @id attribute for stricter matching
+            const listIdMatch = listSelector.match(/#([\w-]+)/);
+            const listIdPart = listIdMatch ? `[@id='${listIdMatch[1]}']` : '';
+            const listTag = listSelector.replace(/#[\w-]+/, '').replace(/^\./, '') || 'ul';
+
+            // Build parent span conditions (must have BOTH arrow class AND direction class)
+            const parentConditions = conditions.slice(); // Copy all conditions
+
+            // Build XPath: match parent span with all conditions, then select child span[1]
+            containerScopedXPath = `//${listTag}${listIdPart}/li[${listIndex}]//span[${parentConditions.join(' and ')}]/span[1]`;
+          } else {
+            // Fallback: Use contextual XPath with list container prefix
+            containerScopedXPath = `//${listSelector}/li[${listIndex}]${contextualXPath.replace(/^\/\//, '//')}`;
+          }
         } else {
-          containerScopedXPath = `//${listSelector}/li[${listIndex}]${baseStrategy.xpath?.replace(/^\/\//, '//') || ''}`;
+          containerScopedXPath = contextualXPath;
         }
+      } else {
+        containerScopedXPath = contextualXPath;
+      }
+
+      // Validate the generated XPath
+      if (!this.validateXPathUniqueness(containerScopedXPath, element)) {
+        console.warn('[SelectorGenerator] ⚠️ Carousel XPath not unique:', {
+          xpath: containerScopedXPath,
+          element: element,
+          classes: Array.from(element.classList),
+        });
+      } else {
+        console.log('[SelectorGenerator] ✅ Carousel XPath validated as unique:', {
+          xpath: containerScopedXPath,
+          direction: this.extractDirectionClasses(element),
+        });
       }
     }
 
@@ -657,12 +715,13 @@ export class SelectorGenerator {
       ...baseStrategy,
       css: containerScopedCss,
       xpath: containerScopedXPath,
-      // Adjust priority for carousel elements: xpathAbsolute FIRST (most stable), then position, then css
+      // ✅ FIXED: Carousel-optimized priority - CSS first (includes .next/.prev), then precise XPath
+      // This prevents cross-carousel interference by using most specific selectors first
       priority: [
-        'xpathAbsolute',
-        'position',
-        'css',
-        'xpath',
+        'css', // 1st - Best: includes direction classes (.next/.prev)
+        'xpath', // 2nd - Precise: with direction + carousel index
+        'xpathAbsolute', // 3rd - Fallback: structural
+        'position', // 4th - Last resort: generic
         'id',
         'dataTestId',
         'ariaLabel',
@@ -1190,6 +1249,21 @@ export class SelectorGenerator {
     const tagName = element.tagName.toLowerCase();
     const text = element.textContent?.trim();
 
+    // 🆕 CRITICAL FIX: Check if element is a carousel control
+    // Use direction-aware XPath to ensure next/prev buttons have unique selectors
+    if (this.isCarouselControl(element)) {
+      const contextualXPath = this.generateContextualXPath(element);
+
+      // Don't validate here - validation happens after container context is added
+      // (multiple carousels may have same direction, but different list indices)
+      console.log('[SelectorGenerator] ✅ Generated carousel XPath with direction:', {
+        element: tagName,
+        classes: Array.from(element.classList),
+        xpath: contextualXPath,
+      });
+      return contextualXPath;
+    }
+
     // Try ID-based XPath first
     if (element.id && !this.isDynamicId(element.id)) {
       return `//${tagName}[@id="${element.id}"]`;
@@ -1207,7 +1281,8 @@ export class SelectorGenerator {
     }
 
     // Try text-based XPath for specific elements (list items, links, buttons)
-    if (text && text.length > 0 && text.length < 100) {
+    // BUT: Skip for carousel controls - we want class-based XPath for them
+    if (text && text.length > 0 && text.length < 100 && !this.isCarouselControl(element)) {
       const shouldUseText = ['li', 'a', 'button', 'option', 'span'].includes(tagName);
       if (shouldUseText && element.parentElement) {
         const escapedText = text.replace(/'/g, "'");
@@ -1335,6 +1410,172 @@ export class SelectorGenerator {
     ];
 
     return dynamicPatterns.some((pattern) => pattern.test(className));
+  }
+
+  /**
+   * Extract direction classes from element (next, prev, forward, back, etc.)
+   * Critical for generating unique carousel selectors
+   */
+  private extractDirectionClasses(element: Element): string[] {
+    const directionKeywords = ['next', 'prev', 'previous', 'forward', 'back', 'left', 'right'];
+
+    // Check element's classes
+    const classList = Array.from(element.classList || []);
+    const directionClasses = classList.filter((cls) =>
+      directionKeywords.some((dir) => cls.toLowerCase().includes(dir))
+    );
+
+    // If element has no direction classes, check parent (common for icon wrappers)
+    if (directionClasses.length === 0 && element.parentElement) {
+      const parentClassList = Array.from(element.parentElement.classList || []);
+      return parentClassList.filter((cls) =>
+        directionKeywords.some((dir) => cls.toLowerCase().includes(dir))
+      );
+    }
+
+    return directionClasses;
+  }
+
+  /**
+   * Generate contextual XPath with direction for carousel controls
+   * This ensures next/prev buttons have unique XPath selectors
+   */
+  private generateContextualXPath(element: Element): string {
+    const tagName = element.tagName.toLowerCase();
+    const conditions: string[] = [];
+
+    // Extract direction classes (critical for carousel uniqueness)
+    const directionClasses = this.extractDirectionClasses(element);
+
+    if (directionClasses.length > 0) {
+      // Add each direction class as a condition
+      directionClasses.forEach((dir) => {
+        conditions.push(`contains(@class, '${dir}')`);
+      });
+    }
+
+    // Add carousel-specific classes (arrow, control, button)
+    const carouselKeywords = ['arrow', 'control', 'button', 'slider', 'carousel', 'swiper'];
+    const classList = Array.from(element.classList || []);
+    const carouselClasses = classList.filter((cls) =>
+      carouselKeywords.some((keyword) => cls.toLowerCase().includes(keyword))
+    );
+
+    carouselClasses.forEach((cls) => {
+      // Avoid duplicate conditions
+      const condition = `contains(@class, '${cls}')`;
+      if (!conditions.includes(condition)) {
+        conditions.push(condition);
+      }
+    });
+
+    // Build the XPath with parent context for better specificity
+    let xpath = '';
+
+    // Try to include parent container context
+    let parent = element.parentElement;
+    let maxDepth = 3;
+    const parentParts: string[] = [];
+
+    while (parent && maxDepth > 0) {
+      const parentTag = parent.tagName.toLowerCase();
+
+      // Stop at meaningful containers
+      if (parent.id) {
+        parentParts.unshift(`${parentTag}[@id='${parent.id}']`);
+        break;
+      }
+
+      // Look for list items or carousel containers
+      if (parentTag === 'ul' || parentTag === 'ol' || parentTag === 'li') {
+        const parentClasses = Array.from(parent.classList || []).filter(
+          (cls) => !this.isDynamicClass(cls)
+        );
+        if (parentClasses.length > 0) {
+          parentParts.unshift(`${parentTag}[contains(@class, '${parentClasses[0]}')]`);
+          break;
+        }
+        parentParts.unshift(parentTag);
+      }
+
+      parent = parent.parentElement;
+      maxDepth--;
+    }
+
+    // Build final XPath
+    if (conditions.length > 0) {
+      xpath = `//${tagName}[${conditions.join(' and ')}]`;
+
+      // If we have parent context, prepend it (fix triple slash bug)
+      if (parentParts.length > 0) {
+        xpath = `//${parentParts.join('//')}//${tagName}[${conditions.join(' and ')}]`;
+      }
+    } else {
+      // Fallback to basic tag
+      xpath = `//${tagName}`;
+    }
+
+    return xpath;
+  }
+
+  /**
+   * Validate that an XPath selector is unique
+   * Enhanced with detailed logging for debugging carousel cross-interference
+   */
+  private validateXPathUniqueness(xpath: string, element: Element): boolean {
+    try {
+      const result = document.evaluate(
+        xpath,
+        document,
+        null,
+        XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,
+        null
+      );
+
+      const matchCount = result.snapshotLength;
+
+      if (matchCount === 0) {
+        console.error('[SelectorGenerator] ❌ XPath matches 0 elements:', xpath);
+        return false;
+      }
+
+      if (matchCount > 1) {
+        console.error(
+          `[SelectorGenerator] ❌ XPath matches ${matchCount} elements (expected 1):`,
+          xpath
+        );
+
+        // Log all matched elements for debugging cross-carousel issues
+        for (let i = 0; i < Math.min(matchCount, 5); i++) {
+          const matchedEl = result.snapshotItem(i);
+          const el = matchedEl as Element;
+          console.warn(`  [${i}] Element:`, matchedEl, {
+            tagName: el?.tagName,
+            className: el?.className || '',
+            parentCarousel: el?.closest('li') || null,
+            isTarget: matchedEl === element,
+          });
+        }
+
+        return false;
+      }
+
+      // Verify the matched element is the exact target element
+      const matched = result.snapshotItem(0) === element;
+
+      if (!matched) {
+        console.error('[SelectorGenerator] ❌ XPath matched wrong element:', {
+          xpath,
+          expected: element,
+          actual: result.snapshotItem(0),
+        });
+      }
+
+      return matched;
+    } catch (error) {
+      console.warn('[SelectorGenerator] XPath validation error:', error);
+      return false;
+    }
   }
 
   /**

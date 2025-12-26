@@ -3,15 +3,19 @@ import type { ActionValidation, ClickIntent } from '@/types';
 /**
  * Validation helpers for action confidence scoring and flagging
  * P1 Implementation - High Priority
+ * 🆕 P0: Enhanced to detect SVG/decorative element redirection
  */
 
 export interface ValidationContext {
   clickHistory: Array<{ element: Element; timestamp: number }>;
   recordingStartTime: number;
+  clickedElement?: Element; // 🆕 Original clicked element (may be decorative)
+  wasRedirected?: boolean; // 🆕 True if we redirected from child to parent
 }
 
 /**
  * Generate validation metadata (confidence scores, flags)
+ * 🆕 P0: Enhanced to flag redirected clicks and warn about SVG recordings
  */
 export function generateValidation(
   event: MouseEvent,
@@ -21,6 +25,48 @@ export function generateValidation(
 ): ActionValidation {
   const flags: string[] = [];
   let confidence = 100;
+
+  // 🆕 P0: Flag if we redirected from decorative child to interactive parent
+  if (context.wasRedirected && context.clickedElement) {
+    flags.push('redirected-to-parent');
+    const clickedTag = context.clickedElement.tagName.toLowerCase();
+
+    // Log for debugging/validation
+    console.log('[Validation] 🎯 Click redirected from decorative child:', {
+      from: clickedTag,
+      to: element.tagName.toLowerCase(),
+      fromClasses: context.clickedElement.className,
+      toClasses: element.className,
+    });
+
+    // SVG redirects are expected and good (don't reduce confidence)
+    if (['svg', 'path', 'circle', 'rect', 'polygon', 'use', 'g'].includes(clickedTag)) {
+      flags.push('svg-child-click');
+      // Confidence stays at 100 - this is the correct behavior
+    }
+  }
+
+  // 🆕 P0: CRITICAL WARNING - If element is still SVG/decorative, confidence = 0
+  // This should NEVER happen with the new findInteractiveParent logic
+  const decorativeTags = [
+    'svg',
+    'path',
+    'circle',
+    'rect',
+    'polygon',
+    'line',
+    'polyline',
+    'use',
+    'g',
+  ];
+  if (decorativeTags.includes(element.tagName.toLowerCase())) {
+    flags.push('ERROR-recorded-svg-element');
+    confidence = 0;
+    console.error('[Validation] 🚨 CRITICAL: Recorded click on SVG element!', {
+      tag: element.tagName,
+      classes: element.className,
+    });
+  }
 
   // Check for rapid-fire clicking pattern
   if (isRapidFirePattern(context.clickHistory)) {

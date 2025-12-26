@@ -261,13 +261,14 @@ describe('SelectorGenerator - Carousel Detection', () => {
       expect(strategy.css).toContain('nth-child(5)');
       expect(strategy.css).toContain('content__body__item-img-arrow');
 
-      // Priority should be xpathAbsolute > position > css
-      expect(strategy.priority[0]).toBe('xpathAbsolute');
-      expect(strategy.priority[1]).toBe('position');
-      expect(strategy.priority[2]).toBe('css');
+      // ✅ FIXED: Priority should be css > xpath > xpathAbsolute > position
+      expect(strategy.priority[0]).toBe('css');
+      expect(strategy.priority[1]).toBe('xpath');
+      expect(strategy.priority[2]).toBe('xpathAbsolute');
+      expect(strategy.priority[3]).toBe('position');
     });
 
-    it('should prioritize xpathAbsolute for carousel elements', () => {
+    it('should prioritize css then xpath for carousel elements to prevent cross-carousel interference', () => {
       const container = document.createElement('div');
       container.id = 'carousel-123';
       const arrow = document.createElement('button');
@@ -277,7 +278,11 @@ describe('SelectorGenerator - Carousel Detection', () => {
 
       const strategy = generator.generateCarouselSelectors(arrow);
 
-      expect(strategy.priority[0]).toBe('xpathAbsolute');
+      // ✅ FIXED: CSS first (includes direction classes), then precise XPath
+      expect(strategy.priority[0]).toBe('css');
+      expect(strategy.priority[1]).toBe('xpath');
+      expect(strategy.css).toBeDefined();
+      expect(strategy.xpath).toBeDefined();
       expect(strategy.xpathAbsolute).toBeDefined();
     });
 

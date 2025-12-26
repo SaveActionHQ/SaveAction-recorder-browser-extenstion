@@ -213,7 +213,7 @@ describe('EventListener - Carousel Detection', () => {
       expect(action.selector.css).toContain('img-arrow');
     });
 
-    it('should prioritize xpathAbsolute for carousel selectors', () => {
+    it('should prioritize css then xpath for carousel selectors to prevent cross-carousel interference', () => {
       const ul = document.createElement('ul');
       ul.id = 'products';
       const li = document.createElement('li');
@@ -230,8 +230,11 @@ describe('EventListener - Carousel Detection', () => {
 
       const action = capturedActions[0] as ClickAction;
 
-      // xpathAbsolute should be first priority
-      expect(action.selector.priority[0]).toBe('xpathAbsolute');
+      // ✅ FIXED: CSS first (most specific), then XPath (precise with direction)
+      expect(action.selector.priority[0]).toBe('css');
+      expect(action.selector.priority[1]).toBe('xpath');
+      expect(action.selector.css).toBeDefined();
+      expect(action.selector.xpath).toBeDefined();
       expect(action.selector.xpathAbsolute).toBeDefined();
     });
 
