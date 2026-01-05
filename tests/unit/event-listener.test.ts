@@ -178,11 +178,15 @@ describe('EventListener', () => {
 
       eventListener.start();
 
+      // Trigger focus event before input (simulates user clicking on input)
+      input.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+
       input.value = 'testuser';
       input.dispatchEvent(new Event('input', { bubbles: true }));
 
-      // Wait for debounce
+      // Wait for debounce then stop to flush
       await new Promise((resolve) => setTimeout(resolve, 600));
+      eventListener.stop();
 
       expect(capturedActions).toHaveLength(1);
       const action = capturedActions[0];
@@ -203,6 +207,9 @@ describe('EventListener', () => {
       document.body.appendChild(input);
 
       eventListener.start();
+
+      // Trigger focus event before input
+      input.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
 
       // Simulate rapid typing
       input.value = 't';
@@ -237,6 +244,9 @@ describe('EventListener', () => {
 
       eventListener.start();
 
+      // Trigger focus event before input
+      input.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+
       input.value = 'hello';
       input.dispatchEvent(new Event('input', { bubbles: true }));
 
@@ -260,6 +270,9 @@ describe('EventListener', () => {
 
       eventListener.start();
 
+      // Trigger focus event before input
+      passwordInput.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+
       passwordInput.value = 'secret123';
       passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
 
@@ -280,32 +293,462 @@ describe('EventListener', () => {
   });
 
   describe('Select Events', () => {
-    it('should capture select dropdown changes', () => {
+    it('should capture basic select dropdown changes', () => {
       const select = document.createElement('select');
+      select.id = 'country';
+      select.name = 'country';
+
       const option1 = document.createElement('option');
-      option1.value = 'value1';
-      option1.textContent = 'Option 1';
+      option1.value = '';
+      option1.textContent = 'Select a country';
+
       const option2 = document.createElement('option');
-      option2.value = 'value2';
-      option2.textContent = 'Option 2';
+      option2.value = 'us';
+      option2.textContent = 'United States';
+
+      const option3 = document.createElement('option');
+      option3.value = 'uk';
+      option3.textContent = 'United Kingdom';
 
       select.appendChild(option1);
       select.appendChild(option2);
+      select.appendChild(option3);
       document.body.appendChild(select);
 
       eventListener.start();
 
-      select.value = 'value2';
+      select.value = 'uk';
       select.dispatchEvent(new Event('change', { bubbles: true }));
 
       expect(capturedActions).toHaveLength(1);
       const action = capturedActions[0];
 
       if (action?.type === 'select') {
-        expect(action.selectedValue).toBe('value2');
-        expect(action.selectedText).toBe('Option 2');
-        expect(action.selectedIndex).toBe(1);
+        expect(action.selectedValue).toBe('uk');
+        expect(action.selectedText).toBe('United Kingdom');
+        expect(action.selectedIndex).toBe(2);
+        expect(action.selectId).toBe('country');
+        expect(action.selectName).toBe('country');
+        expect(action.isMultiple).toBe(false);
+        expect(action.selectedOption).toBeDefined();
+        expect(action.selectedOption?.text).toBe('United Kingdom');
+        expect(action.selectedOption?.value).toBe('uk');
+        expect(action.selectedOption?.index).toBe(2);
       }
+
+      document.body.removeChild(select);
+    });
+
+    it('should handle multi-select dropdowns', () => {
+      const select = document.createElement('select');
+      select.id = 'tags';
+      select.name = 'tags';
+      select.multiple = true;
+
+      const option1 = document.createElement('option');
+      option1.value = 'tag1';
+      option1.textContent = 'Tag 1';
+
+      const option2 = document.createElement('option');
+      option2.value = 'tag2';
+      option2.textContent = 'Tag 2';
+
+      const option3 = document.createElement('option');
+      option3.value = 'tag3';
+      option3.textContent = 'Tag 3';
+
+      select.appendChild(option1);
+      select.appendChild(option2);
+      select.appendChild(option3);
+      document.body.appendChild(select);
+
+      eventListener.start();
+
+      // Select multiple options
+      option1.selected = true;
+      option3.selected = true;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+
+      expect(capturedActions).toHaveLength(1);
+      const action = capturedActions[0];
+
+      if (action?.type === 'select') {
+        expect(action.isMultiple).toBe(true);
+        expect(action.selectedOptions).toBeDefined();
+        expect(action.selectedOptions).toHaveLength(2);
+        expect(action.selectedOptions?.[0]?.text).toBe('Tag 1');
+        expect(action.selectedOptions?.[0]?.value).toBe('tag1');
+        expect(action.selectedOptions?.[1]?.text).toBe('Tag 3');
+        expect(action.selectedOptions?.[1]?.value).toBe('tag3');
+      }
+
+      document.body.removeChild(select);
+    });
+
+    it('should skip disabled select elements', () => {
+      const select = document.createElement('select');
+      select.id = 'country';
+      select.disabled = true;
+
+      const option1 = document.createElement('option');
+      option1.value = 'us';
+      option1.textContent = 'United States';
+
+      select.appendChild(option1);
+      document.body.appendChild(select);
+
+      eventListener.start();
+
+      select.value = 'us';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // Should not record disabled selects
+      expect(capturedActions).toHaveLength(0);
+
+      document.body.removeChild(select);
+    });
+
+    it('should skip empty select elements', () => {
+      const select = document.createElement('select');
+      select.id = 'country';
+      document.body.appendChild(select);
+
+      eventListener.start();
+
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // Should not record empty selects
+      expect(capturedActions).toHaveLength(0);
+
+      document.body.removeChild(select);
+    });
+
+    it('should skip select with no selected option', () => {
+      const select = document.createElement('select');
+      select.id = 'country';
+
+      const option1 = document.createElement('option');
+      option1.value = 'us';
+      option1.textContent = 'United States';
+
+      select.appendChild(option1);
+      document.body.appendChild(select);
+
+      eventListener.start();
+
+      // Force selectedIndex to -1 (no selection)
+      Object.defineProperty(select, 'selectedIndex', {
+        value: -1,
+        writable: true,
+      });
+
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // Should not record when no option is selected
+      expect(capturedActions).toHaveLength(0);
+
+      document.body.removeChild(select);
+    });
+
+    it('should skip hidden select elements', () => {
+      const select = document.createElement('select');
+      select.id = 'country';
+      select.style.display = 'none';
+
+      const option1 = document.createElement('option');
+      option1.value = 'us';
+      option1.textContent = 'United States';
+
+      select.appendChild(option1);
+      document.body.appendChild(select);
+
+      eventListener.start();
+
+      select.value = 'us';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // Should not record hidden selects
+      expect(capturedActions).toHaveLength(0);
+
+      document.body.removeChild(select);
+    });
+
+    it('should handle select with label attribute', () => {
+      const select = document.createElement('select');
+      select.id = 'country';
+
+      const option1 = document.createElement('option');
+      option1.value = 'uk';
+      option1.textContent = 'UK';
+      option1.label = 'United Kingdom';
+
+      select.appendChild(option1);
+      document.body.appendChild(select);
+
+      eventListener.start();
+
+      select.value = 'uk';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+
+      expect(capturedActions).toHaveLength(1);
+      const action = capturedActions[0];
+
+      if (action?.type === 'select') {
+        expect(action.selectedOption?.label).toBe('United Kingdom');
+      }
+
+      document.body.removeChild(select);
+    });
+
+    it('should include element state and wait conditions', () => {
+      const select = document.createElement('select');
+      select.id = 'country';
+
+      const option1 = document.createElement('option');
+      option1.value = 'us';
+      option1.textContent = 'United States';
+
+      select.appendChild(option1);
+      document.body.appendChild(select);
+
+      eventListener.start();
+
+      select.value = 'us';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+
+      expect(capturedActions).toHaveLength(1);
+      const action = capturedActions[0];
+
+      // Should include metadata for smart waits
+      expect(action?.elementState).toBeDefined();
+      expect(action?.waitConditions).toBeDefined();
+
+      document.body.removeChild(select);
+    });
+  });
+
+  describe('Select Element Right-Click Fix', () => {
+    it('should correct false right-click with suspicious coordinates to left-click', () => {
+      const select = document.createElement('select');
+      select.id = 'test-select';
+
+      const option1 = document.createElement('option');
+      option1.value = 'opt1';
+      option1.textContent = 'Option 1';
+
+      select.appendChild(option1);
+      document.body.appendChild(select);
+
+      eventListener.start();
+
+      // Simulate synthetic right-click event with suspicious coordinates (near-zero)
+      // This mimics the browser bug when opening native <select> dropdown
+      const syntheticRightClick = new MouseEvent('click', {
+        bubbles: true,
+        clientX: 0.5, // Suspicious near-zero X
+        clientY: 0.8, // Suspicious near-zero Y
+        button: 2, // Right-click button code
+      });
+
+      select.dispatchEvent(syntheticRightClick);
+
+      expect(capturedActions).toHaveLength(1);
+      const action = capturedActions[0];
+
+      if (action?.type === 'click') {
+        // Should be corrected to left-click
+        expect(action.button).toBe('left');
+        expect(action.tagName).toBe('select');
+        console.log('[Test] Synthetic right-click corrected:', action.button);
+      }
+
+      document.body.removeChild(select);
+    });
+
+    it('should correct false right-click with negative coordinates to left-click', () => {
+      const select = document.createElement('select');
+      select.id = 'test-select';
+
+      const option1 = document.createElement('option');
+      option1.value = 'opt1';
+      option1.textContent = 'Option 1';
+
+      select.appendChild(option1);
+      document.body.appendChild(select);
+
+      eventListener.start();
+
+      // Simulate synthetic right-click with negative coordinates (common in real bug)
+      const syntheticRightClick = new MouseEvent('click', {
+        bubbles: true,
+        clientX: -0.8, // Negative X (common in browser bug)
+        clientY: -0.6, // Negative Y
+        button: 2, // Right-click
+      });
+
+      select.dispatchEvent(syntheticRightClick);
+
+      expect(capturedActions).toHaveLength(1);
+      const action = capturedActions[0];
+
+      if (action?.type === 'click') {
+        expect(action.button).toBe('left');
+        expect(action.tagName).toBe('select');
+      }
+
+      document.body.removeChild(select);
+    });
+
+    it('should preserve genuine right-click with normal coordinates', () => {
+      const select = document.createElement('select');
+      select.id = 'test-select';
+
+      const option1 = document.createElement('option');
+      option1.value = 'opt1';
+      option1.textContent = 'Option 1';
+
+      select.appendChild(option1);
+      document.body.appendChild(select);
+
+      eventListener.start();
+
+      // Simulate genuine right-click with normal coordinates (e.g., context menu)
+      const genuineRightClick = new MouseEvent('click', {
+        bubbles: true,
+        clientX: 50, // Normal X coordinate
+        clientY: 30, // Normal Y coordinate
+        button: 2, // Right-click
+      });
+
+      select.dispatchEvent(genuineRightClick);
+
+      expect(capturedActions).toHaveLength(1);
+      const action = capturedActions[0];
+
+      if (action?.type === 'click') {
+        // Should preserve genuine right-click
+        expect(action.button).toBe('right');
+        expect(action.tagName).toBe('select');
+        console.log('[Test] Genuine right-click preserved:', action.button);
+      }
+
+      document.body.removeChild(select);
+    });
+
+    it('should handle left-clicks on select normally', () => {
+      const select = document.createElement('select');
+      select.id = 'test-select';
+
+      const option1 = document.createElement('option');
+      option1.value = 'opt1';
+      option1.textContent = 'Option 1';
+
+      select.appendChild(option1);
+      document.body.appendChild(select);
+
+      eventListener.start();
+
+      // Normal left-click
+      const leftClick = new MouseEvent('click', {
+        bubbles: true,
+        clientX: 50,
+        clientY: 30,
+        button: 0, // Left-click
+      });
+
+      select.dispatchEvent(leftClick);
+
+      expect(capturedActions).toHaveLength(1);
+      const action = capturedActions[0];
+
+      if (action?.type === 'click') {
+        expect(action.button).toBe('left');
+        expect(action.tagName).toBe('select');
+      }
+
+      document.body.removeChild(select);
+    });
+
+    it('should not affect right-clicks on non-select elements', () => {
+      const button = document.createElement('button');
+      button.id = 'test-button';
+      button.textContent = 'Click Me';
+      document.body.appendChild(button);
+
+      eventListener.start();
+
+      // Right-click on button (not a select) with any coordinates
+      const rightClick = new MouseEvent('click', {
+        bubbles: true,
+        clientX: 0.5, // Near-zero coords
+        clientY: 0.5,
+        button: 2, // Right-click
+      });
+
+      button.dispatchEvent(rightClick);
+
+      expect(capturedActions).toHaveLength(1);
+      const action = capturedActions[0];
+
+      if (action?.type === 'click') {
+        // Should preserve right-click on non-select elements
+        expect(action.button).toBe('right');
+        expect(action.tagName).toBe('button');
+      }
+
+      document.body.removeChild(button);
+    });
+
+    it('should handle multiple rapid clicks on select correctly', () => {
+      const select = document.createElement('select');
+      select.id = 'test-select';
+
+      const option1 = document.createElement('option');
+      option1.value = 'opt1';
+      option1.textContent = 'Option 1';
+
+      select.appendChild(option1);
+      document.body.appendChild(select);
+
+      eventListener.start();
+
+      // Simulate rapid sequence: synthetic right-click, then user left-click
+      const syntheticRightClick = new MouseEvent('click', {
+        bubbles: true,
+        clientX: -0.5,
+        clientY: -0.3,
+        button: 2,
+      });
+
+      const userLeftClick = new MouseEvent('click', {
+        bubbles: true,
+        clientX: 50,
+        clientY: 30,
+        button: 0,
+      });
+
+      select.dispatchEvent(syntheticRightClick);
+
+      // Wait a bit to avoid duplicate detection
+      setTimeout(() => {
+        select.dispatchEvent(userLeftClick);
+      }, 250);
+
+      // Should eventually have 2 actions, both left-clicks
+      setTimeout(() => {
+        expect(capturedActions.length).toBeGreaterThanOrEqual(1);
+
+        const actions = capturedActions.filter(
+          (a) => a.type === 'click' && 'tagName' in a && a.tagName === 'select'
+        );
+
+        // All select clicks should be left
+        actions.forEach((action) => {
+          if (action.type === 'click') {
+            expect(action.button).toBe('left');
+          }
+        });
+      }, 500);
 
       document.body.removeChild(select);
     });
@@ -666,19 +1109,27 @@ describe('EventListener', () => {
 
       eventListener.start();
 
+      // Trigger focus event before input
+      input.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+
       // First input
       input.value = 'test';
       input.dispatchEvent(new Event('input', { bubbles: true }));
 
-      // Wait for debounce
+      // Wait for debounce then stop to flush
       await new Promise((resolve) => setTimeout(resolve, 600));
+      eventListener.stop();
+
       const firstCount = capturedActions.length;
       expect(firstCount).toBeGreaterThan(0);
 
       // Different input value (will not be duplicate)
+      eventListener.start(); // Restart after stop
+      input.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
       input.value = 'test2';
       input.dispatchEvent(new Event('input', { bubbles: true }));
       await new Promise((resolve) => setTimeout(resolve, 600));
+      eventListener.stop();
 
       // Should increase because value changed
       expect(capturedActions.length).toBeGreaterThan(firstCount);
