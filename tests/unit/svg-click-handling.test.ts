@@ -3,7 +3,7 @@
  * Ensures SVG elements are never recorded as click targets
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { EventListener } from '@/content/event-listener';
 import type { Action } from '@/types';
 
@@ -17,6 +17,10 @@ describe('SVG Click Handling - P0 Fix', () => {
       capturedActions.push(action);
     });
     document.body.innerHTML = '';
+  });
+
+  afterEach(() => {
+    eventListener.destroy();
   });
 
   it('should record button click when clicking SVG child', () => {
@@ -61,7 +65,7 @@ describe('SVG Click Handling - P0 Fix', () => {
     }
   });
 
-  it('should record span click when clicking SVG in carousel arrow', () => {
+  it('should record span click when clicking SVG in carousel arrow', async () => {
     const span = document.createElement('span');
     span.className = 'carousel-arrow next';
     span.setAttribute('aria-label', 'Next image');
@@ -76,6 +80,9 @@ describe('SVG Click Handling - P0 Fix', () => {
     eventListener.setRecordingStartTime(Date.now());
 
     svg.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    // Wait for async processing to complete (carousel clicks trigger async operations)
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(capturedActions).toHaveLength(1);
     const action = capturedActions[0];

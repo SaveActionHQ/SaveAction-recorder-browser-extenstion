@@ -92,6 +92,9 @@ export class EventListener {
     element: Element;
   } | null = null; // Track pending click that might be updated by double-click event
 
+  // Event deduplication for bubbling/capture phase
+  private processedEventKeys: Set<string> = new Set(); // Track processed events to prevent duplicates
+
   // Event handlers (need to be stored for removal)
   private handleClick: (e: MouseEvent) => void;
   private handleMouseDown: (e: MouseEvent) => void;
@@ -400,12 +403,36 @@ export class EventListener {
 
     const clickedElement = event.target as Element;
 
+    // 🆕 P0 FIX: Track processed events using unique key (timestamp + element identity)
+    // Prevents duplicate processing when events bubble with useCapture=true
+    // Handle SVG elements specially since their className is SVGAnimatedString
+    const isSVG = clickedElement instanceof SVGElement;
+    const className = isSVG
+      ? clickedElement.getAttribute('class') || ''
+      : String(clickedElement.className);
+
+    const elementId = `${clickedElement.tagName}${clickedElement.id ? '#' + clickedElement.id : ''}${className ? '.' + className.replace(/\s+/g, '.') : ''}`;
+    const eventKey = `${event.timeStamp}-${elementId}`;
+
+    if (this.processedEventKeys.has(eventKey)) {
+      return; // Already processed this exact event
+    }
+    this.processedEventKeys.add(eventKey);
+
+    // Clean up old keys after 1 second to prevent memory leak
+    setTimeout(() => this.processedEventKeys.delete(eventKey), 1000);
+
     // 🆕 P0 FIX: Find the interactive element (handles SVG/decorative children)
     const target = this.findInteractiveElement(clickedElement);
     if (!target) {
       console.log('[EventListener] ⚠️ No interactive parent found for click - skipping');
       return;
     }
+    console.log('[EventListener] 🎯 Interactive target:', {
+      from: clickedElement.tagName,
+      to: target.tagName,
+      classes: target.className,
+    });
 
     // Track if we redirected from decorative child to parent
     // @ts-expect-error - Used in createClickAction call below
@@ -3619,11 +3646,16 @@ export class EventListener {
         // P0: CAROUSEL EXCEPTION - Allow carousel navigation clicks
         // Users naturally click carousel arrows multiple times to browse
         if (clickAction.carouselContext?.isCarouselControl) {
-          // Still filter if TOO rapid (< 200ms = accidental double-tap)
-          if (timeDiff < 200) {
+          // Still filter if TOO rapid (< 200ms = accidental double-tap) ON SAME CAROUSEL
+          // If same selector within 200ms, it's a duplicate (from event bubbling or double-tap)
+          if (
+            timeDiff < 200 &&
+            this.areSelectorsEqual(clickAction.selector, lastClickAction.selector)
+          ) {
             console.log(`[Duplicate] Filtered accidental carousel double-tap (${timeDiff}ms)`);
             return true; // Is duplicate
           }
+          // If different selectors or enough time passed, allow the carousel click
           console.log(`[EventListener] Allowing carousel click (${timeDiff}ms):`, {
             direction: clickAction.carouselContext.direction,
           });
