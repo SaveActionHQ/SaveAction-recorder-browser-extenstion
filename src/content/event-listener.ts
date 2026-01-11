@@ -743,6 +743,15 @@ export class EventListener {
       ? this.selectorGenerator.generateCarouselSelectors(target)
       : this.selectorGenerator.generateSelectors(target);
 
+    // 🆕 Validate selector quality and log warnings
+    const qualityCheck = this.selectorGenerator.validateSelectorQuality(target, selector);
+    if (!qualityCheck.canRecord) {
+      console.error('[SaveAction] ❌ Cannot record action:', qualityCheck.message);
+      // Still return the action but mark it with quality issues
+    } else if (qualityCheck.shouldWarn) {
+      console.warn('[SaveAction] ⚠️ Selector quality warning:', qualityCheck.message);
+    }
+
     const rect = target.getBoundingClientRect();
 
     // Calculate coordinates relative to element
