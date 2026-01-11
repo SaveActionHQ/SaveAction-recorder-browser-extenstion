@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Selector Uniqueness Test Cases</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 1200px;
+        margin: 20px auto;
+        padding: 0 20px;
+      }
+
+      .test-section {
+        border: 2px solid #ddd;
+        padding: 20px;
+        margin: 20px 0;
+        border-radius: 8px;
+      }
+
+      .test-section h2 {
+        margin-top: 0;
+        color: #333;
+      }
+
+      .carousel {
+        border: 1px solid #ccc;
+        padding: 10px;
+        margin: 10px 0;
+        background: #f9f9f9;
+      }
+
+      .slide {
+        display: inline-block;
+        border: 1px solid #999;
+        padding: 10px;
+        margin: 5px;
+        background: white;
+      }
+
+      button {
+        padding: 8px 16px;
+        margin: 5px;
+        cursor: pointer;
+        border: 1px solid #007bff;
+        background: #007bff;
+        color: white;
+        border-radius: 4px;
+      }
+
+      button:hover {
+        background: #0056b3;
+      }
+
+      .products {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 15px;
+      }
+
+      .product-card {
+        border: 1px solid #ddd;
+        padding: 15px;
+        text-align: center;
+        background: white;
+      }
+
+      .add-cart {
+        background: #28a745;
+        border-color: #28a745;
+      }
+
+      .add-cart:hover {
+        background: #218838;
+      }
+
+      form {
+        border: 1px solid #ddd;
+        padding: 20px;
+        margin: 10px 0;
+        background: #f9f9f9;
+      }
+
+      label {
+        display: block;
+        margin: 10px 0 5px;
+      }
+
+      input[type='text'],
+      input[type='email'],
+      input[type='password'] {
+        width: 100%;
+        padding: 8px;
+        margin-bottom: 10px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
+
+      .success {
+        color: green;
+        font-weight: bold;
+      }
+
+      .error {
+        color: red;
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🎯 Selector Uniqueness Test Cases</h1>
+    <p>
+      This page tests the selector uniqueness validation system. Each section contains elements with
+      ambiguous selectors that MUST be uniquely identified.
+    </p>
+
+    <!-- TEST 1: Carousel with Identical Arrows -->
+    <div class="test-section">
+      <h2>Test 1: Carousel Navigation (Identical Arrows)</h2>
+      <p>
+        Each carousel has identical "next" buttons. The selector MUST include carousel index or
+        container ID.
+      </p>
+
+      <div id="carousel-1" class="carousel">
+        <h3>Carousel 1</h3>
+        <div class="slide"><span>Slide 1</span><button class="next">→</button></div>
+        <div class="slide"><span>Slide 2</span><button class="next">→</button></div>
+        <div class="slide"><span>Slide 3</span><button class="next">→</button></div>
+      </div>
+
+      <div id="carousel-2" class="carousel">
+        <h3>Carousel 2</h3>
+        <div class="slide"><span>Slide 1</span><button class="next">→</button></div>
+        <div class="slide"><span>Slide 2</span><button class="next">→</button></div>
+        <div class="slide"><span>Slide 3</span><button class="next">→</button></div>
+      </div>
+
+      <p class="success">✅ Expected: #carousel-1 > div:nth-child(2) > button.next</p>
+      <p class="error">❌ Wrong: button.next (matches 6 elements!)</p>
+    </div>
+
+    <!-- TEST 2: Product Grid with Identical Buttons -->
+    <div class="test-section">
+      <h2>Test 2: Product Grid (Identical Add to Cart)</h2>
+      <p>All products have identical "Add to Cart" buttons. Must use product-id or nth-child.</p>
+
+      <div class="products">
+        <div class="card" data-product-id="123">
+          <h4>Product A</h4>
+          <p>$29.99</p>
+          <button class="add-cart">Add to Cart</button>
+        </div>
+        <div class="card" data-product-id="456">
+          <h4>Product B</h4>
+          <p>$39.99</p>
+          <button class="add-cart">Add to Cart</button>
+        </div>
+        <div class="card" data-product-id="789">
+          <h4>Product C</h4>
+          <p>$49.99</p>
+          <button class="add-cart">Add to Cart</button>
+        </div>
+        <div class="card" data-product-id="101">
+          <h4>Product D</h4>
+          <p>$59.99</p>
+          <button class="add-cart">Add to Cart</button>
+        </div>
+        <div class="card" data-product-id="202">
+          <h4>Product E</h4>
+          <p>$69.99</p>
+          <button class="add-cart">Add to Cart</button>
+        </div>
+        <div class="card" data-product-id="303">
+          <h4>Product F</h4>
+          <p>$79.99</p>
+          <button class="add-cart">Add to Cart</button>
+        </div>
+      </div>
+
+      <p class="success">✅ Expected: div[data-product-id="456"] button.add-cart</p>
+      <p class="error">❌ Wrong: button.add-cart (matches 6 elements!)</p>
+    </div>
+
+    <!-- TEST 3: Multiple Forms with Same Submit Buttons -->
+    <div class="test-section">
+      <h2>Test 3: Multiple Forms (Identical Submit Buttons)</h2>
+      <p>Three forms with identical submit buttons. Must include form ID or section class.</p>
+
+      <form id="login-form">
+        <h3>Login</h3>
+        <label>Email: <input type="email" name="email" /></label>
+        <label>Password: <input type="password" name="password" /></label>
+        <button type="submit">Submit</button>
+      </form>
+
+      <form id="signup-form">
+        <h3>Sign Up</h3>
+        <label>Name: <input type="text" name="name" /></label>
+        <label>Email: <input type="email" name="email" /></label>
+        <label>Password: <input type="password" name="password" /></label>
+        <button type="submit">Submit</button>
+      </form>
+
+      <form id="contact-form">
+        <h3>Contact Us</h3>
+        <label>Name: <input type="text" name="name" /></label>
+        <label>Message: <input type="text" name="message" /></label>
+        <button type="submit">Submit</button>
+      </form>
+
+      <p class="success">✅ Expected: form#signup-form > button[type="submit"]</p>
+      <p class="error">❌ Wrong: button[type="submit"] (matches 3 elements!)</p>
+    </div>
+
+    <!-- TEST 4: Nested Similar Elements -->
+    <div class="test-section">
+      <h2>Test 4: Nested Similar Elements</h2>
+      <p>Multiple nested containers with identical class patterns.</p>
+
+      <div id="container">
+        <div class="section">
+          <div class="item">
+            <button class="action-btn">Delete</button>
+          </div>
+          <div class="item">
+            <button class="action-btn">Delete</button>
+          </div>
+        </div>
+        <div class="section">
+          <div class="item">
+            <button class="action-btn">Delete</button>
+          </div>
+          <div class="item">
+            <button class="action-btn">Delete</button>
+          </div>
+        </div>
+      </div>
+
+      <p class="success">
+        ✅ Expected: #container > div.section:nth-child(2) > div.item:nth-child(1) >
+        button.action-btn
+      </p>
+      <p class="error">❌ Wrong: button.action-btn (matches 4 elements!)</p>
+    </div>
+
+    <!-- TEST 5: Elements with Same Text Content -->
+    <div class="test-section">
+      <h2>Test 5: Same Text Content</h2>
+      <p>Multiple buttons with identical text. Must use parent context or position.</p>
+
+      <div id="actions">
+        <div class="action-group">
+          <button>Save</button>
+          <button>Cancel</button>
+        </div>
+        <div class="action-group">
+          <button>Save</button>
+          <button>Cancel</button>
+        </div>
+        <div class="action-group">
+          <button>Save</button>
+          <button>Cancel</button>
+        </div>
+      </div>
+
+      <p class="success">
+        ✅ Expected: #actions > div.action-group:nth-child(2) > button:nth-child(1)
+      </p>
+      <p class="error">❌ Wrong: button (matches 6 elements!)</p>
+    </div>
+
+    <script>
+      // Add click event listeners to verify selector uniqueness
+      document.querySelectorAll('button').forEach((button) => {
+        button.addEventListener('click', function (e) {
+          console.log('Clicked:', e.target);
+          console.log('Selector test:');
+
+          // Test common wrong selectors
+          const tagOnly = document.querySelectorAll(e.target.tagName.toLowerCase());
+          console.log(`  ${e.target.tagName.toLowerCase()}: ${tagOnly.length} matches`);
+
+          if (e.target.className) {
+            const classSelector = `${e.target.tagName.toLowerCase()}.${e.target.className.split(' ').join('.')}`;
+            const classMatches = document.querySelectorAll(classSelector);
+            console.log(`  ${classSelector}: ${classMatches.length} matches`);
+          }
+
+          // Show visual feedback
+          e.target.style.outline = '3px solid green';
+          setTimeout(() => (e.target.style.outline = ''), 1000);
+        });
+      });
+    </script>
+  </body>
+</html>

@@ -33,10 +33,71 @@ export class SelectorGenerator {
 
   /**
    * Generate all possible selectors for an element with uniqueness validation
+   * Includes visual debugging output when enabled
    */
   public generateSelectors(element: Element): SelectorStrategy {
     const strategy = this.generateAllSelectors(element);
-    return this.enhanceForUniqueness(element, strategy);
+    const enhanced = this.enhanceForUniqueness(element, strategy);
+
+    // 🆕 Visual debugging console output
+    this.logSelectorValidation(element, enhanced);
+
+    return enhanced;
+  }
+
+  /**
+   * 🆕 Visual debugging: Log selector validation results with visual feedback
+   */
+  private logSelectorValidation(element: Element, strategy: SelectorStrategy): void {
+    const validation = strategy.validation;
+    if (!validation) return;
+
+    // Only log in development or when debugging
+    const isDebug = localStorage.getItem('saveaction-debug') === 'true';
+    if (!isDebug) return;
+
+    console.group(`🎬 Selector Validation: ${element.tagName.toLowerCase()}`);
+    console.log('Element:', element);
+    console.log('CSS Selector:', strategy.css);
+    console.log(
+      'Matches:',
+      validation.cssMatches,
+      validation.cssMatches === 1 ? '✅ UNIQUE' : '⚠️ AMBIGUOUS'
+    );
+
+    // Highlight matching elements if ambiguous
+    if (validation.cssMatches > 1 && strategy.css) {
+      const matches = document.querySelectorAll(strategy.css);
+      console.warn(`⚠️ ${matches.length} elements match this selector:`);
+      matches.forEach((el, i) => {
+        console.log(`  [${i}]`, el);
+
+        // Visual highlight for 2 seconds
+        const originalOutline = (el as HTMLElement).style.outline;
+        (el as HTMLElement).style.outline = '3px solid red';
+        setTimeout(() => {
+          (el as HTMLElement).style.outline = originalOutline;
+        }, 2000);
+      });
+    }
+
+    // Log validation details
+    console.table({
+      'CSS Matches': validation.cssMatches,
+      'XPath Matches': validation.xpathMatches,
+      Strategy: validation.strategy,
+      'Is Unique': validation.isUnique ? '✅' : '❌',
+    });
+
+    if (validation.warnings && validation.warnings.length > 0) {
+      console.warn('Warnings:', validation.warnings);
+    }
+
+    if (validation.errors && validation.errors.length > 0) {
+      console.error('Errors:', validation.errors);
+    }
+
+    console.groupEnd();
   }
 
   /**
@@ -742,7 +803,14 @@ export class SelectorGenerator {
       priority: carouselStrategy.priority,
     });
 
-    return carouselStrategy;
+    // ✅ UNIVERSAL VALIDATION: Add validation and fallback metadata to carousel selectors
+    // This ensures carousel controls get the same reliability as form inputs/dropdowns
+    const enhanced = this.enhanceForUniqueness(element, carouselStrategy);
+
+    // 🆕 Visual debugging console output
+    this.logSelectorValidation(element, enhanced);
+
+    return enhanced;
   }
 
   /**
@@ -1581,29 +1649,536 @@ export class SelectorGenerator {
   /**
    * Enhance selector strategy for uniqueness
    */
-  private enhanceForUniqueness(element: Element, strategy: SelectorStrategy): SelectorStrategy {
-    // Check if CSS selector is unique, if not try with nth-child
-    if (strategy.css && !this.isSelectorUnique(strategy.css, element)) {
-      const cssWithNthChild = this.generateCssSelectorWithNthChild(element);
-      if (this.isSelectorUnique(cssWithNthChild, element)) {
-        strategy.css = cssWithNthChild;
+  // ============================================================================
+  // 🆕 UNIQUENESS VALIDATION & ENHANCED SELECTOR STRATEGIES
+  // ============================================================================
+
+  /**
+   * Core validation: Check if a CSS selector uniquely identifies exactly one element
+   * @param cssSelector - The CSS selector to validate
+   * @param targetElement - Optional: the element we expect to match
+   * @returns True if selector matches exactly one element (and it's the target if provided)
+   */
+  private isUnique(cssSelector: string, targetElement?: Element): boolean {
+    try {
+      const matches = document.querySelectorAll(cssSelector);
+
+      if (matches.length === 0) return false;
+      if (matches.length > 1) return false;
+
+      // If target element provided, verify it matches
+      if (targetElement && matches[0] !== targetElement) return false;
+
+      return true;
+    } catch (error) {
+      console.warn('[SelectorGenerator] Invalid CSS selector:', cssSelector, error);
+      return false;
+    }
+  }
+
+  /**
+   * Validate XPath uniqueness
+   */
+  private isXPathUnique(
+    xpath: string,
+    targetElement?: Element
+  ): { unique: boolean; count: number } {
+    try {
+      const result = document.evaluate(
+        xpath,
+        document,
+        null,
+        XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,
+        null
+      );
+
+      const count = result.snapshotLength;
+
+      if (count === 0) return { unique: false, count: 0 };
+      if (count > 1) return { unique: false, count };
+
+      // If target element provided, verify it matches
+      if (targetElement && result.snapshotItem(0) !== targetElement) {
+        return { unique: false, count: 1 };
+      }
+
+      return { unique: true, count: 1 };
+    } catch (error) {
+      console.warn('[SelectorGenerator] Invalid XPath:', xpath, error);
+      return { unique: false, count: 0 };
+    }
+  }
+
+  /**
+   * 🆕 Strategy: Generate selector by unique class combination
+   * Tries to find minimal unique class combination
+   */
+  private generateByUniqueClass(element: Element): string | null {
+    const classes = Array.from(element.classList).filter((cls) => !this.isDynamicClass(cls));
+
+    if (classes.length === 0) return null;
+
+    const tagName = element.tagName.toLowerCase();
+
+    // Try full class combination first
+    const fullSelector = tagName + '.' + classes.join('.');
+    if (this.isUnique(fullSelector, element)) return fullSelector;
+
+    // Try each class individually (most specific first)
+    for (const cls of classes) {
+      const selector = `${tagName}.${cssEscape(cls)}`;
+      if (this.isUnique(selector, element)) return selector;
+    }
+
+    // Try 2-class combinations
+    if (classes.length >= 2) {
+      for (let i = 0; i < classes.length - 1; i++) {
+        for (let j = i + 1; j < classes.length; j++) {
+          const cls1 = classes[i];
+          const cls2 = classes[j];
+          if (cls1 && cls2) {
+            const selector = `${tagName}.${cssEscape(cls1)}.${cssEscape(cls2)}`;
+            if (this.isUnique(selector, element)) return selector;
+          }
+        }
       }
     }
 
-    // Priority is already set correctly in generateAllSelectors()
-    // No need to reorder here - just return the strategy
+    return null;
+  }
+
+  /**
+   * 🆕 Strategy: Generate selector using nth-child with parent context
+   */
+  private generateByNthChild(element: Element): string | null {
+    const parent = element.parentElement;
+    if (!parent) return null;
+
+    // Try to get unique parent selector first
+    const parentSelector = this.getUniqueParentSelector(parent);
+    if (!parentSelector) return null;
+
+    // Calculate nth-child position
+    const siblings = Array.from(parent.children);
+    const index = siblings.indexOf(element) + 1;
+
+    const tagName = element.tagName.toLowerCase();
+
+    // Build selector with classes for specificity
+    const classes = Array.from(element.classList)
+      .filter((cls) => !this.isDynamicClass(cls))
+      .slice(0, 2); // Max 2 classes for readability
+
+    const classStr = classes.length > 0 ? '.' + classes.join('.') : '';
+    const selector = `${parentSelector} > ${tagName}${classStr}:nth-child(${index})`;
+
+    if (this.isUnique(selector, element)) return selector;
+
+    return null;
+  }
+
+  /**
+   * Get unique parent selector (helper for nth-child strategy)
+   */
+  private getUniqueParentSelector(parent: Element): string | null {
+    // Try ID
+    if (parent.id && !this.isDynamicId(parent.id)) {
+      const selector = `#${cssEscape(parent.id)}`;
+      if (this.isUnique(selector, parent)) return selector;
+    }
+
+    // Try unique class
+    const classes = Array.from(parent.classList).filter((cls) => !this.isDynamicClass(cls));
+    for (const cls of classes) {
+      const selector = `.${cssEscape(cls)}`;
+      if (this.isUnique(selector, parent)) return selector;
+    }
+
+    // Try parent's parent + nth-child
+    const grandParent = parent.parentElement;
+    if (grandParent) {
+      if (grandParent.id && !this.isDynamicId(grandParent.id)) {
+        const siblings = Array.from(grandParent.children);
+        const index = siblings.indexOf(parent) + 1;
+        const tagName = parent.tagName.toLowerCase();
+        const selector = `#${cssEscape(grandParent.id)} > ${tagName}:nth-child(${index})`;
+        if (this.isUnique(selector, parent)) return selector;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * 🆕 Strategy: Generate selector by full position path
+   */
+  private generateByPositionInParent(element: Element): string | null {
+    let current: Element | null = element;
+    const path: string[] = [];
+    let depth = 0;
+    const maxDepth = 10;
+
+    while (current && current !== document.body && depth < maxDepth) {
+      const parent: Element | null = current.parentElement;
+      if (!parent) break;
+
+      const siblings = Array.from(parent.children);
+      const index = siblings.indexOf(current);
+      const tagName = current.tagName.toLowerCase();
+
+      // Add classes for specificity (max 2)
+      const classes = Array.from(current.classList)
+        .filter((cls) => !this.isDynamicClass(cls))
+        .slice(0, 2);
+      const classStr = classes.length > 0 ? '.' + classes.join('.') : '';
+
+      path.unshift(`${tagName}${classStr}:nth-child(${index + 1})`);
+
+      // If parent has ID, stop here
+      if (parent.id && !this.isDynamicId(parent.id)) {
+        path.unshift(`#${cssEscape(parent.id)}`);
+        break;
+      }
+
+      current = parent;
+      depth++;
+    }
+
+    if (path.length === 0) return null;
+
+    const selector = path.join(' > ');
+    if (this.isUnique(selector, element)) return selector;
+
+    return null;
+  }
+
+  /**
+   * 🆕 Strategy: Generate composite selector (emergency fallback)
+   */
+  private generateCompositeSelector(element: Element): string | null {
+    const parts: string[] = [];
+
+    // 1. Tag name
+    const tagName = element.tagName.toLowerCase();
+    let tagPart = tagName;
+
+    // 2. All classes
+    const classes = Array.from(element.classList).filter((cls) => !this.isDynamicClass(cls));
+    if (classes.length > 0) {
+      tagPart += '.' + classes.join('.');
+    }
+    parts.push(tagPart);
+
+    // 3. Attributes (excluding id, class)
+    const attrs = ['name', 'type', 'role', 'placeholder'];
+    for (const attr of attrs) {
+      const value = element.getAttribute(attr);
+      if (value) {
+        parts.push(`[${attr}="${cssEscape(value)}"]`);
+      }
+    }
+
+    // 4. Parent context
+    const parent = element.parentElement;
+    if (parent) {
+      let parentSelector = '';
+
+      if (parent.id && !this.isDynamicId(parent.id)) {
+        parentSelector = `#${cssEscape(parent.id)}`;
+      } else {
+        const parentClasses = Array.from(parent.classList)
+          .filter((cls) => !this.isDynamicClass(cls))
+          .slice(0, 2);
+        if (parentClasses.length > 0) {
+          parentSelector = parent.tagName.toLowerCase() + '.' + parentClasses.join('.');
+        }
+      }
+
+      if (parentSelector) {
+        const selector = `${parentSelector} > ${parts.join('')}`;
+        if (this.isUnique(selector, element)) return selector;
+      }
+    }
+
+    // Try without parent context
+    const selector = parts.join('');
+    if (this.isUnique(selector, element)) return selector;
+
+    return null;
+  }
+
+  /**
+   * 🆕 Comprehensive validation before recording
+   */
+  public validateBeforeRecording(
+    element: Element,
+    selectorData: SelectorStrategy
+  ): {
+    passed: boolean;
+    warnings: string[];
+    errors: string[];
+  } {
+    const results = {
+      passed: true,
+      warnings: [] as string[],
+      errors: [] as string[],
+    };
+
+    // Test CSS uniqueness
+    if (selectorData.css) {
+      const cssResult = this.testCssUniqueness(element, selectorData.css);
+      if (cssResult.error) {
+        results.errors.push(cssResult.error);
+        results.passed = false;
+      }
+      if (cssResult.warning) {
+        results.warnings.push(cssResult.warning);
+      }
+    }
+
+    // Test XPath uniqueness
+    if (selectorData.xpath) {
+      const xpathResult = this.testXPathUniqueness(element, selectorData.xpath);
+      if (xpathResult.warning) {
+        results.warnings.push(xpathResult.warning);
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Test CSS selector uniqueness
+   */
+  private testCssUniqueness(
+    element: Element,
+    cssSelector: string
+  ): {
+    error?: string;
+    warning?: string;
+    success?: boolean;
+  } {
+    try {
+      const matches = document.querySelectorAll(cssSelector);
+
+      if (matches.length === 0) {
+        return { error: 'CSS selector matches 0 elements' };
+      }
+
+      if (matches.length > 1) {
+        return { error: `CSS selector matches ${matches.length} elements (must be 1)` };
+      }
+
+      if (matches[0] !== element) {
+        return { error: 'CSS selector matches different element than clicked' };
+      }
+
+      return { success: true };
+    } catch (error) {
+      return { error: `Invalid CSS selector: ${String(error)}` };
+    }
+  }
+
+  /**
+   * Test XPath selector uniqueness
+   */
+  private testXPathUniqueness(
+    element: Element,
+    xpath: string
+  ): {
+    warning?: string;
+    success?: boolean;
+  } {
+    const result = this.isXPathUnique(xpath, element);
+
+    if (result.count === 0) {
+      return { warning: 'XPath matches 0 elements (CSS will be used as primary)' };
+    }
+
+    if (result.count > 1) {
+      return { warning: `XPath matches ${result.count} elements (not unique)` };
+    }
+
+    return { success: true };
+  }
+
+  /**
+   * 🆕 Generate validation metadata
+   */
+  private generateValidationMetadata(
+    element: Element,
+    strategy: SelectorStrategy,
+    strategyName: string
+  ): SelectorStrategy {
+    // Validate all selector types
+    const idMatches = strategy.id
+      ? document.querySelectorAll(`#${cssEscape(strategy.id)}`).length
+      : 0;
+
+    const dataTestIdMatches = strategy.dataTestId
+      ? document.querySelectorAll(`[data-testid="${strategy.dataTestId}"]`).length
+      : 0;
+
+    const ariaLabelMatches = strategy.ariaLabel
+      ? document.querySelectorAll(`[aria-label="${strategy.ariaLabel}"]`).length
+      : 0;
+
+    const nameMatches = strategy.name
+      ? document.querySelectorAll(`[name="${strategy.name}"]`).length
+      : 0;
+
+    const cssMatches = strategy.css ? document.querySelectorAll(strategy.css).length : 0;
+
+    const xpathResult = strategy.xpath
+      ? this.isXPathUnique(strategy.xpath, element)
+      : { unique: false, count: 0 };
+
+    const validation = this.validateBeforeRecording(element, strategy);
+
+    // Determine if ANY selector is unique
+    const isUnique =
+      idMatches === 1 ||
+      dataTestIdMatches === 1 ||
+      ariaLabelMatches === 1 ||
+      nameMatches === 1 ||
+      cssMatches === 1 ||
+      xpathResult.count === 1;
+
+    strategy.validation = {
+      cssMatches,
+      xpathMatches: xpathResult.count,
+      strategy: strategyName,
+      isUnique,
+      verifiedAt: Date.now(),
+      warnings: validation.warnings.length > 0 ? validation.warnings : undefined,
+      errors: validation.errors.length > 0 ? validation.errors : undefined,
+    };
+
+    return strategy;
+  }
+
+  /**
+   * 🆕 Generate fallback metadata with enhanced details
+   */
+  private generateFallbackMetadata(element: Element): SelectorStrategy['fallback'] {
+    const rect = element.getBoundingClientRect();
+    const parent = element.parentElement;
+
+    return {
+      visualPosition: {
+        x: rect.left + window.scrollX,
+        y: rect.top + window.scrollY,
+        viewportX: rect.left,
+        viewportY: rect.top,
+      },
+      textContent: element.textContent?.trim().substring(0, 100),
+      siblingIndex: parent ? Array.from(parent.children).indexOf(element) : 0,
+      parentId: parent?.id || undefined,
+      uniqueParent: parent ? this.getUniqueParentSelector(parent) || undefined : undefined,
+    };
+  }
+
+  /**
+   * 🆕 Validate selector quality before recording
+   * Returns whether the selector meets minimum quality standards
+   */
+  public validateSelectorQuality(
+    _element: Element,
+    strategy: SelectorStrategy
+  ): {
+    canRecord: boolean;
+    shouldWarn: boolean;
+    message?: string;
+  } {
+    const validation = strategy.validation;
+
+    if (!validation) {
+      return {
+        canRecord: false,
+        shouldWarn: true,
+        message: 'No validation metadata available',
+      };
+    }
+
+    // CRITICAL: Block recording if NO selector strategy works
+    if (
+      validation.cssMatches === 0 &&
+      validation.xpathMatches === 0 &&
+      !strategy.id &&
+      !strategy.dataTestId &&
+      !strategy.ariaLabel &&
+      !strategy.name
+    ) {
+      return {
+        canRecord: false,
+        shouldWarn: true,
+        message:
+          'Cannot generate reliable selector for this element. Try adding an ID or data-testid attribute.',
+      };
+    }
+
+    // WARN: Non-unique selector (but still allow recording)
+    if (!validation.isUnique) {
+      return {
+        canRecord: true,
+        shouldWarn: true,
+        message: `Selector is ambiguous (CSS matches ${validation.cssMatches} elements). Consider adding unique attributes.`,
+      };
+    }
+
+    // SUCCESS: Unique selector found
+    return {
+      canRecord: true,
+      shouldWarn: false,
+    };
+  }
+
+  private enhanceForUniqueness(element: Element, strategy: SelectorStrategy): SelectorStrategy {
+    let selectedStrategy = 'existing';
+
+    // 🆕 Try new strategies in priority order if current CSS selector is not unique
+    if (strategy.css && !this.isUnique(strategy.css, element)) {
+      // Try enhanced strategies
+      const strategies = [
+        { name: 'unique-class', fn: () => this.generateByUniqueClass(element) },
+        { name: 'nth-child-with-parent', fn: () => this.generateByNthChild(element) },
+        { name: 'position-path', fn: () => this.generateByPositionInParent(element) },
+        { name: 'composite', fn: () => this.generateCompositeSelector(element) },
+      ];
+
+      for (const strat of strategies) {
+        const result = strat.fn();
+        if (result) {
+          strategy.css = result;
+          selectedStrategy = strat.name;
+          break;
+        }
+      }
+
+      // If still not unique, try with nth-child (original logic)
+      if (!this.isUnique(strategy.css, element)) {
+        const cssWithNthChild = this.generateCssSelectorWithNthChild(element);
+        if (this.isUnique(cssWithNthChild, element)) {
+          strategy.css = cssWithNthChild;
+          selectedStrategy = 'nth-child-fallback';
+        }
+      }
+    }
+
+    // 🆕 Add validation metadata
+    strategy = this.generateValidationMetadata(element, strategy, selectedStrategy);
+
+    // 🆕 Add fallback metadata
+    strategy.fallback = this.generateFallbackMetadata(element);
+
     return strategy;
   }
 
   /**
    * Check if a CSS selector uniquely identifies the element
+   * @deprecated Use isUnique() instead
    */
   private isSelectorUnique(selector: string, element: Element): boolean {
-    try {
-      const matches = document.querySelectorAll(selector);
-      return matches.length === 1 && matches[0] === element;
-    } catch {
-      return false;
-    }
+    return this.isUnique(selector, element);
   }
 }
