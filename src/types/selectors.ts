@@ -25,6 +25,41 @@ export interface SelectorStrategy {
 
   // Selector priority order for playback
   priority: SelectorType[];
+
+  // 🆕 Validation metadata for uniqueness and stability
+  validation?: SelectorValidation;
+
+  // 🆕 Fallback metadata for when primary selectors fail
+  fallback?: FallbackMetadata;
+}
+
+/**
+ * Validation metadata for selector uniqueness and reliability
+ */
+export interface SelectorValidation {
+  cssMatches: number; // Number of elements matching CSS selector
+  xpathMatches?: number; // Number of elements matching XPath selector
+  strategy: string; // Strategy used to generate the selector (e.g., 'id', 'nth-child-with-parent')
+  isUnique: boolean; // True if selector matches exactly one element
+  verifiedAt: number; // Timestamp when validation occurred
+  warnings?: string[]; // Any warnings about selector stability
+  errors?: string[]; // Any errors encountered during validation
+}
+
+/**
+ * Fallback metadata for element identification
+ */
+export interface FallbackMetadata {
+  visualPosition?: {
+    x: number; // Absolute X coordinate
+    y: number; // Absolute Y coordinate
+    viewportX: number; // X relative to viewport
+    viewportY: number; // Y relative to viewport
+  };
+  textContent?: string; // Element's text content (trimmed)
+  siblingIndex?: number; // Index among siblings
+  parentId?: string; // Parent element's ID
+  uniqueParent?: string; // Selector for unique parent container
 }
 
 /**
