@@ -3358,7 +3358,12 @@ export class EventListener {
   private onMouseEnter(event: MouseEvent): void {
     if (!this.isListening) return;
 
-    const target = event.target as Element;
+    const target = event.target;
+
+    // Guard: ensure target is an Element (not Text node, Document, etc.)
+    if (!(target instanceof Element)) {
+      return;
+    }
 
     // 🛡️ Skip hover tracking on extension's own UI (recording indicator overlay)
     if (target.closest('#saveaction-recording-indicator')) {
@@ -3383,7 +3388,12 @@ export class EventListener {
   private onMouseLeave(event: MouseEvent): void {
     if (!this.isListening) return;
 
-    const target = event.target as Element;
+    const target = event.target;
+
+    // Guard: ensure target is an Element (not Text node, Document, etc.)
+    if (!(target instanceof Element)) {
+      return;
+    }
 
     // 🛡️ Skip hover tracking on extension's own UI (recording indicator overlay)
     if (target.closest('#saveaction-recording-indicator')) {
