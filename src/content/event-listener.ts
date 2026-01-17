@@ -403,6 +403,12 @@ export class EventListener {
 
     const clickedElement = event.target as Element;
 
+    // 🛡️ Skip clicks on extension's own UI (recording indicator overlay)
+    if (clickedElement.closest('#saveaction-recording-indicator')) {
+      console.log('[EventListener] ⏭️ Skipping click on extension UI');
+      return;
+    }
+
     // 🆕 P0 FIX: Track processed events using unique key (timestamp + element identity)
     // Prevents duplicate processing when events bubble with useCapture=true
     // Handle SVG elements specially since their className is SVGAnimatedString
@@ -701,6 +707,12 @@ export class EventListener {
 
     const clickedElement = event.target as Element;
 
+    // 🛡️ Skip mousedown on extension's own UI (recording indicator overlay)
+    if (clickedElement.closest('#saveaction-recording-indicator')) {
+      console.log('[EventListener] ⏭️ Skipping mousedown on extension UI');
+      return;
+    }
+
     // Find the interactive element (could be the target or a parent)
     const target = this.findInteractiveElement(clickedElement);
     if (!target) return;
@@ -730,6 +742,12 @@ export class EventListener {
     if (!this.isListening) return;
 
     const clickedElement = event.target as Element;
+
+    // 🛡️ Skip double-click on extension's own UI (recording indicator overlay)
+    if (clickedElement.closest('#saveaction-recording-indicator')) {
+      console.log('[EventListener] ⏭️ Skipping double-click on extension UI');
+      return;
+    }
 
     // Find the interactive element (could be the target or a parent)
     const target = this.findInteractiveElement(clickedElement);
@@ -3342,6 +3360,11 @@ export class EventListener {
 
     const target = event.target as Element;
 
+    // 🛡️ Skip hover tracking on extension's own UI (recording indicator overlay)
+    if (target.closest('#saveaction-recording-indicator')) {
+      return;
+    }
+
     // Check if this element could be a dropdown parent
     if (this.isDropdownParent(target)) {
       this.lastHoveredElement = target;
@@ -3361,6 +3384,11 @@ export class EventListener {
     if (!this.isListening) return;
 
     const target = event.target as Element;
+
+    // 🛡️ Skip hover tracking on extension's own UI (recording indicator overlay)
+    if (target.closest('#saveaction-recording-indicator')) {
+      return;
+    }
 
     // Clear hover tracking if leaving the hovered element
     if (this.lastHoveredElement === target) {

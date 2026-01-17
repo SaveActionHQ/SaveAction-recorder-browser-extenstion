@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { exportAsJSON, downloadRecording, validateExportData } from '@/utils/exporter';
+import {
+  exportAsJSON,
+  downloadRecording,
+  validateExportData,
+  filterExtensionUIActions,
+} from '@/utils/exporter';
 import type { Recording } from '@/types/recording';
 
 // Mock chrome.downloads API
@@ -424,6 +429,346 @@ describe('Exporter Utils', () => {
       expect(result.valid).toBe(false);
       const hasError = result.errors.includes('Actions must be an array');
       expect(hasError).toBe(true);
+    });
+  });
+
+  describe('filterExtensionUIActions', () => {
+    it('should filter out actions targeting the recording indicator by CSS selector', () => {
+      const recording: Recording = {
+        id: 'rec_123',
+        testName: 'Test',
+        url: 'https://example.com',
+        startTime: '2025-11-18T10:00:00.000Z',
+        variables: [],
+        actions: [
+          {
+            id: 'act_001',
+            type: 'click',
+            timestamp: Date.now(),
+            completedAt: Date.now() + 50,
+            url: 'https://example.com',
+            selector: {
+              css: '#saveaction-recording-indicator button.stop-btn',
+              priority: ['css'],
+            },
+            tagName: 'button',
+            text: 'Stop',
+            coordinates: { x: 10, y: 20 },
+            coordinatesRelativeTo: 'element',
+            button: 'left',
+            clickCount: 1,
+            modifiers: [],
+          },
+          {
+            id: 'act_002',
+            type: 'click',
+            timestamp: Date.now(),
+            completedAt: Date.now() + 50,
+            url: 'https://example.com',
+            selector: {
+              css: '#submit-button',
+              priority: ['css'],
+            },
+            tagName: 'button',
+            text: 'Submit',
+            coordinates: { x: 100, y: 200 },
+            coordinatesRelativeTo: 'element',
+            button: 'left',
+            clickCount: 1,
+            modifiers: [],
+          },
+        ],
+        ...mockDimensions,
+        userAgent: 'Mozilla/5.0',
+        version: '1.0.0',
+      };
+
+      const result = filterExtensionUIActions(recording);
+
+      expect(result.actions).toHaveLength(1);
+      expect(result.actions[0]!.id).toBe('act_002');
+    });
+
+    it('should filter out actions targeting the recording indicator by ID selector', () => {
+      const recording: Recording = {
+        id: 'rec_123',
+        testName: 'Test',
+        url: 'https://example.com',
+        startTime: '2025-11-18T10:00:00.000Z',
+        variables: [],
+        actions: [
+          {
+            id: 'act_001',
+            type: 'click',
+            timestamp: Date.now(),
+            completedAt: Date.now() + 50,
+            url: 'https://example.com',
+            selector: {
+              id: 'saveaction-recording-indicator',
+              priority: ['id'],
+            },
+            tagName: 'div',
+            coordinates: { x: 10, y: 20 },
+            coordinatesRelativeTo: 'element',
+            button: 'left',
+            clickCount: 1,
+            modifiers: [],
+          },
+        ],
+        ...mockDimensions,
+        userAgent: 'Mozilla/5.0',
+        version: '1.0.0',
+      };
+
+      const result = filterExtensionUIActions(recording);
+
+      expect(result.actions).toHaveLength(0);
+    });
+
+    it('should filter out actions targeting the recording indicator by XPath', () => {
+      const recording: Recording = {
+        id: 'rec_123',
+        testName: 'Test',
+        url: 'https://example.com',
+        startTime: '2025-11-18T10:00:00.000Z',
+        variables: [],
+        actions: [
+          {
+            id: 'act_001',
+            type: 'click',
+            timestamp: Date.now(),
+            completedAt: Date.now() + 50,
+            url: 'https://example.com',
+            selector: {
+              xpath: '//div[@id="saveaction-recording-indicator"]/button',
+              priority: ['xpath'],
+            },
+            tagName: 'button',
+            coordinates: { x: 10, y: 20 },
+            coordinatesRelativeTo: 'element',
+            button: 'left',
+            clickCount: 1,
+            modifiers: [],
+          },
+        ],
+        ...mockDimensions,
+        userAgent: 'Mozilla/5.0',
+        version: '1.0.0',
+      };
+
+      const result = filterExtensionUIActions(recording);
+
+      expect(result.actions).toHaveLength(0);
+    });
+
+    it('should filter out actions with extension UI in alternativeSelectors', () => {
+      const recording: Recording = {
+        id: 'rec_123',
+        testName: 'Test',
+        url: 'https://example.com',
+        startTime: '2025-11-18T10:00:00.000Z',
+        variables: [],
+        actions: [
+          {
+            id: 'act_001',
+            type: 'click',
+            timestamp: Date.now(),
+            completedAt: Date.now() + 50,
+            url: 'https://example.com',
+            selector: {
+              css: 'button',
+              priority: ['css'],
+            },
+            tagName: 'button',
+            coordinates: { x: 10, y: 20 },
+            coordinatesRelativeTo: 'element',
+            button: 'left',
+            clickCount: 1,
+            modifiers: [],
+            alternativeSelectors: [
+              {
+                css: '#saveaction-recording-indicator .pause-btn',
+                priority: 1,
+              },
+            ],
+          },
+        ],
+        ...mockDimensions,
+        userAgent: 'Mozilla/5.0',
+        version: '1.0.0',
+      };
+
+      const result = filterExtensionUIActions(recording);
+
+      expect(result.actions).toHaveLength(0);
+    });
+
+    it('should preserve non-extension UI actions', () => {
+      const recording: Recording = {
+        id: 'rec_123',
+        testName: 'Test',
+        url: 'https://example.com',
+        startTime: '2025-11-18T10:00:00.000Z',
+        variables: [],
+        actions: [
+          {
+            id: 'act_001',
+            type: 'click',
+            timestamp: Date.now(),
+            completedAt: Date.now() + 50,
+            url: 'https://example.com',
+            selector: {
+              id: 'login-button',
+              css: '#login-button',
+              priority: ['id', 'css'],
+            },
+            tagName: 'button',
+            text: 'Login',
+            coordinates: { x: 10, y: 20 },
+            coordinatesRelativeTo: 'element',
+            button: 'left',
+            clickCount: 1,
+            modifiers: [],
+          },
+          {
+            id: 'act_002',
+            type: 'input',
+            timestamp: Date.now(),
+            completedAt: Date.now() + 100,
+            url: 'https://example.com',
+            selector: {
+              id: 'username',
+              css: '#username',
+              priority: ['id', 'css'],
+            },
+            tagName: 'input',
+            inputType: 'text',
+            value: 'testuser',
+            isSensitive: false,
+            simulationType: 'type',
+          },
+        ],
+        ...mockDimensions,
+        userAgent: 'Mozilla/5.0',
+        version: '1.0.0',
+      };
+
+      const result = filterExtensionUIActions(recording);
+
+      expect(result.actions).toHaveLength(2);
+    });
+
+    it('should not modify the original recording', () => {
+      const recording: Recording = {
+        id: 'rec_123',
+        testName: 'Test',
+        url: 'https://example.com',
+        startTime: '2025-11-18T10:00:00.000Z',
+        variables: [],
+        actions: [
+          {
+            id: 'act_001',
+            type: 'click',
+            timestamp: Date.now(),
+            completedAt: Date.now() + 50,
+            url: 'https://example.com',
+            selector: {
+              css: '#saveaction-recording-indicator',
+              priority: ['css'],
+            },
+            tagName: 'div',
+            coordinates: { x: 10, y: 20 },
+            coordinatesRelativeTo: 'element',
+            button: 'left',
+            clickCount: 1,
+            modifiers: [],
+          },
+        ],
+        ...mockDimensions,
+        userAgent: 'Mozilla/5.0',
+        version: '1.0.0',
+      };
+
+      filterExtensionUIActions(recording);
+
+      expect(recording.actions).toHaveLength(1);
+    });
+
+    it('should handle empty actions array', () => {
+      const recording: Recording = {
+        id: 'rec_123',
+        testName: 'Test',
+        url: 'https://example.com',
+        startTime: '2025-11-18T10:00:00.000Z',
+        variables: [],
+        actions: [],
+        ...mockDimensions,
+        userAgent: 'Mozilla/5.0',
+        version: '1.0.0',
+      };
+
+      const result = filterExtensionUIActions(recording);
+
+      expect(result.actions).toHaveLength(0);
+    });
+  });
+
+  describe('exportAsJSON with filtering', () => {
+    it('should automatically filter extension UI actions during export', () => {
+      const recording: Recording = {
+        id: 'rec_123',
+        testName: 'Test',
+        url: 'https://example.com',
+        startTime: '2025-11-18T10:00:00.000Z',
+        variables: [],
+        actions: [
+          {
+            id: 'act_001',
+            type: 'click',
+            timestamp: Date.now(),
+            completedAt: Date.now() + 50,
+            url: 'https://example.com',
+            selector: {
+              css: '#saveaction-recording-indicator button',
+              priority: ['css'],
+            },
+            tagName: 'button',
+            coordinates: { x: 10, y: 20 },
+            coordinatesRelativeTo: 'element',
+            button: 'left',
+            clickCount: 1,
+            modifiers: [],
+          },
+          {
+            id: 'act_002',
+            type: 'click',
+            timestamp: Date.now(),
+            completedAt: Date.now() + 50,
+            url: 'https://example.com',
+            selector: {
+              id: 'submit-btn',
+              priority: ['id'],
+            },
+            tagName: 'button',
+            text: 'Submit',
+            coordinates: { x: 100, y: 200 },
+            coordinatesRelativeTo: 'element',
+            button: 'left',
+            clickCount: 1,
+            modifiers: [],
+          },
+        ],
+        ...mockDimensions,
+        userAgent: 'Mozilla/5.0',
+        version: '1.0.0',
+      };
+
+      const json = exportAsJSON(recording);
+      const parsed = JSON.parse(json);
+
+      expect(parsed.actions).toHaveLength(1);
+      expect(parsed.actions[0].id).toBe('act_002');
+      expect(json).not.toContain('saveaction-recording-indicator');
     });
   });
 });
