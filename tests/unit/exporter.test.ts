@@ -19,10 +19,6 @@ global.chrome = {
   },
 } as any;
 
-// Mock URL.createObjectURL and URL.revokeObjectURL
-global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
-global.URL.revokeObjectURL = vi.fn();
-
 // Helper for dimension data
 const mockDimensions = {
   viewport: { width: 1920, height: 1080 },
@@ -144,7 +140,7 @@ describe('Exporter Utils', () => {
 
       expect(mockDownloads.download).toHaveBeenCalledWith(
         expect.objectContaining({
-          url: 'blob:mock-url',
+          url: expect.stringMatching(/^data:application\/json;base64,/),
           filename: expect.stringContaining('Login_Test'),
           saveAs: true,
         }),
@@ -226,7 +222,7 @@ describe('Exporter Utils', () => {
       await expect(downloadRecording(recording)).rejects.toThrow('Download failed');
     });
 
-    it('should revoke blob URL after download', async () => {
+    it('should use data URL for service worker compatibility', async () => {
       const recording: Recording = {
         id: 'rec_123',
         testName: 'Test',
@@ -247,8 +243,13 @@ describe('Exporter Utils', () => {
 
       await downloadRecording(recording);
 
-      // eslint-disable-next-line @typescript-eslint/unbound-method
-      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
+      const call = mockDownloads.download.mock.calls[0][0];
+      expect(call.url).toMatch(/^data:application\/json;base64,/);
+      // Verify we can decode the base64 content
+      const base64Part = call.url.replace('data:application/json;base64,', '');
+      const decoded = decodeURIComponent(escape(atob(base64Part)));
+      const parsed = JSON.parse(decoded);
+      expect(parsed.id).toBe('rec_123');
     });
   });
 

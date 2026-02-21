@@ -14,6 +14,9 @@ export * from './recording';
 // Messages
 export * from './messages';
 
+// Settings (Platform Integration)
+export * from './settings';
+
 // Re-export specific types for easier access
 export type {
   CarouselContext,

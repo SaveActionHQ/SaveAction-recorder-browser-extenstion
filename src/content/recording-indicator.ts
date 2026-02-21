@@ -255,10 +255,10 @@ export class RecordingIndicator {
       this.handlePauseClick();
     });
 
-    // Stop button
+    // Save button
     this.stopButton = document.createElement('button');
-    this.stopButton.innerHTML = '⬇️';
-    this.stopButton.title = 'Stop & Download Recording';
+    this.stopButton.innerHTML = '💾';
+    this.stopButton.title = 'Save Recording';
     this.stopButton.style.cssText = `
       background: rgba(239, 68, 68, 0.9);
       border: none;
@@ -319,43 +319,33 @@ export class RecordingIndicator {
   }
 
   /**
-   * Handle stop button click
+   * Handle stop button click - saves recording to platform
    */
   private handleStopClick(): void {
-    console.log('[RecordingIndicator] Stop button clicked');
-    try {
-      chrome.runtime.sendMessage({ type: 'STOP_RECORDING' }, (response) => {
-        console.log('[RecordingIndicator] STOP_RECORDING response:', response);
+    console.log('[RecordingIndicator] Save button clicked');
 
-        // Trigger download if we got recording data
-        if (response?.success && response.data) {
-          const recording = response.data;
-          this.downloadRecording(recording);
-        }
-      });
-    } catch (error) {
-      console.error('[RecordingIndicator] Failed to stop recording:', error);
+    // Show saving state
+    if (this.stopButton) {
+      this.stopButton.innerHTML = '⏳';
+      this.stopButton.style.pointerEvents = 'none';
     }
-  }
 
-  /**
-   * Download recording as JSON file
-   */
-  private downloadRecording(recording: any): void {
     try {
-      const json = JSON.stringify(recording, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${recording.testName}_${recording.id.replace('rec_', '')}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      console.log('[RecordingIndicator] Recording downloaded:', a.download);
+      // Send message to background to stop, upload, and open popup
+      chrome.runtime.sendMessage(
+        { type: 'STOP_AND_UPLOAD', payload: { openPopup: true } },
+        (response) => {
+          console.log('[RecordingIndicator] STOP_AND_UPLOAD response:', response);
+          // The indicator will be hidden by the content script when recording stops
+        }
+      );
     } catch (error) {
-      console.error('[RecordingIndicator] Failed to download recording:', error);
+      console.error('[RecordingIndicator] Failed to save recording:', error);
+      // Reset button on error
+      if (this.stopButton) {
+        this.stopButton.innerHTML = '💾';
+        this.stopButton.style.pointerEvents = 'auto';
+      }
     }
   }
 

@@ -97,6 +97,7 @@ export function exportAsJSON(recording: Recording): string {
 /**
  * Download recording as JSON file using chrome.downloads API
  * Automatically filters out any extension UI actions
+ * Uses data URL for service worker compatibility (no DOM APIs)
  */
 export async function downloadRecording(recording: Recording): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -111,22 +112,19 @@ export async function downloadRecording(recording: Recording): Promise<void> {
       const timestamp = Date.now();
       const filename = `${sanitizedName}_${timestamp}.json`;
 
-      // Create JSON blob
+      // Create JSON and convert to data URL (works in service workers)
       const json = JSON.stringify(filteredRecording, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
+      const base64 = btoa(unescape(encodeURIComponent(json)));
+      const dataUrl = `data:application/json;base64,${base64}`;
 
       // Download using chrome.downloads API
       chrome.downloads.download(
         {
-          url,
+          url: dataUrl,
           filename,
           saveAs: true,
         },
         (_downloadId) => {
-          // Revoke blob URL after download starts
-          URL.revokeObjectURL(url);
-
           if (chrome.runtime.lastError) {
             reject(new Error(chrome.runtime.lastError.message));
           } else {

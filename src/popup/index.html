@@ -26,107 +26,327 @@
           </svg>
           <h1>SaveAction</h1>
         </div>
-        <div class="status-badge" id="statusBadge">
-          <span class="status-dot"></span>
-          <span class="status-text">Idle</span>
+        <div class="header-actions">
+          <button class="settings-btn" id="settingsBtn" title="Settings">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+              />
+            </svg>
+          </button>
+          <div class="status-badge" id="statusBadge">
+            <span class="status-dot"></span>
+            <span class="status-text">Idle</span>
+          </div>
         </div>
       </header>
 
-      <!-- Test Name Input Section -->
-      <section class="section test-name-section" id="testNameSection">
-        <label for="testNameInput" class="label">Test Name</label>
-        <div class="input-group">
-          <input
-            type="text"
-            id="testNameInput"
-            class="input"
-            placeholder="e.g., Login Flow Test"
-            maxlength="100"
-          />
-          <span class="input-hint">Required before recording</span>
-        </div>
-      </section>
-
-      <!-- Recording Info Section (shown when recording) -->
-      <section class="section recording-info" id="recordingInfo" style="display: none">
-        <div class="info-card">
-          <div class="info-row">
-            <span class="info-label">Test Name:</span>
-            <span class="info-value" id="currentTestName">-</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">Actions:</span>
-            <span class="info-value" id="actionCount">0</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">Duration:</span>
-            <span class="info-value" id="duration">00:00</span>
-          </div>
-        </div>
-      </section>
-
-      <!-- Control Buttons -->
-      <section class="section controls">
-        <!-- Start Button -->
-        <button class="btn btn-primary" id="startBtn">
-          <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <circle cx="8" cy="8" r="6" fill="currentColor" />
-          </svg>
-          Start Recording
-        </button>
-
-        <!-- Pause/Resume Button -->
-        <button class="btn btn-secondary" id="pauseBtn" style="display: none">
-          <svg class="btn-icon pause-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <rect x="5" y="4" width="2" height="8" fill="currentColor" />
-            <rect x="9" y="4" width="2" height="8" fill="currentColor" />
-          </svg>
-          <svg
-            class="btn-icon resume-icon"
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-            style="display: none"
-          >
-            <path d="M6 4L12 8L6 12V4Z" fill="currentColor" />
-          </svg>
-          <span id="pauseBtnText">Pause</span>
-        </button>
-
-        <!-- Stop Button -->
-        <button class="btn btn-danger" id="stopBtn" style="display: none">
-          <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <rect x="5" y="5" width="6" height="6" fill="currentColor" />
-          </svg>
-          Stop & Download
-        </button>
-      </section>
-
-      <!-- Error Message -->
-      <div class="error-message" id="errorMessage" style="display: none">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5" />
-          <path d="M8 4V9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-          <circle cx="8" cy="11.5" r="0.5" fill="currentColor" />
-        </svg>
-        <span id="errorText"></span>
+      <!-- Connection Status Indicator -->
+      <div class="connection-status" id="connectionStatus" style="display: none">
+        <span class="connection-indicator"></span>
+        <span class="connection-text">Connected to platform</span>
       </div>
 
-      <!-- Success Message -->
-      <div class="success-message" id="successMessage" style="display: none">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5" />
-          <path
-            d="M5 8L7 10L11 6"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-        <span id="successText"></span>
+      <!-- Main View -->
+      <div id="mainView">
+        <!-- Setup Banner (shown when platform not configured) -->
+        <div class="setup-banner" id="setupBanner" style="display: none">
+          <div class="setup-banner-icon">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+            </svg>
+          </div>
+          <div class="setup-banner-content">
+            <span class="setup-banner-title">Set up auto-upload</span>
+            <span class="setup-banner-desc">Upload recordings directly to SaveAction platform</span>
+          </div>
+          <button class="setup-banner-btn" id="setupBannerBtn">Configure</button>
+        </div>
+
+        <!-- Test Name Input Section -->
+        <section class="section test-name-section" id="testNameSection">
+          <label for="testNameInput" class="label">Test Name</label>
+          <div class="input-group">
+            <input
+              type="text"
+              id="testNameInput"
+              class="input"
+              placeholder="e.g., Login Flow Test"
+              maxlength="100"
+            />
+            <span class="input-hint">Required before recording</span>
+          </div>
+        </section>
+
+        <!-- Project Selection (shown when platform is configured) -->
+        <section class="section project-section" id="projectSection" style="display: none">
+          <label for="projectSelect" class="label">Upload to Project</label>
+          <div class="project-select-row">
+            <select id="projectSelect" class="input select project-select">
+              <option value="">Select a project...</option>
+            </select>
+            <button
+              class="btn-icon-only"
+              id="refreshProjectsBtn"
+              type="button"
+              title="Refresh projects"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"
+                />
+              </svg>
+            </button>
+          </div>
+        </section>
+
+        <!-- Recording Info Section (shown when recording) -->
+        <section class="section recording-info" id="recordingInfo" style="display: none">
+          <div class="info-card">
+            <div class="info-row">
+              <span class="info-label">Test Name:</span>
+              <span class="info-value" id="currentTestName">-</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Actions:</span>
+              <span class="info-value" id="actionCount">0</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Duration:</span>
+              <span class="info-value" id="duration">00:00</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Control Buttons -->
+        <section class="section controls">
+          <!-- Start Button -->
+          <button class="btn btn-primary" id="startBtn">
+            <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <circle cx="8" cy="8" r="6" fill="currentColor" />
+            </svg>
+            Start Recording
+          </button>
+
+          <!-- Pause/Resume Button -->
+          <button class="btn btn-secondary" id="pauseBtn" style="display: none">
+            <svg class="btn-icon pause-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <rect x="5" y="4" width="2" height="8" fill="currentColor" />
+              <rect x="9" y="4" width="2" height="8" fill="currentColor" />
+            </svg>
+            <svg
+              class="btn-icon resume-icon"
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              style="display: none"
+            >
+              <path d="M6 4L12 8L6 12V4Z" fill="currentColor" />
+            </svg>
+            <span id="pauseBtnText">Pause</span>
+          </button>
+
+          <!-- Stop & Save Buttons Container -->
+          <div class="stop-buttons" id="stopButtons" style="display: none">
+            <!-- Save Button (primary - uploads to platform) -->
+            <button class="btn btn-primary" id="saveBtn">
+              <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <rect x="5" y="5" width="6" height="6" fill="currentColor" />
+              </svg>
+              <span id="saveBtnText">Save</span>
+            </button>
+
+            <!-- Download Button (secondary - optional local download) -->
+            <button
+              class="btn btn-secondary btn-icon-text"
+              id="downloadBtn"
+              title="Download JSON file"
+            >
+              <svg
+                class="btn-icon"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+              </svg>
+            </button>
+          </div>
+        </section>
+
+        <!-- Upload Progress -->
+        <div class="upload-progress" id="uploadProgress" style="display: none">
+          <div class="upload-progress-header">
+            <span class="upload-progress-label" id="uploadProgressLabel"
+              >Uploading to platform...</span
+            >
+            <span class="upload-progress-percent" id="uploadProgressPercent">0%</span>
+          </div>
+          <div class="upload-progress-bar">
+            <div class="upload-progress-fill" id="uploadProgressFill"></div>
+          </div>
+        </div>
+
+        <!-- Error Message -->
+        <div class="error-message" id="errorMessage" style="display: none">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5" />
+            <path d="M8 4V9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            <circle cx="8" cy="11.5" r="0.5" fill="currentColor" />
+          </svg>
+          <span id="errorText"></span>
+        </div>
+
+        <!-- Success Message -->
+        <div class="success-message" id="successMessage" style="display: none">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5" />
+            <path
+              d="M5 8L7 10L11 6"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <span id="successText"></span>
+        </div>
       </div>
+      <!-- End Main View -->
+
+      <!-- Settings View (hidden by default) -->
+      <div id="settingsView" style="display: none">
+        <section class="section settings-header-section">
+          <button class="back-btn" id="backBtn">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M19 12H5M5 12L12 19M5 12L12 5" />
+            </svg>
+            Back
+          </button>
+          <h2 class="settings-title">Platform Settings</h2>
+        </section>
+
+        <section class="section">
+          <label for="platformUrl" class="label">Platform URL</label>
+          <div class="input-group">
+            <input
+              type="url"
+              id="platformUrl"
+              class="input"
+              placeholder="https://saveaction.example.com"
+            />
+            <span class="input-hint">Base URL of your SaveAction API</span>
+          </div>
+        </section>
+
+        <section class="section">
+          <label for="apiToken" class="label">API Token</label>
+          <div class="input-group">
+            <input type="password" id="apiToken" class="input" placeholder="sa_live_..." />
+            <span class="input-hint">Create in Platform Settings → API Tokens</span>
+          </div>
+        </section>
+
+        <section class="section">
+          <label for="defaultTags" class="label">Default Tags</label>
+          <div class="input-group">
+            <input
+              type="text"
+              id="defaultTags"
+              class="input"
+              placeholder="smoke, regression, login"
+            />
+            <span class="input-hint">Comma-separated tags for uploads</span>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <span class="toggle-label">Auto-Upload</span>
+              <span class="toggle-hint">Upload recordings automatically when stopped</span>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="autoUpload" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </section>
+
+        <section class="section settings-actions">
+          <button class="btn btn-secondary" id="testConnectionBtn">
+            <svg
+              class="btn-icon"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
+            Test Connection
+          </button>
+          <button class="btn btn-primary" id="saveSettingsBtn">
+            <svg
+              class="btn-icon"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+              <polyline points="17 21 17 13 7 13 7 21" />
+              <polyline points="7 3 7 8 15 8" />
+            </svg>
+            Save Settings
+          </button>
+        </section>
+
+        <!-- Connection Test Result -->
+        <div class="connection-result" id="connectionResult" style="display: none">
+          <span class="connection-result-icon"></span>
+          <span class="connection-result-text" id="connectionResultText"></span>
+        </div>
+      </div>
+      <!-- End Settings View -->
 
       <!-- Footer -->
       <footer class="footer">

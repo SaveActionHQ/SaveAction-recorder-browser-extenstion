@@ -8,6 +8,9 @@ import type { Message, MessageResponse, StatusResponse, RecordingResponse } from
 import type { Recording, RecordingMetadata, Variable } from '@/types/recording';
 import type { InputAction } from '@/types/actions';
 import { saveRecording } from '@/utils/storage';
+import { downloadRecording } from '@/utils/exporter';
+import { loadSettings, uploadRecording as uploadToPlatform } from '@/platform/api';
+import { parseTags } from '@/types/settings';
 
 /**
  * Global recording state managed by background script
@@ -30,6 +33,13 @@ interface BackgroundState {
   windowSize: { width: number; height: number } | null;
   screenSize: { width: number; height: number } | null;
   devicePixelRatio: number | null;
+  // Last upload result to show in popup
+  lastUploadResult: {
+    success: boolean;
+    error?: string;
+    recordingName?: string;
+    timestamp: number;
+  } | null;
 }
 
 /**
@@ -52,6 +62,7 @@ let state: BackgroundState = {
   windowSize: null,
   screenSize: null,
   devicePixelRatio: null,
+  lastUploadResult: null,
 };
 
 /**
@@ -223,6 +234,17 @@ chrome.runtime.onMessage.addListener(
           );
         return true;
 
+      case 'STOP_AND_UPLOAD':
+        handleStopAndUpload(sender, message.payload)
+          .then(sendResponse)
+          .catch((error) =>
+            sendResponse({
+              success: false,
+              error: error.message,
+            })
+          );
+        return true;
+
       case 'PAUSE_RECORDING':
         handlePauseRecording(sender)
           .then(sendResponse)
@@ -247,6 +269,15 @@ chrome.runtime.onMessage.addListener(
 
       case 'GET_STATUS':
         sendResponse(handleGetStatus());
+        return false;
+
+      case 'GET_LAST_UPLOAD_RESULT':
+        sendResponse({
+          success: true,
+          data: state.lastUploadResult,
+        });
+        // Clear result after reading
+        state.lastUploadResult = null;
         return false;
 
       case 'GET_RECORDING':
@@ -556,6 +587,186 @@ async function handleStopRecording(
     return {
       success: false,
       error: `Failed to stop recording: ${(error as Error).message}`,
+    };
+  }
+}
+
+/**
+ * Stop recording and upload to platform
+ * Used by the overlay save button
+ */
+async function handleStopAndUpload(
+  sender: chrome.runtime.MessageSender,
+  payload?: { openPopup?: boolean }
+): Promise<MessageResponse> {
+  console.log('[Background] handleStopAndUpload called, payload:', payload);
+
+  // First, stop the recording
+  const stopResult = await handleStopRecording(sender);
+
+  if (!stopResult.success || !stopResult.data) {
+    // Show error notification
+    chrome.notifications.create('save-error', {
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('icon-48.png'),
+      title: 'SaveAction - Error',
+      message: stopResult.error || 'Failed to stop recording',
+    });
+    return {
+      success: false,
+      error: stopResult.error || 'Failed to stop recording',
+    };
+  }
+
+  const recording = stopResult.data;
+
+  // Try to upload to platform
+  try {
+    const settings = await loadSettings();
+
+    if (!settings.platformUrl || !settings.apiToken) {
+      console.log('[Background] Platform not configured, downloading locally');
+      // Auto-download the recording
+      await downloadRecording(recording);
+      // Store result
+      state.lastUploadResult = {
+        success: false,
+        error: 'Platform not configured. Recording downloaded locally.',
+        recordingName: recording.testName,
+        timestamp: Date.now(),
+      };
+      // Show notification
+      chrome.notifications.create('upload-info', {
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icon-48.png'),
+        title: 'SaveAction',
+        message: 'Recording downloaded. Configure platform settings for cloud upload.',
+      });
+      // Open popup if requested
+      if (payload?.openPopup) {
+        chrome.action.openPopup();
+      }
+      return {
+        success: true,
+        data: recording,
+      };
+    }
+
+    // Check if project is selected (required for upload)
+    if (!settings.selectedProjectId) {
+      console.log('[Background] No project selected, downloading locally');
+      // Auto-download the recording
+      await downloadRecording(recording);
+      state.lastUploadResult = {
+        success: false,
+        error: 'No project selected. Recording downloaded locally.',
+        recordingName: recording.testName,
+        timestamp: Date.now(),
+      };
+      chrome.notifications.create('upload-info', {
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icon-48.png'),
+        title: 'SaveAction',
+        message: 'Recording downloaded. Select a project in settings for cloud upload.',
+      });
+      if (payload?.openPopup) {
+        chrome.action.openPopup();
+      }
+      return {
+        success: true,
+        data: recording,
+        error: 'No project selected',
+      };
+    }
+
+    console.log('[Background] Uploading to platform...');
+    const tags = parseTags(settings.defaultTags);
+
+    const uploadResult = await uploadToPlatform(
+      settings.platformUrl,
+      settings.apiToken,
+      recording,
+      tags,
+      settings.selectedProjectId
+    );
+
+    if (uploadResult.success) {
+      console.log('[Background] Upload successful:', uploadResult.recordingId);
+      // Store result
+      state.lastUploadResult = {
+        success: true,
+        recordingName: uploadResult.recordingName || recording.testName,
+        timestamp: Date.now(),
+      };
+      // Show success notification
+      chrome.notifications.create('upload-success', {
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icon-48.png'),
+        title: 'SaveAction',
+        message: `Recording "${uploadResult.recordingName || recording.testName}" uploaded to platform`,
+      });
+      // Open popup if requested
+      if (payload?.openPopup) {
+        chrome.action.openPopup();
+      }
+      return {
+        success: true,
+        data: recording,
+      };
+    } else {
+      console.error('[Background] Upload failed:', uploadResult.error);
+      // Auto-download the recording as fallback
+      await downloadRecording(recording);
+      // Store result
+      state.lastUploadResult = {
+        success: false,
+        error: `${uploadResult.error} Recording downloaded locally.`,
+        recordingName: recording.testName,
+        timestamp: Date.now(),
+      };
+      // Show error notification
+      chrome.notifications.create('upload-error', {
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icon-48.png'),
+        title: 'SaveAction - Upload Failed',
+        message: `${uploadResult.error || 'Unknown error'}. Recording downloaded.`,
+      });
+      // Open popup if requested
+      if (payload?.openPopup) {
+        chrome.action.openPopup();
+      }
+      return {
+        success: true,
+        data: recording,
+        error: uploadResult.error,
+      };
+    }
+  } catch (error) {
+    console.error('[Background] Upload error:', error);
+    // Auto-download the recording as fallback
+    await downloadRecording(recording);
+    // Store result
+    state.lastUploadResult = {
+      success: false,
+      error: `${(error as Error).message} Recording downloaded locally.`,
+      recordingName: recording.testName,
+      timestamp: Date.now(),
+    };
+    // Show error notification
+    chrome.notifications.create('upload-error', {
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('icon-48.png'),
+      title: 'SaveAction - Upload Failed',
+      message: `${(error as Error).message}. Recording downloaded.`,
+    });
+    // Open popup if requested
+    if (payload?.openPopup) {
+      chrome.action.openPopup();
+    }
+    return {
+      success: true,
+      data: recording,
+      error: (error as Error).message,
     };
   }
 }
@@ -921,6 +1132,9 @@ async function resetState(): Promise<void> {
     clearInterval(state.pollingInterval);
   }
 
+  // Preserve lastUploadResult so popup can show it
+  const preservedUploadResult = state.lastUploadResult;
+
   state = {
     isRecording: false,
     isPaused: false,
@@ -938,6 +1152,7 @@ async function resetState(): Promise<void> {
     pollingInterval: null,
     actionCounter: 0,
     previousUrl: null,
+    lastUploadResult: preservedUploadResult,
   };
 
   // Clear storage

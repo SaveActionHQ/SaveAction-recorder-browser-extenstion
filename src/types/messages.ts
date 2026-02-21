@@ -7,10 +7,12 @@ import type { Recording, RecordingMetadata, RecordingState } from './recording';
 export type MessageType =
   | 'START_RECORDING'
   | 'STOP_RECORDING'
+  | 'STOP_AND_UPLOAD'
   | 'PAUSE_RECORDING'
   | 'RESUME_RECORDING'
   | 'ADD_ACTION'
   | 'GET_STATUS'
+  | 'GET_LAST_UPLOAD_RESULT'
   | 'GET_RECORDING'
   | 'SAVE_CURRENT_STATE'
   | 'SYNC_ACTION'
@@ -42,6 +44,23 @@ export interface StartRecordingMessage extends BaseMessage {
  */
 export interface StopRecordingMessage extends BaseMessage {
   type: 'STOP_RECORDING';
+}
+
+/**
+ * Stop and upload recording message (from overlay)
+ */
+export interface StopAndUploadMessage extends BaseMessage {
+  type: 'STOP_AND_UPLOAD';
+  payload?: {
+    openPopup?: boolean;
+  };
+}
+
+/**
+ * Get last upload result message
+ */
+export interface GetLastUploadResultMessage extends BaseMessage {
+  type: 'GET_LAST_UPLOAD_RESULT';
 }
 
 /**
@@ -150,6 +169,8 @@ export interface StatusUpdateMessage extends BaseMessage {
 export type Message =
   | StartRecordingMessage
   | StopRecordingMessage
+  | StopAndUploadMessage
+  | GetLastUploadResultMessage
   | PauseRecordingMessage
   | ResumeRecordingMessage
   | AddActionMessage
