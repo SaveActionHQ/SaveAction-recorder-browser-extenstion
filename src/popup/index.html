@@ -140,6 +140,31 @@
           </div>
         </section>
 
+        <!-- Variables Section (shown when recording and variables exist) -->
+        <section class="section variables-section" id="variablesSection" style="display: none">
+          <div class="info-card">
+            <div class="info-row" style="margin-bottom: 6px;">
+              <span class="info-label" style="font-weight: 600;">Variables</span>
+              <span class="info-value" id="variableCount" style="font-size: 11px; opacity: 0.7;">0</span>
+            </div>
+            <div id="variablesList" class="variables-list"></div>
+          </div>
+        </section>
+
+        <!-- Store Credentials Toggle -->
+        <section class="section" id="credentialToggleSection">
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <span class="toggle-label">Store Credentials</span>
+              <span class="toggle-hint">Save passwords as plain text (for test accounts)</span>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="storeCredentials" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </section>
+
         <!-- Control Buttons -->
         <section class="section controls">
           <!-- Start Button -->
@@ -167,6 +192,15 @@
               <path d="M6 4L12 8L6 12V4Z" fill="currentColor" />
             </svg>
             <span id="pauseBtnText">Pause</span>
+          </button>
+
+          <!-- Add Assertion Button (visible while recording/paused) -->
+          <button class="btn btn-secondary btn-assertion" id="assertionBtn" style="display: none">
+            <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M6.5 11.5L3 8l1-1 2.5 2.5L11 5l1 1-5.5 5.5z" fill="currentColor"/>
+              <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5" fill="none"/>
+            </svg>
+            <span id="assertionBtnText">Add Assertion</span>
           </button>
 
           <!-- Stop & Save Buttons Container -->

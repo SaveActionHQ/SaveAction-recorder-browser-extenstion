@@ -437,6 +437,17 @@ body {
   border-color: var(--color-text-tertiary);
 }
 
+.btn-assertion {
+  color: #1e40af;
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.btn-assertion:hover:not(:disabled) {
+  background: #dbeafe;
+  border-color: #2563eb;
+}
+
 .btn-danger {
   color: white;
   background: var(--color-danger);
@@ -715,6 +726,39 @@ body {
   font-weight: 600;
   color: var(--color-text);
   flex: 1;
+}
+
+/* Variables Section */
+.variables-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.variable-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+
+.variable-name {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-weight: 600;
+  color: #0891b2;
+}
+
+.variable-default {
+  color: var(--color-text-tertiary);
+  font-size: 11px;
+  max-width: 140px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Toggle Switch */

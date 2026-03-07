@@ -32,6 +32,7 @@ const pauseBtnText = document.getElementById('pauseBtnText') as HTMLElement;
 const stopButtons = document.getElementById('stopButtons') as HTMLElement;
 const saveBtn = document.getElementById('saveBtn') as HTMLButtonElement;
 const downloadBtn = document.getElementById('downloadBtn') as HTMLButtonElement;
+const assertionBtn = document.getElementById('assertionBtn') as HTMLButtonElement;
 const errorMessage = document.getElementById('errorMessage') as HTMLElement;
 const errorText = document.getElementById('errorText') as HTMLElement;
 const successMessage = document.getElementById('successMessage') as HTMLElement;
@@ -63,6 +64,13 @@ const projectSection = document.getElementById('projectSection') as HTMLElement;
 const projectSelect = document.getElementById('projectSelect') as HTMLSelectElement;
 const refreshProjectsBtn = document.getElementById('refreshProjectsBtn') as HTMLButtonElement;
 
+// Variables UI Elements
+const variablesSection = document.getElementById('variablesSection') as HTMLElement;
+const variableCount = document.getElementById('variableCount') as HTMLElement;
+const variablesList = document.getElementById('variablesList') as HTMLElement;
+const storeCredentialsToggle = document.getElementById('storeCredentials') as HTMLInputElement;
+const credentialToggleSection = document.getElementById('credentialToggleSection') as HTMLElement;
+
 // State
 let currentState: RecordingState = 'idle';
 let startTime: number | null = null;
@@ -85,11 +93,21 @@ async function init(): Promise<void> {
   // Check for last upload result (shown when popup opens after save from overlay)
   await checkLastUploadResult();
 
+  // Load store credentials toggle
+  const settings = await loadSettings();
+  storeCredentialsToggle.checked = settings.storeCredentials;
+
+  // Save on toggle change
+  storeCredentialsToggle.addEventListener('change', async () => {
+    await chrome.storage.sync.set({ storeCredentials: storeCredentialsToggle.checked });
+  });
+
   // Set up event listeners
   startBtn.addEventListener('click', handleStart);
   pauseBtn.addEventListener('click', handlePauseResume);
   saveBtn.addEventListener('click', handleSave);
   downloadBtn.addEventListener('click', handleDownload);
+  assertionBtn.addEventListener('click', handleAddAssertion);
 
   // Settings event listeners
   settingsBtn.addEventListener('click', showSettingsView);
@@ -316,6 +334,30 @@ async function handleDownload(): Promise<void> {
 }
 
 /**
+ * Handle "Add Assertion" button click.
+ * Sends ENTER_ASSERTION_MODE to background, which pauses recording
+ * and tells the content script to activate the assertion inspector.
+ */
+async function handleAddAssertion(): Promise<void> {
+  hideMessages();
+  setLoading(assertionBtn, true);
+
+  try {
+    const response = await sendMessage({ type: 'ENTER_ASSERTION_MODE' });
+
+    if (response.success) {
+      showSuccess('Assertion mode active — click an element on the page');
+    } else {
+      showError(response.error || 'Failed to enter assertion mode');
+    }
+  } catch (error) {
+    showError((error as Error).message);
+  } finally {
+    setLoading(assertionBtn, false);
+  }
+}
+
+/**
  * Upload recording with progress indicator
  */
 async function uploadWithProgress(recording: any): Promise<void> {
@@ -410,9 +452,12 @@ function updateUI(): void {
   // Update sections visibility
   if (currentState === 'idle') {
     testNameSection.style.display = 'block';
+    credentialToggleSection.style.display = 'block';
     recordingInfo.style.display = 'none';
+    variablesSection.style.display = 'none';
     startBtn.style.display = 'flex';
     pauseBtn.style.display = 'none';
+    assertionBtn.style.display = 'none';
     stopButtons.style.display = 'none';
     uploadProgress.style.display = 'none';
     testNameInput.disabled = false;
@@ -420,9 +465,11 @@ function updateUI(): void {
     updateConnectionStatusIndicator();
   } else {
     testNameSection.style.display = 'none';
+    credentialToggleSection.style.display = 'none';
     recordingInfo.style.display = 'block';
     startBtn.style.display = 'none';
     pauseBtn.style.display = 'flex';
+    assertionBtn.style.display = 'flex';
     stopButtons.style.display = 'flex';
     testNameInput.disabled = true;
     // Hide setup banner and connection status during recording
@@ -501,6 +548,16 @@ function startActionCountPolling(): void {
           actionCount.textContent = String(count);
         }
       }
+
+      // Fetch marked variables
+      try {
+        const varResp = await sendMessage({ type: 'GET_VARIABLES' });
+        if (varResp.success && Array.isArray(varResp.data)) {
+          updateVariablesUI(varResp.data);
+        }
+      } catch {
+        /* ignore */
+      }
     } catch (error) {
       // Ignore errors during polling
       console.error('[Popup] Failed to get action count:', error);
@@ -518,6 +575,40 @@ function stopActionCountPolling(): void {
   if (pollInterval !== null) {
     clearInterval(pollInterval);
     pollInterval = null;
+  }
+}
+
+/**
+ * Update the variables section in the popup UI
+ */
+function updateVariablesUI(
+  vars: Array<{ variableName: string; fieldType: string; defaultValue: string }>
+): void {
+  if (!vars.length) {
+    variablesSection.style.display = 'none';
+    return;
+  }
+
+  variablesSection.style.display = 'block';
+  variableCount.textContent = String(vars.length);
+  variablesList.innerHTML = '';
+
+  for (const v of vars) {
+    const item = document.createElement('div');
+    item.className = 'variable-item';
+
+    const name = document.createElement('span');
+    name.className = 'variable-name';
+    name.textContent = `\${${v.variableName}}`;
+
+    const def = document.createElement('span');
+    def.className = 'variable-default';
+    def.textContent = v.defaultValue || `(${v.fieldType})`;
+    def.title = v.defaultValue;
+
+    item.appendChild(name);
+    item.appendChild(def);
+    variablesList.appendChild(item);
   }
 }
 

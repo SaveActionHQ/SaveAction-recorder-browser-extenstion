@@ -28,6 +28,7 @@ export async function loadSettings(): Promise<ExtensionSettings> {
         'selectedProjectName',
         'autoUpload',
         'defaultTags',
+        'storeCredentials',
       ],
       (result) => {
         resolve({
@@ -37,6 +38,7 @@ export async function loadSettings(): Promise<ExtensionSettings> {
           selectedProjectName: result.selectedProjectName || DEFAULT_SETTINGS.selectedProjectName,
           autoUpload: result.autoUpload ?? DEFAULT_SETTINGS.autoUpload,
           defaultTags: result.defaultTags || DEFAULT_SETTINGS.defaultTags,
+          storeCredentials: result.storeCredentials ?? DEFAULT_SETTINGS.storeCredentials,
         });
       }
     );

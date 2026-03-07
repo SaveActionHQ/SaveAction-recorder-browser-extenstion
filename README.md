@@ -20,18 +20,21 @@ SaveAction Recorder is a powerful browser extension designed to capture user int
 
 ## ✨ Features
 
-- 🎬 **Comprehensive Recording**: Captures clicks, inputs, navigation, scrolls, form submissions, keyboard events
+- 🎬 **Comprehensive Recording**: Captures clicks, inputs, navigation, scrolls, form submissions, keyboard events, hover, select/dropdown, and modal lifecycle
 - 🌐 **Multi-Page Recording**: Seamlessly records actions across page navigation and reloads
-- 🎮 **Overlay Controls**: Pause, resume, and stop recording directly from the webpage
-- 🎯 **Multi-Selector Strategy**: Generates 7+ selector types per element for maximum reliability
+- 🎮 **Modern Overlay Controls**: Dark-themed floating panel with pause, resume, and stop — directly on the webpage
+- ✅ **Assertions (Manual + Auto)**: Add assertions during recording via inspect mode (text equals, text contains, is visible, has value, URL contains, page title). Auto-assertions inserted after navigation and form submits
+- 🏷️ **Variable Marking**: Mark any input field as a variable (`${EMAIL}`, `${PASSWORD}`) with inline naming popup, remove/rename support, and Store Credentials toggle
+- 🎯 **Multi-Selector Strategy**: Generates 7+ selector types per element with validation and uniqueness verification
 - 🔢 **Sequential Action IDs**: Global action counter maintains continuous numbering across all pages
-- 🔒 **Privacy-First**: Automatically masks sensitive data (passwords, credit cards, SSN)
-- 📦 **Rich Metadata**: Records full context including coordinates, modifiers, timing, navigation triggers
+- 🔒 **Privacy-First**: Automatically masks sensitive data (passwords, credit cards, SSN) with configurable Store Credentials toggle
+- 📦 **Rich Metadata**: Records full context — coordinates, modifiers, timing, element state, wait conditions, content signatures, navigation intent
 - ⏱️ **Real-time Feedback**: Live timer and action counter in overlay
 - 🌐 **Cross-Browser**: Works on Chrome, Firefox, Edge, Safari, and Chromium-based browsers
-- 📋 **Production-Ready JSON**: Exports validated JSON with complete simulation data
+- 📋 **Production-Ready JSON**: Exports validated JSON with complete simulation data and variables metadata
+- 🔌 **Platform Integration**: Upload recordings to SaveAction platform with project selection and auto-upload
 - ⚡ **Zero Configuration**: No setup required, just install and start recording
-- 🧪 **Fully Tested**: 164 unit tests with 100% coverage
+- 🧪 **Fully Tested**: 414 unit tests across 18 test files
 
 ## 🚀 Installation
 
@@ -85,26 +88,47 @@ npm run test:coverage
    - Click "Start Recording"
 
 2. **Interact with the Webpage**
-   - An overlay indicator appears showing:
-     - Recording status (green pulse)
+   - A modern dark overlay panel appears showing:
+     - Recording status with red pulse indicator
      - Live timer and action count
-     - Control buttons
+     - Pause/Resume and Stop control buttons
    - All your actions are captured automatically:
-     - Mouse clicks (with coordinates and modifiers)
-     - Form inputs (text, selections, checkboxes, radio buttons)
+     - Mouse clicks (with coordinates, modifiers, and click intent classification)
+     - Form inputs (text, email, password, selections, checkboxes, radio buttons)
+     - Select/dropdown interactions
      - Page navigation and reloads (multi-page support)
      - Scroll events (with positions)
      - Keyboard shortcuts
-     - Form submissions
+     - Form submissions (with AJAX form detection)
+     - Hover events on interactive elements
+     - Modal/dialog lifecycle events
 
-3. **Control Recording**
+3. **Mark Variables**
+   - While recording, hover over any input field to see the "Mark as Variable" badge
+   - Click the badge to name the variable (e.g., `EMAIL`, `USERNAME`)
+   - The input value is stored as `${EMAIL}` for parameterized replay
+   - Use the "Remove" button in the popup to unmark a variable
+   - Toggle "Store Credentials" to control password sanitization
+
+4. **Add Assertions**
+   - Click "Add Assertion" in the popup toolbar while recording
+   - An inspect mode overlay appears — hover to highlight elements
+   - Click an element to open the assertion panel with options:
+     - **Text Equals / Text Contains** — verify element text
+     - **Is Visible** — verify element is visible
+     - **Has Value** — verify input/select/textarea value
+     - **URL Contains / Page Title** — page-level assertions
+   - Auto-assertions are inserted after navigation events and form submits
+
+5. **Control Recording**
    - **⏸️ Pause**: Temporarily stop capturing actions
    - **▶️ Resume**: Continue recording from where you paused
    - **⏹️ Stop**: End recording and download JSON immediately
 
-4. **Download Recording**
+6. **Download Recording**
    - Click **Stop** button in the overlay for instant download
    - Or click the extension icon and use "Stop & Download"
+   - Optionally auto-upload to SaveAction platform
    - JSON file saves automatically: `{testName}_{timestamp}.json`
 
 ### Multi-Page Recording
@@ -125,13 +149,23 @@ Action IDs remain sequential across all pages (e.g., act_001, act_002, ..., act_
 ```
 SaveAction-Recorder/
 ├── src/
-│   ├── background/      # Service worker
-│   ├── content/         # Content scripts (event capture)
-│   ├── popup/           # Extension UI
-│   ├── types/           # TypeScript definitions
-│   ├── utils/           # Utilities (storage, validation, etc.)
-│   └── manifest.json    # Extension manifest
-├── tests/               # Vitest unit & integration tests
+│   ├── background/      # Service worker (state management, message handling)
+│   ├── content/         # Content scripts
+│   │   ├── action-recorder.ts      # Core recording logic
+│   │   ├── event-listener.ts       # DOM event capture (~3400 lines)
+│   │   ├── recording-indicator.ts  # Modern overlay UI controls
+│   │   ├── selector-generator.ts   # Multi-selector generation & validation
+│   │   ├── intent-classifier.ts    # Navigation intent classification
+│   │   ├── assertion-inspector.ts  # Inspect mode for assertions
+│   │   ├── variable-marker.ts      # Variable marking UI & logic
+│   │   └── index.ts                # Entry point & message router
+│   ├── popup/           # Extension popup UI
+│   ├── platform/        # Platform API integration
+│   ├── types/           # TypeScript type definitions
+│   ├── utils/           # Shared utilities (export, sanitize, validate, storage)
+│   └── manifest.json    # Extension manifest (Manifest V3)
+├── tests/
+│   └── unit/            # 414 unit tests across 18 test files
 ├── docs/                # Documentation
 └── dist/                # Build outputs
 ```
@@ -192,7 +226,7 @@ The project uses [Husky](https://typicode.github.io/husky/) for Git hooks to mai
 **Pre-push:**
 
 - Runs TypeScript type checking
-- Executes all 164 unit tests
+- Executes all 414 unit tests
 
 See [docs/HUSKY_SETUP.md](./docs/HUSKY_SETUP.md) for detailed documentation.
 
@@ -208,19 +242,39 @@ The recorder exports a structured JSON file with complete action metadata:
   "startTime": "2025-11-18T10:30:00.000Z",
   "endTime": "2025-11-18T10:31:30.000Z",
   "viewport": { "width": 1920, "height": 1080 },
+  "variables": [
+    {
+      "name": "EMAIL",
+      "selector": "#email",
+      "fieldType": "email",
+      "description": "email field (#email)",
+      "placeholder": "${EMAIL}"
+    }
+  ],
   "actions": [
     {
       "id": "act_001",
-      "type": "click",
+      "type": "input",
       "selector": {
         "id": "email",
         "css": "#email",
         "xpath": "//input[@id='email']",
-        "priority": ["id", "css", "xpath"]
+        "priority": ["id", "css", "xpath"],
+        "validation": { "isUnique": true, "strategy": "existing", "cssMatches": 1 }
       },
-      "coordinates": { "x": 50, "y": 15 },
-      "coordinatesRelativeTo": "element",
-      "clickCount": 1
+      "value": "user@example.com",
+      "variableName": "EMAIL",
+      "inputType": "email",
+      "isSensitive": false
+    },
+    {
+      "id": "act_002",
+      "type": "checkpoint",
+      "checkType": "urlContains",
+      "expectedUrl": "/dashboard/",
+      "actualUrl": "https://example.com/dashboard/",
+      "passed": true,
+      "auto": true
     }
   ]
 }
