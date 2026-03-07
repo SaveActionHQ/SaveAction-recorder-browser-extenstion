@@ -360,21 +360,11 @@ export interface SubmitAction extends BaseAction {
 }
 
 /**
- * Auto-generated checkpoint for validation
+ * Manual checkpoint for validation
  */
 export interface CheckpointAction extends BaseAction {
   type: 'checkpoint';
-  checkType:
-    | 'urlMatch'
-    | 'urlContains'
-    | 'elementVisible'
-    | 'elementText'
-    | 'containsText'
-    | 'elementHasValue'
-    | 'pageLoad'
-    | 'pageTitle';
-  expectedUrl?: string;
-  actualUrl?: string;
+  checkType: 'elementVisible' | 'elementText' | 'containsText' | 'elementHasValue' | 'pageTitle';
   selector?: SelectorStrategy;
   expectedValue?: string;
   actualValue?: string;

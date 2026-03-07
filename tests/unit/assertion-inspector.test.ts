@@ -420,13 +420,10 @@ describe('AssertionInspector', () => {
 describe('CheckpointAction type', () => {
   it('should support all checkType values', () => {
     const checkTypes: CheckpointAction['checkType'][] = [
-      'urlMatch',
-      'urlContains',
       'elementVisible',
       'elementText',
       'containsText',
       'elementHasValue',
-      'pageLoad',
       'pageTitle',
     ];
 

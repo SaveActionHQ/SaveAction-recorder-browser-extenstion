@@ -270,11 +270,10 @@ The recorder exports a structured JSON file with complete action metadata:
     {
       "id": "act_002",
       "type": "checkpoint",
-      "checkType": "urlContains",
-      "expectedUrl": "/dashboard/",
-      "actualUrl": "https://example.com/dashboard/",
-      "passed": true,
-      "auto": true
+      "checkType": "elementText",
+      "expectedValue": "Welcome back",
+      "actualValue": "Welcome back",
+      "passed": true
     }
   ]
 }
