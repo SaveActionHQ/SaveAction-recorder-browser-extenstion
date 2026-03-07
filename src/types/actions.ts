@@ -379,7 +379,6 @@ export interface CheckpointAction extends BaseAction {
   expectedValue?: string;
   actualValue?: string;
   passed: boolean;
-  auto?: boolean; // True for auto-generated checkpoints (navigation, form submit)
 }
 
 /**

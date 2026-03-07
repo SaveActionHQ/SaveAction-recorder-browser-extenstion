@@ -44,5 +44,13 @@
     "no-case-declarations": "off",
     "prefer-const": "error"
   },
+  "overrides": [
+    {
+      "files": ["tests/**/*.ts"],
+      "rules": {
+        "@typescript-eslint/unbound-method": "off"
+      }
+    }
+  ],
   "ignorePatterns": ["dist", "node_modules", "coverage", "*.config.ts"]
 }

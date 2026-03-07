@@ -1549,32 +1549,6 @@ chrome.tabs.onUpdated.addListener(async (tabId: number, changeInfo: chrome.tabs.
         '| Total actions:',
         state.accumulatedActions.length
       );
-
-      // Auto-assertion: URL checkpoint after navigation (Part B - 1g)
-      // Use urlContains with pathname only — resilient to different domains/ports/query params
-      const navPath = (() => {
-        try {
-          return new URL(currentUrl || '').pathname;
-        } catch {
-          return '/';
-        }
-      })();
-      const checkpointAction: any = {
-        id: `act_${String(state.actionCounter + 1).padStart(3, '0')}`,
-        type: 'checkpoint',
-        timestamp: relativeTimestamp,
-        completedAt: relativeTimestamp,
-        url: currentUrl,
-        checkType: 'urlContains',
-        expectedUrl: navPath,
-        actualUrl: currentUrl,
-        passed: true,
-        auto: true,
-      };
-      state.accumulatedActions.push(checkpointAction);
-      state.actionCounter++;
-      await persistActionCounter();
-      console.log('[Background] Auto URL checkpoint after navigation:', checkpointAction.id);
     }
 
     // Update previous URL for next navigation

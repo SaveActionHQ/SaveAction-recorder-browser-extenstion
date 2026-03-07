@@ -445,21 +445,6 @@ describe('CheckpointAction type', () => {
     });
   });
 
-  it('should support auto flag', () => {
-    const action: CheckpointAction = {
-      id: 'act_001',
-      type: 'checkpoint',
-      timestamp: 1000,
-      completedAt: 1000,
-      url: 'http://example.com',
-      checkType: 'urlMatch',
-      expectedUrl: 'http://example.com/dashboard',
-      passed: true,
-      auto: true,
-    };
-    expect(action.auto).toBe(true);
-  });
-
   it('should support manual assertion without auto flag', () => {
     const action: CheckpointAction = {
       id: 'act_001',
@@ -477,7 +462,6 @@ describe('CheckpointAction type', () => {
       actualValue: 'Hello',
       passed: true,
     };
-    expect(action.auto).toBeUndefined();
     expect(action.selector).toBeDefined();
     expect(action.expectedValue).toBe('Hello');
   });

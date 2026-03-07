@@ -7,7 +7,6 @@ import type {
   ScrollAction,
   KeypressAction,
   SubmitAction,
-  CheckpointAction,
   HoverAction,
   ModalLifecycleAction,
   ModifierKey,
@@ -1792,30 +1791,6 @@ export class EventListener {
     };
 
     this.emitAction(action);
-
-    // Auto-assertion: URL checkpoint after form submit (Part B - 1h)
-    // Wait 500ms for navigation to settle, then emit URL checkpoint if URL changed
-    const urlBeforeSubmit = window.location.href;
-    setTimeout(() => {
-      if (!this.isListening) return;
-      const urlAfterSubmit = window.location.href;
-      if (urlAfterSubmit !== urlBeforeSubmit) {
-        const afterPath = new URL(urlAfterSubmit).pathname;
-        const checkpoint: CheckpointAction = {
-          id: generateActionId(++this.actionSequence),
-          type: 'checkpoint',
-          timestamp: this.getRelativeTimestamp(),
-          completedAt: this.getRelativeTimestamp(),
-          url: urlAfterSubmit,
-          checkType: 'urlContains',
-          expectedUrl: afterPath,
-          actualUrl: urlAfterSubmit,
-          passed: true,
-          auto: true,
-        };
-        this.emitAction(checkpoint);
-      }
-    }, 500);
   }
 
   /**

@@ -64,7 +64,6 @@ export interface RecordingOptions {
   maskSensitiveData?: boolean; // Default: true
   captureTypingDelay?: boolean; // Default: true
   captureCoordinates?: boolean; // Default: true
-  autoGenerateCheckpoints?: boolean; // Default: true
 }
 
 /**
