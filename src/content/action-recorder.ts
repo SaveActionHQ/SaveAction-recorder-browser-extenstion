@@ -1,4 +1,5 @@
 import { EventListener } from './event-listener';
+import type { VariableMarker } from './variable-marker';
 import type { Action, Recording } from '@/types';
 import { generateRecordingId, SCHEMA_VERSION } from '@/types/recording';
 
@@ -30,13 +31,22 @@ export class ActionRecorder {
   private eventListener: EventListener;
   private actions: Action[] = [];
   private metadata: RecordingMetadata | null = null;
-  private recordingStartTime: number = 0;
+  private _recordingStartTime: number = 0;
+
+  public get recordingStartTime(): number {
+    return this._recordingStartTime;
+  }
 
   constructor() {
     // Initialize EventListener with action callback
     this.eventListener = new EventListener((action: Action) => {
       this.onActionCaptured(action);
     });
+  }
+
+  /** Pass the VariableMarker to the EventListener for variable substitution. */
+  public setVariableMarker(marker: VariableMarker): void {
+    this.eventListener.setVariableMarker(marker);
   }
 
   /**
@@ -88,8 +98,8 @@ export class ActionRecorder {
     this.actions = [];
 
     // Track recording start time for relative timestamps
-    this.recordingStartTime = Date.now();
-    this.eventListener.setRecordingStartTime(this.recordingStartTime);
+    this._recordingStartTime = Date.now();
+    this.eventListener.setRecordingStartTime(this._recordingStartTime);
 
     // Start capturing events
     this.state = 'recording';
@@ -138,8 +148,8 @@ export class ActionRecorder {
     this.actions = [];
 
     // Restore recording start time from metadata
-    this.recordingStartTime = new Date(metadata.startTime).getTime();
-    this.eventListener.setRecordingStartTime(this.recordingStartTime);
+    this._recordingStartTime = new Date(metadata.startTime).getTime();
+    this.eventListener.setRecordingStartTime(this._recordingStartTime);
 
     // Start capturing events
     this.state = 'recording';

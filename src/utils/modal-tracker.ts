@@ -8,6 +8,11 @@ import type { ModalLifecycleAction } from '@/types';
  * Check if an element is a modal/dialog
  */
 export function isModal(element: Element): boolean {
+  // Exclude extension's own UI elements from modal detection
+  if (element.id?.startsWith('saveaction-')) {
+    return false;
+  }
+
   // Check role attribute
   const role = element.getAttribute('role');
   if (role === 'dialog' || role === 'alertdialog') {

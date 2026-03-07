@@ -364,13 +364,22 @@ export interface SubmitAction extends BaseAction {
  */
 export interface CheckpointAction extends BaseAction {
   type: 'checkpoint';
-  checkType: 'urlMatch' | 'elementVisible' | 'elementText' | 'pageLoad';
+  checkType:
+    | 'urlMatch'
+    | 'urlContains'
+    | 'elementVisible'
+    | 'elementText'
+    | 'containsText'
+    | 'elementHasValue'
+    | 'pageLoad'
+    | 'pageTitle';
   expectedUrl?: string;
   actualUrl?: string;
   selector?: SelectorStrategy;
   expectedValue?: string;
   actualValue?: string;
   passed: boolean;
+  auto?: boolean; // True for auto-generated checkpoints (navigation, form submit)
 }
 
 /**

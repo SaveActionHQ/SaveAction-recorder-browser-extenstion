@@ -5,6 +5,8 @@
 
 import { ActionRecorder } from './action-recorder';
 import { RecordingIndicator } from './recording-indicator';
+import { AssertionInspector } from './assertion-inspector';
+import { VariableMarker } from './variable-marker';
 import type { Message, MessageResponse } from '@/types/messages';
 import type { Recording } from '@/types';
 
@@ -14,6 +16,8 @@ if (window.self !== window.top) {
 } else {
   let recorder: ActionRecorder | null = null;
   let indicator: RecordingIndicator | null = null;
+  let assertionInspector: AssertionInspector | null = null;
+  let variableMarker: VariableMarker | null = null;
   let restorationComplete = false;
   let restorationPromise: Promise<void> | null = null;
 
@@ -58,6 +62,10 @@ if (window.self !== window.top) {
         indicator = new RecordingIndicator();
         console.log('[Content] RecordingIndicator initialized');
       }
+      if (!variableMarker) {
+        variableMarker = new VariableMarker();
+        console.log('[Content] VariableMarker initialized');
+      }
 
       // Check if there's an active recording in background
       try {
@@ -99,6 +107,12 @@ if (window.self !== window.top) {
                     indicator.setPaused(true);
                     recorder.pauseRecording();
                   }
+                }
+
+                // Start variable marker on restored recording
+                if (variableMarker) {
+                  variableMarker.start();
+                  recorder.setVariableMarker(variableMarker);
                 }
 
                 console.log('[Content] Recording state restored successfully');
@@ -164,12 +178,35 @@ if (window.self !== window.top) {
                 }
 
                 try {
+                  // If ensureRecorderReady() already restored recording state,
+                  // skip startRecording() to avoid "already in progress" error
+                  if (recorder.isRecording()) {
+                    console.log(
+                      '[Content] Recording already restored by ensureRecorderReady, skipping startRecording'
+                    );
+                    sendResponse({
+                      success: true,
+                      data: {
+                        state: 'recording',
+                        testName: message.payload.testName,
+                      },
+                    });
+                    return false;
+                  }
+
                   console.log(
                     '[Content] Starting recording with testName:',
                     message.payload.testName
                   );
                   recorder.startRecording(message.payload.testName);
                   console.log('[Content] Recording started, isRecording:', recorder.isRecording());
+
+                  // Start variable marker for this recording session
+                  if (variableMarker) {
+                    variableMarker.clear();
+                    variableMarker.start();
+                    recorder.setVariableMarker(variableMarker);
+                  }
 
                   indicator.show(message.payload.testName);
                   console.log('[Content] Indicator shown');
@@ -202,6 +239,10 @@ if (window.self !== window.top) {
                 try {
                   const recording: Recording = recorder.stopRecording();
                   indicator.hide();
+                  if (variableMarker) {
+                    variableMarker.stop();
+                    variableMarker.clear();
+                  }
                   console.log('[Content] Recording stopped, indicator hidden');
                   sendResponse({
                     success: true,
@@ -328,6 +369,49 @@ if (window.self !== window.top) {
                 });
                 return false;
 
+              case 'ENTER_ASSERTION_MODE':
+                if (!assertionInspector) {
+                  assertionInspector = new AssertionInspector();
+                }
+                // Pass recording start time for relative timestamps
+                if (recorder) {
+                  assertionInspector.setRecordingStartTime(recorder.recordingStartTime);
+                }
+                assertionInspector.enter((checkpointAction) => {
+                  // Emit the checkpoint action through the recorder
+                  if (recorder) {
+                    try {
+                      chrome.runtime.sendMessage(
+                        {
+                          type: 'SYNC_ACTION',
+                          payload: { action: checkpointAction },
+                        },
+                        (resp) => {
+                          if (chrome.runtime.lastError) {
+                            console.error(
+                              '[Content] Assertion sync error:',
+                              chrome.runtime.lastError
+                            );
+                          } else {
+                            console.log('[Content] Assertion synced:', resp);
+                          }
+                        }
+                      );
+                    } catch (error) {
+                      console.error('[Content] Failed to sync assertion:', error);
+                    }
+                  }
+                });
+                sendResponse({ success: true });
+                return false;
+
+              case 'EXIT_ASSERTION_MODE':
+                if (assertionInspector) {
+                  assertionInspector.exit();
+                }
+                sendResponse({ success: true });
+                return false;
+
               default:
                 sendResponse({
                   success: false,
@@ -381,6 +465,14 @@ if (window.self !== window.top) {
     }
 
     // Cleanup
+    if (assertionInspector) {
+      assertionInspector.exit();
+      assertionInspector = null;
+    }
+    if (variableMarker) {
+      variableMarker.stop();
+      variableMarker = null;
+    }
     if (recorder) {
       recorder.destroy();
       recorder = null;

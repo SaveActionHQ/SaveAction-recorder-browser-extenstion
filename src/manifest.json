@@ -36,7 +36,7 @@
     }
   ],
 
-  "permissions": ["storage", "activeTab", "tabs", "downloads", "notifications"],
+  "permissions": ["storage", "activeTab", "tabs", "downloads", "notifications", "scripting"],
 
   "host_permissions": ["<all_urls>"],
 

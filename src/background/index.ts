@@ -40,6 +40,13 @@ interface BackgroundState {
     recordingName?: string;
     timestamp: number;
   } | null;
+  // User-marked variables from the variable marker
+  markedVariables: Array<{
+    variableName: string;
+    selector: string;
+    fieldType: string;
+    defaultValue: string;
+  }>;
 }
 
 /**
@@ -63,6 +70,7 @@ let state: BackgroundState = {
   screenSize: null,
   devicePixelRatio: null,
   lastUploadResult: null,
+  markedVariables: [],
 };
 
 /**
@@ -332,6 +340,55 @@ chrome.runtime.onMessage.addListener(
         });
         return false;
 
+      case 'ENTER_ASSERTION_MODE':
+        handleEnterAssertionMode(sender)
+          .then(sendResponse)
+          .catch((error) =>
+            sendResponse({
+              success: false,
+              error: error.message,
+            })
+          );
+        return true;
+
+      case 'EXIT_ASSERTION_MODE':
+        handleExitAssertionMode(sender)
+          .then(sendResponse)
+          .catch((error) =>
+            sendResponse({
+              success: false,
+              error: error.message,
+            })
+          );
+        return true;
+
+      case 'MARK_VARIABLE':
+        if (state.isRecording && message.payload) {
+          const mv = message.payload;
+          const idx = state.markedVariables.findIndex((v) => v.variableName === mv.variableName);
+          if (idx >= 0) {
+            state.markedVariables[idx] = mv;
+          } else {
+            state.markedVariables.push(mv);
+          }
+          console.log('[Background] Variable marked:', mv.variableName);
+        }
+        sendResponse({ success: true, data: state.markedVariables });
+        return false;
+
+      case 'UNMARK_VARIABLE':
+        if (state.isRecording && message.payload) {
+          const varName = message.payload.variableName;
+          state.markedVariables = state.markedVariables.filter((v) => v.variableName !== varName);
+          console.log('[Background] Variable removed:', varName);
+        }
+        sendResponse({ success: true, data: state.markedVariables });
+        return false;
+
+      case 'GET_VARIABLES':
+        sendResponse({ success: true, data: state.markedVariables });
+        return false;
+
       default:
         sendResponse({
           success: false,
@@ -341,6 +398,30 @@ chrome.runtime.onMessage.addListener(
     }
   }
 );
+
+/**
+ * Ensure the content script is injected on the given tab.
+ * Tries a lightweight ping first; if no listener responds,
+ * programmatically injects the content script bundle.
+ */
+async function ensureContentScriptInjected(tabId: number): Promise<void> {
+  try {
+    await chrome.tabs.sendMessage(tabId, { type: 'GET_STATUS' });
+    // Content script already running
+    return;
+  } catch {
+    // Content script not loaded — inject it
+    console.log('[Background] Content script not found, injecting programmatically');
+  }
+
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: ['content/index.js'],
+  });
+
+  // Give the script a moment to initialise its listener
+  await new Promise((resolve) => setTimeout(resolve, 150));
+}
 
 /**
  * Start recording in the current tab
@@ -386,8 +467,10 @@ async function handleStartRecording(
   state.previousUrl = initialUrl; // Initialize previousUrl for navigation detection
   state.metadata = null; // Will be populated from content script
 
-  // Send message to content script to start recording
+  // Ensure content script is loaded, then start recording
   try {
+    await ensureContentScriptInjected(tabId);
+
     await chrome.tabs.sendMessage(tabId, {
       type: 'START_RECORDING',
       payload: { testName },
@@ -491,6 +574,9 @@ async function handleStopRecording(
             });
           }
 
+          // Backfill variableName on input actions from user-marked variables
+          backfillVariableNames(recording.actions);
+
           // Extract variables from sensitive input actions
           recording.variables = extractVariablesFromActions(recording.actions);
 
@@ -559,6 +645,9 @@ async function handleStopRecording(
     recording.actions.forEach((action, index) => {
       action.id = `act_${String(index + 1).padStart(3, '0')}`;
     });
+
+    // Backfill variableName on input actions from user-marked variables
+    backfillVariableNames(recording.actions);
 
     // Extract variables from sensitive input actions
     recording.variables = extractVariablesFromActions(recording.actions);
@@ -868,6 +957,79 @@ async function handleResumeRecording(
 }
 
 /**
+ * Enter assertion mode — auto-pauses recording and tells content script to activate inspector.
+ */
+async function handleEnterAssertionMode(
+  _sender: chrome.runtime.MessageSender
+): Promise<MessageResponse> {
+  if (!state.isRecording) {
+    return { success: false, error: 'No active recording' };
+  }
+
+  const tabId = state.currentTabId;
+  if (!tabId) {
+    return { success: false, error: 'No active tab for recording' };
+  }
+
+  // Pause recording if not already paused
+  if (!state.isPaused) {
+    try {
+      await chrome.tabs.sendMessage(tabId, { type: 'PAUSE_RECORDING' });
+      state.isPaused = true;
+      broadcastStatusUpdate();
+    } catch (error) {
+      return {
+        success: false,
+        error: `Failed to pause for assertion mode: ${(error as Error).message}`,
+      };
+    }
+  }
+
+  // Tell the content script to enter assertion inspector
+  try {
+    await chrome.tabs.sendMessage(tabId, { type: 'ENTER_ASSERTION_MODE' });
+    return { success: true, data: { state: 'assertion-mode' } };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Failed to enter assertion mode: ${(error as Error).message}`,
+    };
+  }
+}
+
+/**
+ * Exit assertion mode — resume recording after assertion is added or cancelled.
+ */
+async function handleExitAssertionMode(
+  _sender: chrome.runtime.MessageSender
+): Promise<MessageResponse> {
+  if (!state.isRecording) {
+    return { success: false, error: 'No active recording' };
+  }
+
+  const tabId = state.currentTabId;
+  if (!tabId) {
+    return { success: false, error: 'No active tab for recording' };
+  }
+
+  // Resume recording
+  if (state.isPaused) {
+    try {
+      await chrome.tabs.sendMessage(tabId, { type: 'RESUME_RECORDING' });
+      state.isPaused = false;
+      broadcastStatusUpdate();
+    } catch (error) {
+      return {
+        success: false,
+        error: `Failed to resume after assertion mode: ${(error as Error).message}`,
+      };
+    }
+  }
+
+  return { success: true, data: { state: 'recording' } };
+}
+
+/**
  * Get current recording status
  */
 function handleGetStatus(): StatusResponse {
@@ -1153,6 +1315,7 @@ async function resetState(): Promise<void> {
     actionCounter: 0,
     previousUrl: null,
     lastUploadResult: preservedUploadResult,
+    markedVariables: [],
   };
 
   // Clear storage
@@ -1386,6 +1549,32 @@ chrome.tabs.onUpdated.addListener(async (tabId: number, changeInfo: chrome.tabs.
         '| Total actions:',
         state.accumulatedActions.length
       );
+
+      // Auto-assertion: URL checkpoint after navigation (Part B - 1g)
+      // Use urlContains with pathname only — resilient to different domains/ports/query params
+      const navPath = (() => {
+        try {
+          return new URL(currentUrl || '').pathname;
+        } catch {
+          return '/';
+        }
+      })();
+      const checkpointAction: any = {
+        id: `act_${String(state.actionCounter + 1).padStart(3, '0')}`,
+        type: 'checkpoint',
+        timestamp: relativeTimestamp,
+        completedAt: relativeTimestamp,
+        url: currentUrl,
+        checkType: 'urlContains',
+        expectedUrl: navPath,
+        actualUrl: currentUrl,
+        passed: true,
+        auto: true,
+      };
+      state.accumulatedActions.push(checkpointAction);
+      state.actionCounter++;
+      await persistActionCounter();
+      console.log('[Background] Auto URL checkpoint after navigation:', checkpointAction.id);
     }
 
     // Update previous URL for next navigation
@@ -1412,27 +1601,50 @@ chrome.tabs.onUpdated.addListener(async (tabId: number, changeInfo: chrome.tabs.
 });
 
 /**
+ * Backfill variableName onto input actions that match a user-marked variable.
+ * When a user marks a field as a variable AFTER typing, the already-synced input
+ * actions won't have variableName. This patches them at stop time.
+ */
+function backfillVariableNames(actions: any[]): void {
+  if (state.markedVariables.length === 0) return;
+
+  for (const action of actions) {
+    if (action.type !== 'input' || action.variableName) continue;
+    const sel = action.selector;
+    if (!sel) continue;
+
+    const selectorId = sel.id ? `#${sel.id}` : '';
+    const selectorName = sel.name || '';
+
+    for (const mv of state.markedVariables) {
+      // Match by selector string (e.g. "#email") or field name
+      if (
+        (selectorId && mv.selector === selectorId) ||
+        (selectorName && mv.selector === `[name="${selectorName}"]`) ||
+        (sel.css && mv.selector === sel.css)
+      ) {
+        action.variableName = mv.variableName;
+        break;
+      }
+    }
+  }
+}
+
+/**
  * Extract variable definitions from actions
  * Scans all InputAction items and collects unique variables
  */
 function extractVariablesFromActions(actions: any[]): Variable[] {
   const variableMap = new Map<string, Variable>();
 
+  // 1. Collect variables from input actions (auto-detected sensitive + user-marked)
   for (const action of actions) {
-    // Only process input actions with variables
-    if (action.type === 'input' && action.variableName && action.isSensitive) {
+    if (action.type === 'input' && action.variableName) {
       const inputAction = action as InputAction;
       const variableName = inputAction.variableName;
 
-      // Type guard: variableName must be defined here
-      if (!variableName) continue;
+      if (!variableName || variableMap.has(variableName)) continue;
 
-      // Skip if we already have this variable
-      if (variableMap.has(variableName)) {
-        continue;
-      }
-
-      // Get the primary selector (prefer id, dataTestId, or css)
       let selectorString = '';
       if (inputAction.selector) {
         if (inputAction.selector.id) {
@@ -1444,16 +1656,26 @@ function extractVariablesFromActions(actions: any[]): Variable[] {
         }
       }
 
-      // Create variable definition
-      const variable: Variable = {
+      variableMap.set(variableName, {
         name: variableName,
         description: `${inputAction.inputType} field${selectorString ? ` (${selectorString})` : ''}`,
         fieldType: inputAction.inputType,
         selector: selectorString,
         placeholder: `\${${variableName}}`,
-      };
+      });
+    }
+  }
 
-      variableMap.set(variableName, variable);
+  // 2. Merge user-marked variables (from the VariableMarker in content script)
+  for (const mv of state.markedVariables) {
+    if (!variableMap.has(mv.variableName)) {
+      variableMap.set(mv.variableName, {
+        name: mv.variableName,
+        description: `${mv.fieldType} field${mv.selector ? ` (${mv.selector})` : ''}`,
+        fieldType: mv.fieldType,
+        selector: mv.selector,
+        placeholder: `\${${mv.variableName}}`,
+      });
     }
   }
 

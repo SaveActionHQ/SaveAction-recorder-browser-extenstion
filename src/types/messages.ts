@@ -20,7 +20,12 @@ export type MessageType =
   | 'GET_ACTION_COUNTER'
   | 'CLEAR_RECORDING'
   | 'DOWNLOAD_RECORDING'
-  | 'STATUS_UPDATE';
+  | 'STATUS_UPDATE'
+  | 'ENTER_ASSERTION_MODE'
+  | 'EXIT_ASSERTION_MODE'
+  | 'MARK_VARIABLE'
+  | 'UNMARK_VARIABLE'
+  | 'GET_VARIABLES';
 
 /**
  * Base message interface
@@ -164,6 +169,50 @@ export interface StatusUpdateMessage extends BaseMessage {
 }
 
 /**
+ * Enter assertion mode message (from popup to content)
+ */
+export interface EnterAssertionModeMessage extends BaseMessage {
+  type: 'ENTER_ASSERTION_MODE';
+}
+
+/**
+ * Exit assertion mode message (from popup/content to background)
+ */
+export interface ExitAssertionModeMessage extends BaseMessage {
+  type: 'EXIT_ASSERTION_MODE';
+}
+
+/**
+ * Mark a field as a variable (from content to background)
+ */
+export interface MarkVariableMessage extends BaseMessage {
+  type: 'MARK_VARIABLE';
+  payload: {
+    variableName: string;
+    selector: string;
+    fieldType: string;
+    defaultValue: string;
+  };
+}
+
+/**
+ * Unmark a variable (from content to background)
+ */
+export interface UnmarkVariableMessage extends BaseMessage {
+  type: 'UNMARK_VARIABLE';
+  payload: {
+    variableName: string;
+  };
+}
+
+/**
+ * Get the list of marked variables for the current recording
+ */
+export interface GetVariablesMessage extends BaseMessage {
+  type: 'GET_VARIABLES';
+}
+
+/**
  * Union type of all messages
  */
 export type Message =
@@ -182,7 +231,12 @@ export type Message =
   | GetActionCounterMessage
   | ClearRecordingMessage
   | DownloadRecordingMessage
-  | StatusUpdateMessage;
+  | StatusUpdateMessage
+  | EnterAssertionModeMessage
+  | ExitAssertionModeMessage
+  | MarkVariableMessage
+  | UnmarkVariableMessage
+  | GetVariablesMessage;
 
 /**
  * Message response types

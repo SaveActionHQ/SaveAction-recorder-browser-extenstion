@@ -7,6 +7,7 @@ import type {
   ScrollAction,
   KeypressAction,
   SubmitAction,
+  CheckpointAction,
   HoverAction,
   ModalLifecycleAction,
   ModifierKey,
@@ -20,6 +21,7 @@ import type {
 import { generateActionId } from '@/types';
 import { SelectorGenerator } from './selector-generator';
 import { IntentClassifier } from './intent-classifier';
+import type { VariableMarker } from './variable-marker';
 import { generateValidation } from '@/utils/validation-helpers';
 import {
   captureElementState,
@@ -48,6 +50,7 @@ export class EventListener {
   private inputDebounceTimers: Map<HTMLInputElement | HTMLTextAreaElement, NodeJS.Timeout> =
     new Map(); // Track debounce timers per element
   private keystrokeTimes: number[] = []; // Track keystroke times for typing speed calculation
+  private lastCapturedValues: Map<HTMLInputElement | HTMLTextAreaElement, string> = new Map(); // Track last emitted value per field to suppress duplicates on re-focus
 
   // ═══════════════════════════════════════════════════════════════════════
   // LAYER 2 & 3: Enhanced Input Capture (99.9% reliability)
@@ -57,6 +60,9 @@ export class EventListener {
   private lastKnownValues: Map<HTMLElement, string> = new Map(); // Track last known values for change detection
   private inputObservers: Map<HTMLElement, MutationObserver> = new Map(); // MutationObservers per field
   private readonly POLLING_INTERVAL_MS = 100; // Poll focused field every 100ms
+
+  // Variable marker for user-marked variables
+  private variableMarker: VariableMarker | null = null;
   private previousUrl: string = window.location.href; // Track previous URL for back/forward detection
   private lastAction: Action | null = null; // Track last action for navigation trigger detection
   private lastHoveredElement: Element | null = null; // Track hovered element for dropdown detection
@@ -147,6 +153,11 @@ export class EventListener {
   public setActionSequence(sequence: number): void {
     this.actionSequence = sequence;
     console.log('[EventListener] Action sequence set to:', sequence);
+  }
+
+  /** Set the VariableMarker to check for user-marked variables during input capture. */
+  public setVariableMarker(marker: VariableMarker): void {
+    this.variableMarker = marker;
   }
 
   /**
@@ -345,6 +356,7 @@ export class EventListener {
     }
     this.inputDebounceTimers.clear();
     this.inputStartTimes.clear();
+    this.lastCapturedValues.clear();
 
     // LAYER 2 & 3: Final cleanup
     this.stopFieldPolling();
@@ -403,8 +415,8 @@ export class EventListener {
 
     const clickedElement = event.target as Element;
 
-    // 🛡️ Skip clicks on extension's own UI (recording indicator overlay)
-    if (clickedElement.closest('#saveaction-recording-indicator')) {
+    // 🛡️ Skip clicks on extension's own UI (recording indicator overlay + variable badge/prompt)
+    if (clickedElement.closest('[id^="saveaction-"]')) {
       console.log('[EventListener] ⏭️ Skipping click on extension UI');
       return;
     }
@@ -707,8 +719,8 @@ export class EventListener {
 
     const clickedElement = event.target as Element;
 
-    // 🛡️ Skip mousedown on extension's own UI (recording indicator overlay)
-    if (clickedElement.closest('#saveaction-recording-indicator')) {
+    // 🛡️ Skip mousedown on extension's own UI (recording indicator overlay + variable badge/prompt)
+    if (clickedElement.closest('[id^="saveaction-"]')) {
       console.log('[EventListener] ⏭️ Skipping mousedown on extension UI');
       return;
     }
@@ -743,8 +755,8 @@ export class EventListener {
 
     const clickedElement = event.target as Element;
 
-    // 🛡️ Skip double-click on extension's own UI (recording indicator overlay)
-    if (clickedElement.closest('#saveaction-recording-indicator')) {
+    // 🛡️ Skip double-click on extension's own UI (recording indicator overlay + variable badge/prompt)
+    if (clickedElement.closest('[id^="saveaction-"]')) {
       console.log('[EventListener] ⏭️ Skipping double-click on extension UI');
       return;
     }
@@ -1112,7 +1124,11 @@ export class EventListener {
     // Generate variable name for sensitive fields (for platform metadata)
     let variableName: string | undefined;
 
-    if (isSensitive) {
+    // Check user-marked variable first, then fall back to auto-detection for sensitive fields
+    const markedName = this.variableMarker?.getVariableName(target);
+    if (markedName) {
+      variableName = markedName;
+    } else if (isSensitive) {
       variableName = this.generateVariableName(target);
     }
 
@@ -1152,6 +1168,8 @@ export class EventListener {
     };
 
     this.emitAction(action);
+    // Track emitted value so re-focus on same unchanged field won't duplicate
+    this.lastCapturedValues.set(target, target.value);
   }
 
   /**
@@ -1163,6 +1181,9 @@ export class EventListener {
 
     const target = event.target as HTMLInputElement | HTMLTextAreaElement;
     if (!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) return;
+
+    // 🛡️ Skip focus on extension's own UI elements
+    if (target.closest('[id^="saveaction-"]')) return;
 
     // Skip checkbox/radio inputs - they're handled by click events only
     if (
@@ -1181,6 +1202,16 @@ export class EventListener {
     }
 
     // Record when typing session starts
+    // Only set start time if the value is empty or different from last captured value
+    // This prevents duplicate input capture when re-clicking an already-filled field
+    const lastCaptured = this.lastCapturedValues.get(target);
+    if (lastCaptured !== undefined && lastCaptured === target.value) {
+      console.log(
+        '[EventListener] Re-focus on unchanged field, skipping start time:',
+        target.id || target.name
+      );
+      return;
+    }
     this.inputStartTimes.set(target, Date.now());
     this.keystrokeTimes = []; // Reset keystroke tracking for this input
 
@@ -1383,8 +1414,36 @@ export class EventListener {
    * ✅ BUG FIX #6: Enhanced logging and user notifications for skipped inputs
    */
   private flushInputAction(target: HTMLInputElement | HTMLTextAreaElement): void {
+    // 🛡️ Skip extension UI elements (e.g. variable prompt input)
+    if (target.closest('[id^="saveaction-"]')) return;
+
+    // Cancel any pending debounce timer for this element to prevent stale double-flush.
+    // Without this, onBlur can flush the input while the debounce setTimeout is still
+    // pending, causing a second flush with no start time ("INPUT SKIPPED" error).
+    const pendingTimer = this.inputDebounceTimers.get(target);
+    if (pendingTimer) {
+      clearTimeout(pendingTimer);
+    }
+
     const startTime = this.inputStartTimes.get(target);
     const value = target.value;
+
+    // Skip if value hasn't changed since last capture (prevents duplicates on re-focus)
+    const lastCaptured = this.lastCapturedValues.get(target);
+    if (lastCaptured !== undefined && lastCaptured === value) {
+      console.log(
+        '[EventListener] Value unchanged since last capture, skipping:',
+        target.id || target.name
+      );
+      this.inputStartTimes.delete(target);
+      this.inputDebounceTimers.delete(target);
+      this.detachFieldObserver(target);
+      if (this.focusedField === target) {
+        this.stopFieldPolling();
+      }
+      this.lastKnownValues.delete(target);
+      return;
+    }
 
     // Enhanced logging for debugging missing inputs
     const fieldInfo = {
@@ -1733,6 +1792,30 @@ export class EventListener {
     };
 
     this.emitAction(action);
+
+    // Auto-assertion: URL checkpoint after form submit (Part B - 1h)
+    // Wait 500ms for navigation to settle, then emit URL checkpoint if URL changed
+    const urlBeforeSubmit = window.location.href;
+    setTimeout(() => {
+      if (!this.isListening) return;
+      const urlAfterSubmit = window.location.href;
+      if (urlAfterSubmit !== urlBeforeSubmit) {
+        const afterPath = new URL(urlAfterSubmit).pathname;
+        const checkpoint: CheckpointAction = {
+          id: generateActionId(++this.actionSequence),
+          type: 'checkpoint',
+          timestamp: this.getRelativeTimestamp(),
+          completedAt: this.getRelativeTimestamp(),
+          url: urlAfterSubmit,
+          checkType: 'urlContains',
+          expectedUrl: afterPath,
+          actualUrl: urlAfterSubmit,
+          passed: true,
+          auto: true,
+        };
+        this.emitAction(checkpoint);
+      }
+    }, 500);
   }
 
   /**
@@ -1980,8 +2063,8 @@ export class EventListener {
    * Check if click will cause navigation
    */
   private isNavigationClick(element: Element): boolean {
-    // Ignore recording indicator
-    if (element.closest('#saveaction-recording-indicator')) {
+    // Ignore extension UI
+    if (element.closest('[id^="saveaction-"]')) {
       return false;
     }
 
@@ -3365,8 +3448,8 @@ export class EventListener {
       return;
     }
 
-    // 🛡️ Skip hover tracking on extension's own UI (recording indicator overlay)
-    if (target.closest('#saveaction-recording-indicator')) {
+    // 🛡️ Skip hover tracking on extension's own UI
+    if (target.closest('[id^="saveaction-"]')) {
       return;
     }
 
@@ -3395,8 +3478,8 @@ export class EventListener {
       return;
     }
 
-    // 🛡️ Skip hover tracking on extension's own UI (recording indicator overlay)
-    if (target.closest('#saveaction-recording-indicator')) {
+    // 🛡️ Skip hover tracking on extension's own UI
+    if (target.closest('[id^="saveaction-"]')) {
       return;
     }
 

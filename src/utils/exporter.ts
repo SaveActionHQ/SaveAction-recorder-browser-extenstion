@@ -1,5 +1,7 @@
 import type { Recording } from '@/types/recording';
 import type { Action } from '@/types/actions';
+import { sanitizeRecording } from '@/utils/sanitizer';
+import { DEFAULT_SETTINGS } from '@/types/settings';
 
 /**
  * Check if an action is related to the extension's own UI
@@ -14,20 +16,30 @@ function isExtensionUIAction(action: Action): boolean {
     // Check all selector strategies for extension UI reference
     if (typeof selector === 'object') {
       // Check CSS selector
-      if (selector.css && selector.css.includes('saveaction-recording-indicator')) {
+      if (selector.css && selector.css.includes('saveaction-')) {
         return true;
       }
       // Check XPath selector
-      if (selector.xpath && selector.xpath.includes('saveaction-recording-indicator')) {
+      if (selector.xpath && selector.xpath.includes('saveaction-')) {
         return true;
       }
       // Check ID selector
-      if (selector.id && selector.id.includes('saveaction-recording-indicator')) {
+      if (selector.id && selector.id.includes('saveaction-')) {
         return true;
       }
       // Check data-testid selector
-      if (selector.dataTestId && selector.dataTestId.includes('saveaction-recording-indicator')) {
+      if (selector.dataTestId && selector.dataTestId.includes('saveaction-')) {
         return true;
+      }
+      // Check fallback parent references
+      if (selector.fallback) {
+        const fb = selector.fallback as Record<string, unknown>;
+        if (typeof fb.parentId === 'string' && fb.parentId.includes('saveaction-')) {
+          return true;
+        }
+        if (typeof fb.uniqueParent === 'string' && fb.uniqueParent.includes('saveaction-')) {
+          return true;
+        }
       }
     }
   }
@@ -35,10 +47,10 @@ function isExtensionUIAction(action: Action): boolean {
   // Check alternative selectors
   if ('alternativeSelectors' in action && action.alternativeSelectors) {
     for (const altSelector of action.alternativeSelectors) {
-      if (altSelector.css?.includes('saveaction-recording-indicator')) {
+      if (altSelector.css?.includes('saveaction-')) {
         return true;
       }
-      if (altSelector.xpath?.includes('saveaction-recording-indicator')) {
+      if (altSelector.xpath?.includes('saveaction-')) {
         return true;
       }
     }
@@ -47,7 +59,7 @@ function isExtensionUIAction(action: Action): boolean {
   // Check selectors array (multi-strategy selectors)
   if ('selectors' in action && action.selectors) {
     for (const selectorWithConfidence of action.selectors) {
-      if (selectorWithConfidence.value?.includes('saveaction-recording-indicator')) {
+      if (selectorWithConfidence.value?.includes('saveaction-')) {
         return true;
       }
     }
@@ -88,10 +100,12 @@ export interface ValidationResult {
  * Export recording as formatted JSON string
  * Automatically filters out any extension UI actions
  */
-export function exportAsJSON(recording: Recording): string {
+export function exportAsJSON(recording: Recording, storeCredentials = false): string {
   // Filter out extension UI actions before export
   const filteredRecording = filterExtensionUIActions(recording);
-  return JSON.stringify(filteredRecording, null, 2);
+  // Sanitize sensitive values unless storeCredentials is enabled
+  const output = storeCredentials ? filteredRecording : sanitizeRecording(filteredRecording);
+  return JSON.stringify(output, null, 2);
 }
 
 /**
@@ -100,20 +114,35 @@ export function exportAsJSON(recording: Recording): string {
  * Uses data URL for service worker compatibility (no DOM APIs)
  */
 export async function downloadRecording(recording: Recording): Promise<void> {
+  // Load storeCredentials setting
+  let storeCredentials = DEFAULT_SETTINGS.storeCredentials;
+  try {
+    const result = await new Promise<Record<string, any>>((resolve) => {
+      chrome.storage.sync.get(['storeCredentials'], resolve);
+    });
+    storeCredentials = result.storeCredentials ?? false;
+  } catch {
+    // Fall back to default (masked)
+  }
+
   return new Promise((resolve, reject) => {
     try {
       // Filter out extension UI actions before export
       const filteredRecording = filterExtensionUIActions(recording);
+      // Sanitize sensitive values unless storeCredentials is enabled
+      const outputRecording = storeCredentials
+        ? filteredRecording
+        : sanitizeRecording(filteredRecording);
 
       // Generate filename from test name
-      const sanitizedName = filteredRecording.testName
+      const sanitizedName = outputRecording.testName
         .replace(/[^a-zA-Z0-9\s-_]/g, '')
         .replace(/\s+/g, '_');
       const timestamp = Date.now();
       const filename = `${sanitizedName}_${timestamp}.json`;
 
       // Create JSON and convert to data URL (works in service workers)
-      const json = JSON.stringify(filteredRecording, null, 2);
+      const json = JSON.stringify(outputRecording, null, 2);
       const base64 = btoa(unescape(encodeURIComponent(json)));
       const dataUrl = `data:application/json;base64,${base64}`;
 

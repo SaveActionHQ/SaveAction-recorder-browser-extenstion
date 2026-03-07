@@ -13,6 +13,7 @@ export interface ExtensionSettings {
   selectedProjectName: string; // For display purposes
   autoUpload: boolean; // default: false
   defaultTags: string; // comma-separated, e.g., "smoke,regression"
+  storeCredentials: boolean; // default: false — store passwords as plaintext in recordings
 }
 
 /**
@@ -25,6 +26,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   selectedProjectName: '',
   autoUpload: false,
   defaultTags: '',
+  storeCredentials: false,
 };
 
 /**
@@ -37,6 +39,7 @@ export const SETTINGS_STORAGE_KEYS = {
   SELECTED_PROJECT_NAME: 'selectedProjectName',
   AUTO_UPLOAD: 'autoUpload',
   DEFAULT_TAGS: 'defaultTags',
+  STORE_CREDENTIALS: 'storeCredentials',
 } as const;
 
 /**
