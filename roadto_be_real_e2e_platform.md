@@ -590,7 +590,7 @@ During replay, the runner registers a `page.on('dialog')` handler **before** exe
 | **P0**   | Step 1: Assertions (Manual + Auto) | 🔴 Critical | 4-5 days | ✅ DONE                                                 |
 | **P0**   | Step 6: Variables & Test Data      | 🔴 Critical | 3-4 days | ✅ DONE (Core + API + editor; remaining items deferred) |
 | **P1**   | Step 3: Visual Regression          | 🟠 High     | 3 days   | ⏳ TODO                                                 |
-| **P1**   | Step 9: Browser Dialog Handling    | 🟠 High     | 1-2 days | ✅ Extension DONE — Core/Web TODO                       |
+| **P1**   | Step 9: Browser Dialog Handling    | 🟠 High     | 1-2 days | ✅ DONE                                                 |
 | **P1**   | Step 10: Flaky Test Detection      | 🟡 Medium   | 2 days   | ⏳ TODO                                                 |
 | **P2**   | Step 4: iframe Support             | 🟡 Medium   | 1 day    | ⏳ TODO                                                 |
 | **P2**   | Step 5: File Upload                | 🟡 Medium   | 2 days   | ⏳ TODO                                                 |
@@ -634,8 +634,8 @@ During replay, the runner registers a `page.on('dialog')` handler **before** exe
 | Step 7: Multi-Tab Support                           | ⏳ TODO     | —                |
 | Step 8: Drag & Drop                                 | ⏳ TODO     | —                |
 | Step 9: Browser Dialog Handling — Extension (9a–9c) | ✅ DONE     | March 9-10, 2026 |
-| Step 9: Browser Dialog Handling — Core (9d–9i)      | ⏳ TODO     | —                |
-| Step 9: Browser Dialog Handling — Web UI (9j)       | ⏳ TODO     | —                |
+| Step 9: Browser Dialog Handling — Core (9d–9i)      | ✅ DONE     | March 10, 2026   |
+| Step 9: Browser Dialog Handling — Web UI (9j)       | ✅ DONE     | March 10, 2026   |
 | Step 10: Flaky Test Detection                       | ⏳ TODO     | —                |
 | Step 11: Webhooks                                   | ⏳ TODO     | —                |
 | Step 12: Team Support                               | ⏳ TODO     | —                |
