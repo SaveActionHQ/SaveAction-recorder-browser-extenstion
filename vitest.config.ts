@@ -17,6 +17,7 @@ export default defineConfig({
         'src/manifest.json',
         'src/background/index.ts', // Integration heavy, tested via E2E
         'src/content/index.ts', // Entry point, minimal logic
+        'src/content/dialog-early-inject.ts', // Entry point, just calls injectDialogInterceptor
         'src/popup/popup.ts', // UI component, requires E2E tests
         'src/content/recording-indicator.ts', // DOM manipulation, requires E2E tests
         'src/utils/content-signature.ts', // Helper utility for content analysis

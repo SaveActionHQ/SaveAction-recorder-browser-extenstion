@@ -5,6 +5,7 @@ import type {
   ClickAction,
   InputAction,
   NavigationAction,
+  DialogAction,
 } from '@/types';
 
 /**
@@ -174,6 +175,23 @@ export function validateAction(action: Action): ValidationResult {
         errors.push({
           field: 'action.to',
           message: 'Navigation action must have a "to" URL',
+        });
+      }
+      break;
+    }
+
+    case 'dialog': {
+      const dialogAction = action as DialogAction;
+      if (!dialogAction.dialogType) {
+        errors.push({
+          field: 'action.dialogType',
+          message: 'Dialog action must have a dialogType',
+        });
+      }
+      if (dialogAction.response !== 'accept' && dialogAction.response !== 'dismiss') {
+        errors.push({
+          field: 'action.response',
+          message: 'Dialog action response must be "accept" or "dismiss"',
         });
       }
       break;

@@ -400,6 +400,17 @@ export interface ModalLifecycleAction extends BaseAction {
 }
 
 /**
+ * Dialog interaction action (alert, confirm, prompt)
+ */
+export interface DialogAction extends BaseAction {
+  type: 'dialog';
+  dialogType: 'alert' | 'confirm' | 'prompt';
+  message: string;
+  response: 'accept' | 'dismiss';
+  promptValue?: string;
+}
+
+/**
  * Modifier keys (Ctrl, Shift, Alt, Meta/Cmd)
  */
 export type ModifierKey = 'ctrl' | 'shift' | 'alt' | 'meta';
@@ -417,7 +428,8 @@ export type ActionType =
   | 'submit'
   | 'checkpoint'
   | 'hover'
-  | 'modal-lifecycle';
+  | 'modal-lifecycle'
+  | 'dialog';
 
 /**
  * Union type of all actions
@@ -432,7 +444,8 @@ export type Action =
   | SubmitAction
   | CheckpointAction
   | HoverAction
-  | ModalLifecycleAction;
+  | ModalLifecycleAction
+  | DialogAction;
 
 /**
  * Type guard for ClickAction
@@ -460,4 +473,11 @@ export function isNavigationAction(action: Action): action is NavigationAction {
  */
 export function isModalLifecycleAction(action: Action): action is ModalLifecycleAction {
   return action.type === 'modal-lifecycle';
+}
+
+/**
+ * Type guard for DialogAction
+ */
+export function isDialogAction(action: Action): action is DialogAction {
+  return action.type === 'dialog';
 }

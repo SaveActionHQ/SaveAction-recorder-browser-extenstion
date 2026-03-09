@@ -9,6 +9,7 @@ import type {
   SubmitAction,
   HoverAction,
   ModalLifecycleAction,
+  DialogAction,
   ModifierKey,
   ElementState,
   WaitConditions,
@@ -22,6 +23,7 @@ import { SelectorGenerator } from './selector-generator';
 import { IntentClassifier } from './intent-classifier';
 import type { VariableMarker } from './variable-marker';
 import { generateValidation } from '@/utils/validation-helpers';
+import { DIALOG_MESSAGE_TYPE } from './dialog-interceptor';
 import {
   captureElementState,
   logElementState,
@@ -115,6 +117,7 @@ export class EventListener {
   private handleFocus: (e: FocusEvent) => void;
   private handleBlur: (e: FocusEvent) => void;
   private handleBeforeUnload: (e: Event) => void;
+  private handleDialogMessage: (e: MessageEvent) => void;
 
   constructor(actionCallback: (action: Action) => void) {
     this.actionCallback = actionCallback;
@@ -144,6 +147,7 @@ export class EventListener {
     this.handleFocus = this.onFocus.bind(this);
     this.handleBlur = this.onBlur.bind(this);
     this.handleBeforeUnload = this.onBeforeUnload.bind(this);
+    this.handleDialogMessage = this.onDialogMessage.bind(this);
   }
 
   /**
@@ -261,6 +265,12 @@ export class EventListener {
         const modalAction = action as ModalLifecycleAction;
         const duration = modalAction.animationDuration || modalAction.transitionDuration || 300;
         completedAt = action.timestamp + duration;
+        break;
+      }
+
+      case 'dialog': {
+        // Dialogs are instant (user already interacted)
+        completedAt = action.timestamp;
         break;
       }
 
@@ -384,6 +394,7 @@ export class EventListener {
     document.addEventListener('focus', this.handleFocus, true);
     document.addEventListener('blur', this.handleBlur, true);
     window.addEventListener('beforeunload', this.handleBeforeUnload);
+    window.addEventListener('message', this.handleDialogMessage);
   }
 
   /**
@@ -404,6 +415,7 @@ export class EventListener {
     document.removeEventListener('focus', this.handleFocus, true);
     document.removeEventListener('blur', this.handleBlur, true);
     window.removeEventListener('beforeunload', this.handleBeforeUnload);
+    window.removeEventListener('message', this.handleDialogMessage);
   }
 
   /**
@@ -3625,6 +3637,37 @@ export class EventListener {
     } else {
       console.warn(`[EventListener] Could not find action ${actionId} to update clickCount`);
     }
+  }
+
+  /**
+   * Handle dialog messages from the injected page-context script
+   */
+  private onDialogMessage(event: MessageEvent): void {
+    if (!this.isListening) return;
+    if (event.source !== window) return;
+
+    const data = event.data;
+    if (!data || data.type !== DIALOG_MESSAGE_TYPE) return;
+
+    const dialogType = data.dialogType as DialogAction['dialogType'];
+    if (dialogType !== 'alert' && dialogType !== 'confirm' && dialogType !== 'prompt') return;
+
+    const action: DialogAction = {
+      id: generateActionId(++this.actionSequence),
+      type: 'dialog',
+      timestamp: this.getRelativeTimestamp(),
+      completedAt: 0,
+      url: window.location.href,
+      dialogType,
+      message: String(data.message || ''),
+      response: data.response === 'dismiss' ? 'dismiss' : 'accept',
+      ...(dialogType === 'prompt' && data.response !== 'dismiss' && data.promptValue !== undefined
+        ? { promptValue: String(data.promptValue) }
+        : {}),
+    };
+
+    console.log('[EventListener] Dialog recorded:', dialogType, action.id);
+    this.emitAction(action);
   }
 
   /**

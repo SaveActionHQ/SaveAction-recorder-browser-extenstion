@@ -13,6 +13,7 @@ export default defineConfig(({ mode }) => {
         additionalInputs: [
           'background/index.ts',
           'content/index.ts',
+          'content/dialog-early-inject.ts',
         ],
         scriptViteConfig: {
           build: {
