@@ -411,6 +411,27 @@ export interface DialogAction extends BaseAction {
 }
 
 /**
+ * File upload action (user selects file via <input type="file">)
+ * Records metadata only — no file content is captured (privacy-first).
+ * The platform manages test fixture files for replay via page.setInputFiles().
+ */
+export interface FileUploadAction extends BaseAction {
+  type: 'file-upload';
+  selector: SelectorStrategy;
+  tagName: 'input';
+  inputName?: string;      // name attribute of the file input
+  inputId?: string;        // id attribute of the file input
+  acceptAttribute?: string; // accept attribute (e.g., ".pdf,.docx", "image/*")
+  multiple: boolean;       // whether the input accepts multiple files
+  files: Array<{
+    name: string;          // e.g., "resume.pdf"
+    size: number;          // bytes (e.g., 204800)
+    type: string;          // MIME type (e.g., "application/pdf")
+    lastModified: number;  // timestamp of last modification
+  }>;
+}
+
+/**
  * Modifier keys (Ctrl, Shift, Alt, Meta/Cmd)
  */
 export type ModifierKey = 'ctrl' | 'shift' | 'alt' | 'meta';
@@ -429,7 +450,8 @@ export type ActionType =
   | 'checkpoint'
   | 'hover'
   | 'modal-lifecycle'
-  | 'dialog';
+  | 'dialog'
+  | 'file-upload';
 
 /**
  * Union type of all actions
@@ -445,7 +467,8 @@ export type Action =
   | CheckpointAction
   | HoverAction
   | ModalLifecycleAction
-  | DialogAction;
+  | DialogAction
+  | FileUploadAction;
 
 /**
  * Type guard for ClickAction
@@ -480,4 +503,11 @@ export function isModalLifecycleAction(action: Action): action is ModalLifecycle
  */
 export function isDialogAction(action: Action): action is DialogAction {
   return action.type === 'dialog';
+}
+
+/**
+ * Type guard for FileUploadAction
+ */
+export function isFileUploadAction(action: Action): action is FileUploadAction {
+  return action.type === 'file-upload';
 }

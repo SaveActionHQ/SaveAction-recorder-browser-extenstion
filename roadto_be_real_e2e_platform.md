@@ -593,7 +593,7 @@ During replay, the runner registers a `page.on('dialog')` handler **before** exe
 | **P1**   | Step 9: Browser Dialog Handling    | 🟠 High     | 1-2 days | ✅ DONE                                                 |
 | **P1**   | Step 10: Flaky Test Detection      | 🟡 Medium   | 2 days   | ⏳ TODO                                                 |
 | **P2**   | Step 4: iframe Support             | 🟡 Medium   | 1 day    | ⏳ TODO                                                 |
-| **P2**   | Step 5: File Upload                | 🟡 Medium   | 2 days   | ⏳ TODO                                                 |
+| **P2**   | Step 5: File Upload                | 🟡 Medium   | 2 days   | ✅ Extension DONE; Platform TODO                       |
 | **P2**   | Step 7: Multi-Tab                  | 🟡 Medium   | 2 days   | ⏳ TODO                                                 |
 | **P2**   | Step 11: Webhooks                  | 🟡 Medium   | 2-3 days | ⏳ TODO — schema exists, no routes                      |
 | **P3**   | Step 8: Drag & Drop                | 🟢 Low      | 1-2 days | ⏳ TODO                                                 |
@@ -631,6 +631,8 @@ During replay, the runner registers a `page.on('dialog')` handler **before** exe
 | Step 6: Variables — API (6k)                        | ✅ DONE     | March 7-8, 2026  |
 | Step 6: Variables — Web UI (6l)                     | ✅ DONE     | March 7-8, 2026  |
 | Step 6: Variables — Deferred (6d, 6i, 6m–6n, 6o–6q) | 🔜 DEFERRED | —                |
+| Step 5: File Upload — Extension (5a–5b)             | ✅ DONE     | March 11, 2026   |
+| Step 5: File Upload — Platform (5c–5d)              | ⏳ TODO     | —                |
 | Step 7: Multi-Tab Support                           | ⏳ TODO     | —                |
 | Step 8: Drag & Drop                                 | ⏳ TODO     | —                |
 | Step 9: Browser Dialog Handling — Extension (9a–9c) | ✅ DONE     | March 9-10, 2026 |

@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   Action,
   ClickAction,
   InputAction,
@@ -10,6 +10,7 @@ import type {
   HoverAction,
   ModalLifecycleAction,
   DialogAction,
+  FileUploadAction,
   ModifierKey,
   ElementState,
   WaitConditions,
@@ -53,9 +54,7 @@ export class EventListener {
   private keystrokeTimes: number[] = []; // Track keystroke times for typing speed calculation
   private lastCapturedValues: Map<HTMLInputElement | HTMLTextAreaElement, string> = new Map(); // Track last emitted value per field to suppress duplicates on re-focus
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // LAYER 2 & 3: Enhanced Input Capture (99.9% reliability)
-  // ═══════════════════════════════════════════════════════════════════════
+  // LAYER 2 & 3: Enhanced Input Capture (99.9% reliability
   private focusedField: HTMLInputElement | HTMLTextAreaElement | null = null; // Currently focused input field
   private fieldPollingInterval: NodeJS.Timeout | null = null; // Polling interval for focused field
   private lastKnownValues: Map<HTMLElement, string> = new Map(); // Track last known values for change detection
@@ -274,6 +273,12 @@ export class EventListener {
         break;
       }
 
+      case 'file-upload': {
+        // File uploads are instant - user already selected the file(s)
+        completedAt = action.timestamp;
+        break;
+      }
+
       default: {
         // Exhaustive check - should never reach here
         const _exhaustiveCheck: never = action;
@@ -303,7 +308,7 @@ export class EventListener {
         subtree: true,
         attributeFilter: ['class', 'style', 'aria-expanded', 'hidden'],
       });
-      console.log('[EventListener] 🔽 Dropdown observer started');
+      console.log('[EventListener] ðŸ”½ Dropdown observer started');
     }
 
     console.log('[EventListener] Started listening (with modal tracking)');
@@ -315,11 +320,11 @@ export class EventListener {
   public stop(): void {
     if (!this.isListening) return;
 
-    // ✅ CRITICAL: Flush ALL pending input actions before stopping
+    // âœ… CRITICAL: Flush ALL pending input actions before stopping
     // This ensures inputs are recorded when user clicks "Stop Recording" button
     // or when recording is paused/stopped programmatically
     if (this.inputDebounceTimers.size > 0) {
-      console.log('[EventListener] 🔥 Flushing pending inputs before stop');
+      console.log('[EventListener] ðŸ”¥ Flushing pending inputs before stop');
       for (const [inputElement, timerId] of this.inputDebounceTimers) {
         clearTimeout(timerId);
         this.flushInputAction(inputElement);
@@ -333,7 +338,7 @@ export class EventListener {
     for (const [field, observer] of this.inputObservers) {
       observer.disconnect();
       console.log(
-        '[EventListener] ⛔ LAYER 2: Disconnected observer for:',
+        '[EventListener] â›” LAYER 2: Disconnected observer for:',
         field.id || (field as HTMLInputElement).name
       );
     }
@@ -347,7 +352,7 @@ export class EventListener {
     // Stop dropdown observer
     if (this.dropdownObserver) {
       this.dropdownObserver.disconnect();
-      console.log('[EventListener] 🔽 Dropdown observer stopped');
+      console.log('[EventListener] ðŸ”½ Dropdown observer stopped');
     }
   }
 
@@ -426,13 +431,13 @@ export class EventListener {
 
     const clickedElement = event.target as Element;
 
-    // 🛡️ Skip clicks on extension's own UI (recording indicator overlay + variable badge/prompt)
+    // ðŸ›¡ï¸ Skip clicks on extension's own UI (recording indicator overlay + variable badge/prompt)
     if (clickedElement.closest('[id^="saveaction-"]')) {
-      console.log('[EventListener] ⏭️ Skipping click on extension UI');
+      console.log('[EventListener] â­ï¸ Skipping click on extension UI');
       return;
     }
 
-    // 🆕 P0 FIX: Track processed events using unique key (timestamp + element identity)
+    // ðŸ†• P0 FIX: Track processed events using unique key (timestamp + element identity)
     // Prevents duplicate processing when events bubble with useCapture=true
     // Handle SVG elements specially since their className is SVGAnimatedString
     const isSVG = clickedElement instanceof SVGElement;
@@ -451,13 +456,13 @@ export class EventListener {
     // Clean up old keys after 1 second to prevent memory leak
     setTimeout(() => this.processedEventKeys.delete(eventKey), 1000);
 
-    // 🆕 P0 FIX: Find the interactive element (handles SVG/decorative children)
+    // ðŸ†• P0 FIX: Find the interactive element (handles SVG/decorative children)
     const target = this.findInteractiveElement(clickedElement);
     if (!target) {
-      console.log('[EventListener] ⚠️ No interactive parent found for click - skipping');
+      console.log('[EventListener] âš ï¸ No interactive parent found for click - skipping');
       return;
     }
-    console.log('[EventListener] 🎯 Interactive target:', {
+    console.log('[EventListener] ðŸŽ¯ Interactive target:', {
       from: clickedElement.tagName,
       to: target.tagName,
       classes: target.className,
@@ -477,7 +482,14 @@ export class EventListener {
       return;
     }
 
-    // 🆕 Enhanced duplicate detection with carousel awareness
+    // Skip clicks on file inputs — the file-upload action (from onChange → recordFileUpload)
+    // captures everything needed. Recording this click would open an OS file picker during
+    // replay that automation can't interact with.
+    if (target instanceof HTMLInputElement && target.type === 'file') {
+      return;
+    }
+
+    // ðŸ†• Enhanced duplicate detection with carousel awareness
     const now = Date.now();
     const timeSinceLastClick = now - this.lastClickTime;
     const isSameElement = target === this.lastClickTarget;
@@ -486,13 +498,13 @@ export class EventListener {
     // Check if this is a carousel element
     const isCarousel = isCarouselElement(target);
 
-    // ✅ STRICT DUPLICATE FILTERING (like test5)
+    // âœ… STRICT DUPLICATE FILTERING (like test5)
     // Filter rapid clicks on the SAME element
     if (isSameElement && !isDoubleClick) {
       if (isCarousel) {
         // Carousel: allow clicks > 200ms but watch for excessive clicking
         if (timeSinceLastClick < 200) {
-          console.log(`⏭️ Skipping rapid carousel click (${timeSinceLastClick}ms)`);
+          console.log(`â­ï¸ Skipping rapid carousel click (${timeSinceLastClick}ms)`);
           return;
         }
 
@@ -500,14 +512,14 @@ export class EventListener {
         if (timeSinceLastClick < 500) {
           const recentClicks = this.countRecentClicksOnElement(target, 5000);
           if (recentClicks > 8) {
-            console.log(`⏭️ Skipping excessive carousel clicks (${recentClicks} in 5s)`);
+            console.log(`â­ï¸ Skipping excessive carousel clicks (${recentClicks} in 5s)`);
             return;
           }
         }
       } else {
         // Non-carousel: strict 200ms filter
         if (timeSinceLastClick < 200) {
-          console.log(`⏭️ Skipping duplicate click (${timeSinceLastClick}ms)`);
+          console.log(`â­ï¸ Skipping duplicate click (${timeSinceLastClick}ms)`);
           return;
         }
       }
@@ -522,7 +534,7 @@ export class EventListener {
       this.clickHistory.shift();
     }
 
-    // ✅ P0: OS Event Deduplication - Check if this is part of double-click sequence
+    // âœ… P0: OS Event Deduplication - Check if this is part of double-click sequence
     if (this.pendingClick) {
       const timeDiff = now - this.pendingClick.timestamp;
       const sameTarget = target === this.pendingClick.element;
@@ -530,7 +542,7 @@ export class EventListener {
       // OS fires double-click events within ~50ms with event.detail > 1
       if (sameTarget && timeDiff < 50 && event.detail > 1) {
         console.log(
-          `[EventListener] 🔄 Merging OS double-click event (${timeDiff}ms, detail=${event.detail})`
+          `[EventListener] ðŸ”„ Merging OS double-click event (${timeDiff}ms, detail=${event.detail})`
         );
         this.updateClickCount(this.pendingClick.actionId, event.detail);
         this.pendingClick = null;
@@ -546,12 +558,12 @@ export class EventListener {
     // Skip if this is part of a double-click (handled by dblclick event)
     if (isDoubleClick) return;
 
-    // 🆕 CRITICAL FIX: If clicking on password/sensitive input, start polling immediately
+    // ðŸ†• CRITICAL FIX: If clicking on password/sensitive input, start polling immediately
     // Some websites prevent focus events from firing on password fields
     if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
       if (this.isSensitiveInput(target)) {
         console.log(
-          '[EventListener] 🔐 Click on sensitive field - force starting polling:',
+          '[EventListener] ðŸ” Click on sensitive field - force starting polling:',
           target.id || target.name
         );
         // Ensure focus tracking is initialized
@@ -565,13 +577,13 @@ export class EventListener {
       }
     }
 
-    // ✅ CRITICAL: Flush ALL pending input actions before ANY click
+    // âœ… CRITICAL: Flush ALL pending input actions before ANY click
     // This ensures password fields are recorded even if user clicks submit immediately
     // without clicking outside the field or waiting for debounce
     // ESPECIALLY important for multi-step forms where submit triggers AJAX/state changes
     if (this.inputDebounceTimers.size > 0) {
       console.log(
-        '[EventListener] 🔥 Flushing',
+        '[EventListener] ðŸ”¥ Flushing',
         this.inputDebounceTimers.size,
         'pending inputs before click'
       );
@@ -580,10 +592,10 @@ export class EventListener {
         this.flushInputAction(inputElement);
       }
 
-      // ✅ CRITICAL FIX: Wait for input actions to sync to background before proceeding
+      // âœ… CRITICAL FIX: Wait for input actions to sync to background before proceeding
       // This prevents race condition where click causes page transition before inputs save
       // Uses synchronous loop to ensure all inputs are emitted before click is processed
-      console.log('[EventListener] ✅ All inputs flushed synchronously');
+      console.log('[EventListener] âœ… All inputs flushed synchronously');
     }
 
     // Check if we need to record a hover action for dropdown parent
@@ -600,13 +612,13 @@ export class EventListener {
     // Check if this click might cause navigation
     const willNavigate = this.isNavigationClick(target);
 
-    // ✅ FIX: Check if this is a submit button (form OR AJAX-based)
-    // 🆕 CAROUSEL FIX: Carousel controls should NOT be treated as submit buttons
+    // âœ… FIX: Check if this is a submit button (form OR AJAX-based)
+    // ðŸ†• CAROUSEL FIX: Carousel controls should NOT be treated as submit buttons
     const isCarouselControl = this.selectorGenerator.isCarouselControl(target);
     const isSubmitButton = !isCarouselControl && this.isSubmitButton(target);
 
     if (willNavigate || isSubmitButton) {
-      // 🆕 CRITICAL FIX #2: AJAX form detection
+      // ðŸ†• CRITICAL FIX #2: AJAX form detection
       if (isSubmitButton) {
         const form = target.closest('form');
 
@@ -626,7 +638,7 @@ export class EventListener {
           // Check if listener was stopped while detection was running
           if (!this.isListening) {
             console.log(
-              '[EventListener] ⚠️ Detection complete but listener stopped, ignoring result'
+              '[EventListener] âš ï¸ Detection complete but listener stopped, ignoring result'
             );
             return;
           }
@@ -636,7 +648,7 @@ export class EventListener {
           action.isAjaxForm = result.isAjaxForm;
           action.ajaxIndicators = result.ajaxIndicators;
 
-          console.log('[EventListener] ⚡ AJAX detection complete:', {
+          console.log('[EventListener] âš¡ AJAX detection complete:', {
             actionId: action.id,
             expectsNavigation: result.expectsNavigation,
             isAjaxForm: result.isAjaxForm,
@@ -649,7 +661,7 @@ export class EventListener {
         // Emit initial action immediately (don't wait for AJAX detection)
         this.emitAction(action);
 
-        // ✅ Store as pending click (might be updated by subsequent double-click)
+        // âœ… Store as pending click (might be updated by subsequent double-click)
         this.pendingClick = {
           actionId: action.id,
           timestamp: now,
@@ -675,7 +687,7 @@ export class EventListener {
       const action = this.createClickAction(event, target, clickedElement, 1);
       this.emitAction(action);
 
-      // ✅ Store as pending click (might be updated by subsequent double-click)
+      // âœ… Store as pending click (might be updated by subsequent double-click)
       this.pendingClick = {
         actionId: action.id,
         timestamp: now,
@@ -706,7 +718,7 @@ export class EventListener {
       const action = this.createClickAction(event, target, clickedElement, 1);
       this.emitAction(action);
 
-      // ✅ Store as pending click (might be updated by subsequent double-click)
+      // âœ… Store as pending click (might be updated by subsequent double-click)
       this.pendingClick = {
         actionId: action.id,
         timestamp: now,
@@ -730,9 +742,9 @@ export class EventListener {
 
     const clickedElement = event.target as Element;
 
-    // 🛡️ Skip mousedown on extension's own UI (recording indicator overlay + variable badge/prompt)
+    // ðŸ›¡ï¸ Skip mousedown on extension's own UI (recording indicator overlay + variable badge/prompt)
     if (clickedElement.closest('[id^="saveaction-"]')) {
-      console.log('[EventListener] ⏭️ Skipping mousedown on extension UI');
+      console.log('[EventListener] â­ï¸ Skipping mousedown on extension UI');
       return;
     }
 
@@ -746,6 +758,11 @@ export class EventListener {
       (target.type === 'radio' || target.type === 'checkbox') &&
       !this.isElementVisible(target)
     ) {
+      return;
+    }
+
+    // Skip file inputs — handled by onChange → recordFileUpload()
+    if (target instanceof HTMLInputElement && target.type === 'file') {
       return;
     }
 
@@ -766,9 +783,9 @@ export class EventListener {
 
     const clickedElement = event.target as Element;
 
-    // 🛡️ Skip double-click on extension's own UI (recording indicator overlay + variable badge/prompt)
+    // ðŸ›¡ï¸ Skip double-click on extension's own UI (recording indicator overlay + variable badge/prompt)
     if (clickedElement.closest('[id^="saveaction-"]')) {
-      console.log('[EventListener] ⏭️ Skipping double-click on extension UI');
+      console.log('[EventListener] â­ï¸ Skipping double-click on extension UI');
       return;
     }
 
@@ -776,9 +793,9 @@ export class EventListener {
     const target = this.findInteractiveElement(clickedElement);
     if (!target) return;
 
-    // ✅ P0: Merge with pending click instead of creating new action
+    // âœ… P0: Merge with pending click instead of creating new action
     if (this.pendingClick && this.pendingClick.element === target) {
-      console.log(`[EventListener] 🔄 Updating pending click to double-click (clickCount=2)`);
+      console.log(`[EventListener] ðŸ”„ Updating pending click to double-click (clickCount=2)`);
       this.updateClickCount(this.pendingClick.actionId, 2);
       this.pendingClick = null;
       return; // Don't create duplicate dblclick action
@@ -786,7 +803,7 @@ export class EventListener {
 
     // Fallback: Create double-click action if no pending click found
     // (shouldn't happen in normal flow, but defensive programming)
-    console.warn('[EventListener] ⚠️ Double-click without pending click - creating new action');
+    console.warn('[EventListener] âš ï¸ Double-click without pending click - creating new action');
     const action = this.createClickAction(event, target, clickedElement, 2);
     this.emitAction(action);
   }
@@ -800,10 +817,10 @@ export class EventListener {
     clickedElement: Element,
     clickCount: number
   ): ClickAction {
-    // 🆕 P0 FIX: Track if we redirected from decorative child to interactive parent
+    // ðŸ†• P0 FIX: Track if we redirected from decorative child to interactive parent
     const wasRedirected = clickedElement !== target;
 
-    // 🆕 Detect if element is a carousel control
+    // ðŸ†• Detect if element is a carousel control
     const isCarousel = this.selectorGenerator.isCarouselControl(target);
 
     // Generate selectors (use carousel-specific logic if needed)
@@ -811,13 +828,13 @@ export class EventListener {
       ? this.selectorGenerator.generateCarouselSelectors(target)
       : this.selectorGenerator.generateSelectors(target);
 
-    // 🆕 Validate selector quality and log warnings
+    // ðŸ†• Validate selector quality and log warnings
     const qualityCheck = this.selectorGenerator.validateSelectorQuality(target, selector);
     if (!qualityCheck.canRecord) {
-      console.error('[SaveAction] ❌ Cannot record action:', qualityCheck.message);
+      console.error('[SaveAction] âŒ Cannot record action:', qualityCheck.message);
       // Still return the action but mark it with quality issues
     } else if (qualityCheck.shouldWarn) {
-      console.warn('[SaveAction] ⚠️ Selector quality warning:', qualityCheck.message);
+      console.warn('[SaveAction] âš ï¸ Selector quality warning:', qualityCheck.message);
     }
 
     const rect = target.getBoundingClientRect();
@@ -829,7 +846,7 @@ export class EventListener {
     let button: 'left' | 'right' | 'middle' =
       event.button === 0 ? 'left' : event.button === 1 ? 'middle' : 'right';
 
-    // 🐛 FIX: Detect and correct false right-clicks on <select> elements
+    // ðŸ› FIX: Detect and correct false right-clicks on <select> elements
     // Browser Issue: Chromium-based browsers generate synthetic right-click events (button=2)
     // when native <select> dropdowns open, even though user clicked left button.
     // These synthetic events have suspicious coordinates (negative or near-zero).
@@ -839,8 +856,8 @@ export class EventListener {
 
       if (isSuspiciousCoords) {
         console.warn(
-          '[EventListener] 🔧 Correcting synthetic right-click on <select> element',
-          `(coords: ${x.toFixed(2)}, ${y.toFixed(2)}) → Converting to left-click`
+          '[EventListener] ðŸ”§ Correcting synthetic right-click on <select> element',
+          `(coords: ${x.toFixed(2)}, ${y.toFixed(2)}) â†’ Converting to left-click`
         );
         button = 'left';
       } else {
@@ -853,7 +870,7 @@ export class EventListener {
     }
     const modifiers = this.getModifierKeys(event);
 
-    // 🆕 Generate content signature for list items (v2.0.0)
+    // ðŸ†• Generate content signature for list items (v2.0.0)
     let contentSignature: ContentSignature | undefined;
     try {
       const signature = generateContentSignature(target);
@@ -882,7 +899,7 @@ export class EventListener {
       context = state.context;
       alternativeSelectors = state.alternativeSelectors;
 
-      // 🆕 Detect modal context
+      // ðŸ†• Detect modal context
       const parentModal = findParentModal(target);
       if (parentModal) {
         const modalId = parentModal.id || 'unknown-modal';
@@ -899,7 +916,7 @@ export class EventListener {
         });
       }
 
-      // ✅ Detect navigation intent
+      // âœ… Detect navigation intent
       const navigationIntent = detectNavigationIntent(target);
       if (navigationIntent !== 'none') {
         context.navigationIntent = navigationIntent;
@@ -946,7 +963,7 @@ export class EventListener {
       console.warn('[EventListener] Failed to capture element state:', error);
     }
 
-    // 🆕 CRITICAL FIX #1: Detect checkbox/radio clicks
+    // ðŸ†• CRITICAL FIX #1: Detect checkbox/radio clicks
     let clickType: 'standard' | 'toggle-input' | 'submit' | 'carousel-navigation' = 'standard';
     let inputType: 'checkbox' | 'radio' | undefined;
     let checked: boolean | undefined;
@@ -962,7 +979,7 @@ export class EventListener {
       // Mark checkbox/radio as recently clicked (for change event deduplication)
       this.markCheckboxInteraction(target);
 
-      console.log('[EventListener] 🔲 Checkbox/Radio click metadata:', {
+      console.log('[EventListener] ðŸ”² Checkbox/Radio click metadata:', {
         clickType,
         inputType,
         checked,
@@ -975,25 +992,25 @@ export class EventListener {
       clickType = 'submit';
     }
 
-    // 🆕 Detect carousel controls and generate metadata
+    // ðŸ†• Detect carousel controls and generate metadata
     let carouselContext: import('@/types').CarouselContext | undefined;
     if (isCarousel) {
       clickType = 'carousel-navigation';
       carouselContext = this.generateCarouselContext(target);
-      console.log('[EventListener] 🎠 Carousel control detected:', carouselContext);
+      console.log('[EventListener] ðŸŽ  Carousel control detected:', carouselContext);
     }
 
-    // 🆕 CRITICAL FIX #3: Detect dropdown state
+    // ðŸ†• CRITICAL FIX #3: Detect dropdown state
     const dropdownState = this.analyzeDropdownState(target);
 
-    // ✅ P1: Classify click intent
+    // âœ… P1: Classify click intent
     const clickIntent = this.intentClassifier.classifyClick(target, {
       isCarousel: !!carouselContext?.isCarouselControl,
       isFormSubmit: clickType === 'submit',
       isPagination: false, // TODO: Add pagination detection
     });
 
-    // ✅ P1: Generate validation metadata
+    // âœ… P1: Generate validation metadata
     const validation = generateValidation(event, target, clickIntent, {
       clickHistory: this.clickHistory,
       recordingStartTime: this.recordingStartTime,
@@ -1019,15 +1036,15 @@ export class EventListener {
       waitConditions,
       context,
       alternativeSelectors,
-      // 🆕 v2.0.0 improvements
+      // ðŸ†• v2.0.0 improvements
       contentSignature,
-      // 🆕 CRITICAL FIXES
+      // ðŸ†• CRITICAL FIXES
       clickType,
       inputType,
       checked,
       carouselContext,
       ...dropdownState, // Spread dropdown metadata (isInDropdown, requiresParentOpen, etc.)
-      // ✅ P1: Intent classification and validation
+      // âœ… P1: Intent classification and validation
       clickIntent,
       validation,
     };
@@ -1042,13 +1059,13 @@ export class EventListener {
     const target = event.target as HTMLInputElement | HTMLTextAreaElement;
     if (!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) return;
 
-    // 🆕 CRITICAL FIX: Checkboxes and radios should be recorded as CLICKS, not inputs
+    // ðŸ†• CRITICAL FIX: Checkboxes and radios should be recorded as CLICKS, not inputs
     // This fixes "cannot be filled" errors in Playwright
     if (
       target instanceof HTMLInputElement &&
       (target.type === 'checkbox' || target.type === 'radio')
     ) {
-      console.log('[EventListener] 🔲 Checkbox/Radio detected - routing to click handler:', {
+      console.log('[EventListener] ðŸ”² Checkbox/Radio detected - routing to click handler:', {
         id: target.id || 'no-id',
         name: target.name || 'no-name',
         type: target.type,
@@ -1058,8 +1075,14 @@ export class EventListener {
       return;
     }
 
-    // 🐛 DEBUG: Log every input event
-    console.log('[EventListener] 🎯 onInput called:', {
+    // ðŸ†• File inputs emit input events but value is a fake path (C:\fakepath\file.txt)
+    // File uploads are handled by onChange â†’ recordFileUpload() instead
+    if (target instanceof HTMLInputElement && target.type === 'file') {
+      return;
+    }
+
+    // ðŸ› DEBUG: Log every input event
+    console.log('[EventListener] ðŸŽ¯ onInput called:', {
       id: target.id || 'no-id',
       name: target.name || 'no-name',
       type: (target as HTMLInputElement).type || 'textarea',
@@ -1085,7 +1108,7 @@ export class EventListener {
       if (existingTimer) clearTimeout(existingTimer);
     }
 
-    // ✅ ADAPTIVE DEBOUNCE: Adjust timeout based on field type (universal for all websites)
+    // âœ… ADAPTIVE DEBOUNCE: Adjust timeout based on field type (universal for all websites)
     // LAYER 1: Event debouncing for normal typing
     // NOTE: Password fields now have 0ms debounce due to LAYER 2 & 3 backup
     const isSensitive = this.isSensitiveInput(target);
@@ -1099,7 +1122,7 @@ export class EventListener {
     let debounceTime = 500; // Default for long text fields
 
     if (isSensitive) {
-      debounceTime = 0; // ⚡ INSTANT capture for passwords (LAYERS 2 & 3 provide backup)
+      debounceTime = 0; // âš¡ INSTANT capture for passwords (LAYERS 2 & 3 provide backup)
     } else if (isShortField) {
       debounceTime = 400; // Medium for emails, phone numbers
     }
@@ -1161,7 +1184,7 @@ export class EventListener {
     const action: InputAction = {
       id: generateActionId(++this.actionSequence),
       type: 'input',
-      timestamp: typingStartTime - this.recordingStartTime, // ✅ Use when typing STARTED, not current time!
+      timestamp: typingStartTime - this.recordingStartTime, // âœ… Use when typing STARTED, not current time!
       completedAt: 0, // Will be set by emitAction
       url: window.location.href,
       selector,
@@ -1193,7 +1216,7 @@ export class EventListener {
     const target = event.target as HTMLInputElement | HTMLTextAreaElement;
     if (!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) return;
 
-    // 🛡️ Skip focus on extension's own UI elements
+    // ðŸ›¡ï¸ Skip focus on extension's own UI elements
     if (target.closest('[id^="saveaction-"]')) return;
 
     // Skip checkbox/radio inputs - they're handled by click events only
@@ -1201,6 +1224,11 @@ export class EventListener {
       target instanceof HTMLInputElement &&
       (target.type === 'checkbox' || target.type === 'radio')
     ) {
+      return;
+    }
+
+    // Skip file inputs — they're handled by onChange → recordFileUpload() only
+    if (target instanceof HTMLInputElement && target.type === 'file') {
       return;
     }
 
@@ -1288,9 +1316,9 @@ export class EventListener {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // LAYER 3: Focused Field Polling (Fallback for blocked events)
-  // ═══════════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   /**
    * Start polling the focused field for value changes
@@ -1315,7 +1343,7 @@ export class EventListener {
 
       // If value changed, trigger input capture
       if (currentValue !== lastValue) {
-        console.log('[EventListener] 🔴 LAYER 3: Polling detected value change:', {
+        console.log('[EventListener] ðŸ”´ LAYER 3: Polling detected value change:', {
           field: this.focusedField.id || this.focusedField.name,
           oldValue: lastValue.substring(0, 20),
           newValue: currentValue.substring(0, 20),
@@ -1336,7 +1364,7 @@ export class EventListener {
       }
     }, this.POLLING_INTERVAL_MS);
 
-    console.log('[EventListener] 🟢 LAYER 3: Started polling field:', field.id || field.name);
+    console.log('[EventListener] ðŸŸ¢ LAYER 3: Started polling field:', field.id || field.name);
   }
 
   /**
@@ -1346,14 +1374,14 @@ export class EventListener {
     if (this.fieldPollingInterval) {
       clearInterval(this.fieldPollingInterval);
       this.fieldPollingInterval = null;
-      console.log('[EventListener] ⛔ LAYER 3: Stopped polling');
+      console.log('[EventListener] â›” LAYER 3: Stopped polling');
     }
     this.focusedField = null;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // LAYER 2: MutationObserver (Catches React/Vue programmatic changes)
-  // ═══════════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   /**
    * Attach MutationObserver to watch for programmatic value changes
@@ -1372,7 +1400,7 @@ export class EventListener {
           const oldValue = this.lastKnownValues.get(field) || '';
 
           if (newValue !== oldValue) {
-            console.log('[EventListener] 🟡 LAYER 2: MutationObserver detected change:', {
+            console.log('[EventListener] ðŸŸ¡ LAYER 2: MutationObserver detected change:', {
               field: field.id || field.name,
               newValue: newValue.substring(0, 20),
             });
@@ -1401,7 +1429,7 @@ export class EventListener {
     });
 
     this.inputObservers.set(field, observer);
-    console.log('[EventListener] 🟢 LAYER 2: Attached MutationObserver:', field.id || field.name);
+    console.log('[EventListener] ðŸŸ¢ LAYER 2: Attached MutationObserver:', field.id || field.name);
   }
 
   /**
@@ -1413,7 +1441,7 @@ export class EventListener {
       observer.disconnect();
       this.inputObservers.delete(field);
       console.log(
-        '[EventListener] ⛔ LAYER 2: Detached MutationObserver:',
+        '[EventListener] â›” LAYER 2: Detached MutationObserver:',
         field.id || (field as HTMLInputElement).name
       );
     }
@@ -1422,10 +1450,10 @@ export class EventListener {
   /**
    * Flush pending input action (record it immediately)
    * LAYER 2 & 3: Also cleanup observers and polling if field is flushed early
-   * ✅ BUG FIX #6: Enhanced logging and user notifications for skipped inputs
+   * âœ… BUG FIX #6: Enhanced logging and user notifications for skipped inputs
    */
   private flushInputAction(target: HTMLInputElement | HTMLTextAreaElement): void {
-    // 🛡️ Skip extension UI elements (e.g. variable prompt input)
+    // ðŸ›¡ï¸ Skip extension UI elements (e.g. variable prompt input)
     if (target.closest('[id^="saveaction-"]')) return;
 
     // Cancel any pending debounce timer for this element to prevent stale double-flush.
@@ -1468,9 +1496,9 @@ export class EventListener {
 
     // Skip if no start time or empty value
     if (!startTime || !value) {
-      // ✅ BUG FIX #6: Enhanced console warnings for skipped inputs
+      // âœ… BUG FIX #6: Enhanced console warnings for skipped inputs
       console.warn(
-        '[EventListener] ⚠️ INPUT SKIPPED - Field will not be recorded:',
+        '[EventListener] âš ï¸ INPUT SKIPPED - Field will not be recorded:',
         '\n  Field ID:',
         fieldInfo.id,
         '\n  Field Name:',
@@ -1487,7 +1515,7 @@ export class EventListener {
         !startTime ? 'Missing start time' : 'Empty value'
       );
 
-      // ✅ BUG FIX #6: Show toast notification to user (non-blocking)
+      // âœ… BUG FIX #6: Show toast notification to user (non-blocking)
       // Use setTimeout to ensure it doesn't interfere with test execution
       if (typeof window !== 'undefined' && typeof document !== 'undefined') {
         setTimeout(() => {
@@ -1572,19 +1600,19 @@ export class EventListener {
       // Check if this change is from a recent click (already recorded)
       if (this.wasRecentlyClicked(target)) {
         console.log(
-          '[EventListener] 🔧 Skipping duplicate checkbox/radio change event (already recorded click)'
+          '[EventListener] ðŸ”§ Skipping duplicate checkbox/radio change event (already recorded click)'
         );
         return; // Skip - we already recorded the click
       }
 
       // Skip hidden checkbox/radio inputs (same logic as click handler)
       if (!this.isElementVisible(target)) {
-        console.log('[EventListener] 🔧 Skipping hidden checkbox/radio change event');
+        console.log('[EventListener] ðŸ”§ Skipping hidden checkbox/radio change event');
         return;
       }
 
       // This is a programmatic change (no user click) - record it
-      console.log('[EventListener] 📝 Recording programmatic checkbox/radio change');
+      console.log('[EventListener] ðŸ“ Recording programmatic checkbox/radio change');
 
       // Create a click action for programmatic changes (for consistency)
       const selector = this.selectorGenerator.generateSelectors(target);
@@ -1615,6 +1643,18 @@ export class EventListener {
       };
 
       this.emitAction(action);
+      return;
+    }
+
+    // Handle file input changes - record file metadata (not file content)
+    // File uploads fire 'change' events when user selects files via the file picker
+    if (target instanceof HTMLInputElement && target.type === 'file') {
+      try {
+        this.recordFileUpload(target);
+      } catch (error) {
+        console.error('[EventListener] Error recording file upload:', error);
+        // Don't throw - allow recording to continue
+      }
       return;
     }
 
@@ -1733,7 +1773,7 @@ export class EventListener {
 
       this.emitAction(action);
       console.log(
-        `[EventListener] Recorded multi-select change: ${selectElement.id || selectElement.name} → [${selectedOptions.map((o) => `"${o.text}"`).join(', ')}]`
+        `[EventListener] Recorded multi-select change: ${selectElement.id || selectElement.name} â†’ [${selectedOptions.map((o) => `"${o.text}"`).join(', ')}]`
       );
       return;
     }
@@ -1767,7 +1807,89 @@ export class EventListener {
 
     this.emitAction(action);
     console.log(
-      `[EventListener] Recorded select change: ${selectElement.id || selectElement.name} → "${selectedOption?.textContent?.trim()}"`
+      `[EventListener] Recorded select change: ${selectElement.id || selectElement.name} â†’ "${selectedOption?.textContent?.trim()}"`
+    );
+  }
+
+  /**
+   * Record file upload action when user selects file(s) via <input type="file">
+   * Records metadata only (name, size, type) — never captures file content.
+   * The platform manages test fixture files for replay via page.setInputFiles().
+   */
+  private recordFileUpload(fileInput: HTMLInputElement): void {
+    const fileList = fileInput.files;
+
+    // User cancelled the file picker — no files selected
+    if (!fileList || fileList.length === 0) {
+      console.log('[EventListener] File picker cancelled or empty — skipping');
+      return;
+    }
+
+    // Skip hidden/disabled file inputs
+    if (fileInput.disabled) {
+      console.warn(
+        '[EventListener] File input is disabled, skipping recording:',
+        fileInput.id || fileInput.name
+      );
+      return;
+    }
+
+    if (!this.isElementVisible(fileInput)) {
+      console.warn(
+        '[EventListener] File input is hidden, skipping recording:',
+        fileInput.id || fileInput.name
+      );
+      return;
+    }
+
+    // Generate selector with full strategy
+    const selector = this.selectorGenerator.generateSelectors(fileInput);
+
+    // Capture element state for smart waits
+    let elementState, waitConditions, context, alternativeSelectors;
+    try {
+      const state = captureElementState(fileInput);
+      elementState = state.elementState;
+      waitConditions = state.waitConditions;
+      context = state.context;
+      alternativeSelectors = state.alternativeSelectors;
+
+      logElementState(fileInput, elementState, waitConditions);
+    } catch (error) {
+      console.warn('[EventListener] Failed to capture element state for file input:', error);
+      // Continue with action recording even if state capture fails
+    }
+
+    // Build file metadata array — never capture file content (privacy-first)
+    const files = Array.from(fileList).map((file) => ({
+      name: file.name,
+      size: file.size,
+      type: file.type || 'application/octet-stream',
+      lastModified: file.lastModified,
+    }));
+
+    const action: FileUploadAction = {
+      id: generateActionId(++this.actionSequence),
+      type: 'file-upload',
+      timestamp: this.getRelativeTimestamp(),
+      completedAt: 0, // Will be set by emitAction
+      url: window.location.href,
+      selector,
+      tagName: 'input',
+      inputName: fileInput.name || undefined,
+      inputId: fileInput.id || undefined,
+      acceptAttribute: fileInput.accept || undefined,
+      multiple: fileInput.multiple,
+      files,
+      elementState,
+      waitConditions,
+      context,
+      alternativeSelectors,
+    };
+
+    this.emitAction(action);
+    console.log(
+      `[EventListener] Recorded file upload: ${fileInput.id || fileInput.name || 'unnamed'} — ${files.length} file(s): [${files.map((f) => `"${f.name}" (${f.size} bytes, ${f.type})`).join(', ')}]`
     );
   }
 
@@ -1780,10 +1902,12 @@ export class EventListener {
     const target = event.target as HTMLFormElement;
     if (!target || target.tagName !== 'FORM') return;
 
-    // ✅ CRITICAL: Flush ALL pending inputs before form submit
+    // âœ… CRITICAL: Flush ALL pending inputs before form submit
     // Ensures password/email fields are recorded even if user hits Enter immediately
+    // without clicking outside the field or waiting for debounce
+    // ESPECIALLY important for multi-step forms where submit triggers AJAX/state changes
     if (this.inputDebounceTimers.size > 0) {
-      console.log('[EventListener] 🔥 Flushing pending inputs before form submit');
+      console.log('[EventListener] ðŸ”¥ Flushing pending inputs before form submit');
       for (const [inputElement, timerId] of this.inputDebounceTimers) {
         clearTimeout(timerId);
         this.flushInputAction(inputElement);
@@ -1811,7 +1935,7 @@ export class EventListener {
   private onKeyDown(event: KeyboardEvent): void {
     if (!this.isListening) return;
 
-    // ✅ CRITICAL FIX: Use keydown as backup for input capture when input event doesn't fire
+    // âœ… CRITICAL FIX: Use keydown as backup for input capture when input event doesn't fire
     // Some websites block the input event with stopImmediatePropagation
     // This ensures we still capture password fields and other inputs
     const target = event.target as HTMLElement;
@@ -1836,7 +1960,7 @@ export class EventListener {
       // Set up debounce timer if this is the first keystroke
       if (!this.inputDebounceTimers.has(inputElement)) {
         console.log(
-          '[EventListener] ⚠️ Keydown triggered input tracking (input event may be blocked):',
+          '[EventListener] âš ï¸ Keydown triggered input tracking (input event may be blocked):',
           inputElement.id || inputElement.name
         );
 
@@ -1946,10 +2070,10 @@ export class EventListener {
   private onScroll(_event: Event): void {
     if (!this.isListening) return;
 
-    // ✅ BUG FIX #3: Flush ALL pending input actions before scroll
+    // âœ… BUG FIX #3: Flush ALL pending input actions before scroll
     // This ensures inputs are captured before user scrolls away
     if (this.inputDebounceTimers.size > 0) {
-      console.log('[EventListener] 🔥 Flushing inputs before scroll');
+      console.log('[EventListener] ðŸ”¥ Flushing inputs before scroll');
       for (const [inputElement, timerId] of this.inputDebounceTimers) {
         clearTimeout(timerId);
         this.flushInputAction(inputElement);
@@ -2226,7 +2350,7 @@ export class EventListener {
   }
 
   /**
-   * 🆕 CRITICAL FIX: Analyze dropdown state for clicks inside dropdown menus
+   * ðŸ†• CRITICAL FIX: Analyze dropdown state for clicks inside dropdown menus
    * This fixes "element hidden" errors in Playwright
    *
    * Detects if element is inside a dropdown and captures parent state info
@@ -2298,7 +2422,7 @@ export class EventListener {
       return { isInDropdown: false };
     }
 
-    console.log('[EventListener] 🔽 Element inside dropdown detected:', {
+    console.log('[EventListener] ðŸ”½ Element inside dropdown detected:', {
       elementTag: element.tagName,
       dropdownTag: dropdownParent.tagName,
       dropdownClass: dropdownParent.className,
@@ -2327,11 +2451,11 @@ export class EventListener {
   }
 
   /**
-   * 🆕 Generate carousel context metadata
+   * ðŸ†• Generate carousel context metadata
    * Enhanced with detection method, confidence, and page type
    */
   private generateCarouselContext(element: Element): import('@/types').CarouselContext {
-    // 🆕 Get detection metadata from selector generator
+    // ðŸ†• Get detection metadata from selector generator
     const detectionResult = this.selectorGenerator.detectCarouselWithConfidence(element);
 
     // Determine carousel direction - check element AND parent classes
@@ -2370,7 +2494,7 @@ export class EventListener {
       }
     }
 
-    // 🆕 Detect if custom implementation
+    // ðŸ†• Detect if custom implementation
     const isCustomImplementation = !carouselLibrary;
 
     // Detect carousel type
@@ -2398,7 +2522,7 @@ export class EventListener {
     const containerSelector = parentContainer.selector || null;
     const pageType = parentContainer.pageType || 'unknown';
 
-    // 🆕 Check if disabled
+    // ðŸ†• Check if disabled
     const isDisabled =
       element.hasAttribute('disabled') ||
       element.classList.contains('disabled') ||
@@ -2432,7 +2556,7 @@ export class EventListener {
       containerSelector,
       affectsElement,
       carouselLibrary,
-      // 🆕 Enhanced metadata
+      // ðŸ†• Enhanced metadata
       detectionMethod: detectionResult.detectionMethod || 'heuristic',
       confidence: detectionResult.confidence,
       isCustomImplementation,
@@ -2442,7 +2566,7 @@ export class EventListener {
   }
 
   /**
-   * 🆕 Count recent clicks on a specific element within a time window
+   * ðŸ†• Count recent clicks on a specific element within a time window
    */
   private countRecentClicksOnElement(element: Element, timeWindowMs: number): number {
     const now = Date.now();
@@ -2454,7 +2578,7 @@ export class EventListener {
   }
 
   /**
-   * 🆕 Initialize MutationObserver to track dropdown state changes
+   * ðŸ†• Initialize MutationObserver to track dropdown state changes
    */
   private initializeDropdownObserver(): void {
     this.dropdownObserver = new MutationObserver((mutations) => {
@@ -2494,7 +2618,7 @@ export class EventListener {
               const lastAction = this.recentActions[this.recentActions.length - 1];
               if (lastAction && lastAction.type === 'click') {
                 this.onDropdownOpen(element, lastAction.id);
-                console.log('[EventListener] 🔽 Dropdown opened by action:', lastAction.id);
+                console.log('[EventListener] ðŸ”½ Dropdown opened by action:', lastAction.id);
               }
             }
           }
@@ -2504,7 +2628,7 @@ export class EventListener {
   }
 
   /**
-   * 🆕 Check if element is visible (for dropdown detection)
+   * ðŸ†• Check if element is visible (for dropdown detection)
    */
   private isElementVisibleForDropdown(element: Element): boolean {
     const style = window.getComputedStyle(element);
@@ -2528,7 +2652,7 @@ export class EventListener {
   }
 
   /**
-   * 🆕 Record when a dropdown opens
+   * ðŸ†• Record when a dropdown opens
    */
   private onDropdownOpen(dropdownElement: Element, actionId: string): void {
     this.dropdownOpenEvents.set(dropdownElement, {
@@ -2546,7 +2670,7 @@ export class EventListener {
   }
 
   /**
-   * 🆕 Get the action that opened a dropdown
+   * ðŸ†• Get the action that opened a dropdown
    */
   private getDropdownOpeningAction(dropdownElement: Element): string | undefined {
     const openEvent = this.dropdownOpenEvents.get(dropdownElement);
@@ -2563,7 +2687,7 @@ export class EventListener {
   }
 
   /**
-   * 🆕 Find the button/element that triggers a dropdown
+   * ðŸ†• Find the button/element that triggers a dropdown
    */
   private findDropdownTrigger(dropdownContainer: Element): Element | null {
     const dropdownId = dropdownContainer.id;
@@ -2650,12 +2774,12 @@ export class EventListener {
       return customButton;
     }
 
-    console.log('[EventListener] ⚠️ No trigger found for dropdown');
+    console.log('[EventListener] âš ï¸ No trigger found for dropdown');
     return null;
   }
 
   /**
-   * 🆕 CRITICAL FIX: Detect if form submission will cause navigation or is AJAX
+   * ðŸ†• CRITICAL FIX: Detect if form submission will cause navigation or is AJAX
    * This fixes 30s timeout waits on AJAX forms (saves 150s+ per test)
    *
    * Strategy: Wait 2.5s after form submission to verify URL change
@@ -2693,11 +2817,11 @@ export class EventListener {
     // Listen for beforeunload to catch early navigation
     const beforeUnloadHandler = () => {
       navigationDetectedEarly = true;
-      console.log('[EventListener] 🚀 Early navigation detected via beforeunload');
+      console.log('[EventListener] ðŸš€ Early navigation detected via beforeunload');
     };
     window.addEventListener('beforeunload', beforeUnloadHandler, { once: true });
 
-    console.log('[EventListener] 🔍 Starting form navigation detection:', {
+    console.log('[EventListener] ðŸ” Starting form navigation detection:', {
       urlBefore,
       formAction: form?.action || 'none',
       formMethod: form?.method || 'none',
@@ -2712,7 +2836,7 @@ export class EventListener {
     const urlAfter = window.location.href;
     const didNavigate = urlBefore !== urlAfter || navigationDetectedEarly;
 
-    console.log('[EventListener] ✅ Form navigation detection complete:', {
+    console.log('[EventListener] âœ… Form navigation detection complete:', {
       urlBefore,
       urlAfter,
       didNavigate,
@@ -2733,7 +2857,7 @@ export class EventListener {
    * Special handling for carousel controls with nested SVG/icons
    */
   /**
-   * 🆕 P0 - CRITICAL FIX: Check if element is SVG or SVG descendant
+   * ðŸ†• P0 - CRITICAL FIX: Check if element is SVG or SVG descendant
    * SVG elements should NEVER be recorded as click targets - they're decorative
    */
   private isSvgDescendant(element: Element): boolean {
@@ -2759,7 +2883,7 @@ export class EventListener {
   }
 
   /**
-   * 🆕 P0 - CRITICAL FIX: Check if element has click handler
+   * ðŸ†• P0 - CRITICAL FIX: Check if element has click handler
    * Helps identify interactive elements that aren't semantic HTML
    */
   private hasClickHandler(element: Element): boolean {
@@ -2782,7 +2906,7 @@ export class EventListener {
   }
 
   /**
-   * 🆕 P0 - CRITICAL FIX: Check if element is a carousel control
+   * ðŸ†• P0 - CRITICAL FIX: Check if element is a carousel control
    * Expanded detection beyond existing selectorGenerator.isCarouselControl
    */
   private isCarouselControlElement(element: Element): boolean {
@@ -2814,7 +2938,7 @@ export class EventListener {
   }
 
   /**
-   * 🆕 P0 - CRITICAL FIX: Find clickable ancestor when clicking SVG child
+   * ðŸ†• P0 - CRITICAL FIX: Find clickable ancestor when clicking SVG child
    * Traverses up from SVG element to find the actual button/link/span
    */
   private findSvgClickableAncestor(svgElement: Element): Element | null {
@@ -2827,7 +2951,7 @@ export class EventListener {
       if (!this.isSvgDescendant(parent)) {
         // Check if this parent is interactive
         if (this.isInteractiveElementStrict(parent)) {
-          console.log('[EventListener] 🎯 Found interactive parent for SVG:', {
+          console.log('[EventListener] ðŸŽ¯ Found interactive parent for SVG:', {
             svg: svgElement.tagName,
             parent: parent.tagName,
             parentClasses: this.getElementClassName(parent),
@@ -2837,7 +2961,7 @@ export class EventListener {
 
         // Check for carousel control
         if (this.isCarouselControlElement(parent)) {
-          console.log('[EventListener] 🎯 Found carousel control parent for SVG:', {
+          console.log('[EventListener] ðŸŽ¯ Found carousel control parent for SVG:', {
             svg: svgElement.tagName,
             parent: parent.tagName,
             parentClasses: this.getElementClassName(parent),
@@ -2847,7 +2971,7 @@ export class EventListener {
 
         // Check if parent has click handler
         if (this.hasClickHandler(parent)) {
-          console.log('[EventListener] 🎯 Found clickable parent for SVG (cursor:pointer):', {
+          console.log('[EventListener] ðŸŽ¯ Found clickable parent for SVG (cursor:pointer):', {
             svg: svgElement.tagName,
             parent: parent.tagName,
           });
@@ -2863,7 +2987,7 @@ export class EventListener {
   }
 
   /**
-   * 🆕 P0 - CRITICAL FIX: Find the actual interactive parent element
+   * ðŸ†• P0 - CRITICAL FIX: Find the actual interactive parent element
    * Main entry point for DOM traversal - handles SVG, icons, decorative elements
    */
   private findInteractiveParent(element: Element): Element | null {
@@ -2883,7 +3007,7 @@ export class EventListener {
 
     // STEP 1: If element is SVG/decorative, ALWAYS traverse to parent
     if (this.isSvgDescendant(element)) {
-      console.log('[EventListener] ⚠️ Detected SVG click - finding interactive parent');
+      console.log('[EventListener] âš ï¸ Detected SVG click - finding interactive parent');
       const ancestor = this.findSvgClickableAncestor(element);
       if (ancestor) {
         return ancestor;
@@ -2923,7 +3047,7 @@ export class EventListener {
   }
 
   /**
-   * 🆕 Strict interactive element check (for internal use by findInteractiveParent)
+   * ðŸ†• Strict interactive element check (for internal use by findInteractiveParent)
    * Separated from main isInteractiveElement to avoid recursion
    */
   private isInteractiveElementStrict(element: Element): boolean {
@@ -2976,12 +3100,12 @@ export class EventListener {
   }
 
   private findInteractiveElement(element: Element): Element | null {
-    // 🆕 P0 - CRITICAL FIX: Use new findInteractiveParent logic
+    // ðŸ†• P0 - CRITICAL FIX: Use new findInteractiveParent logic
     return this.findInteractiveParent(element);
   }
 
   /**
-   * 🆕 Find carousel control parent when clicking on nested SVG/icon
+   * ðŸ†• Find carousel control parent when clicking on nested SVG/icon
    * Handles cases like: <span class="img-arrow"><svg>...</svg></span>
    */
   // @ts-expect-error - Old implementation kept for reference
@@ -3069,7 +3193,7 @@ export class EventListener {
   }
 
   /**
-   * 🆕 Safely get element className as string
+   * ðŸ†• Safely get element className as string
    * Handles both HTMLElement.className (string) and SVGElement.className (SVGAnimatedString)
    */
   private getElementClassName(element: Element): string {
@@ -3090,17 +3214,17 @@ export class EventListener {
    * Check if element is interactive
    * Comprehensive detection covering 99.9% of real-world scenarios
    * Multi-layer detection with intelligent fallbacks
-   * 🚨 CRITICAL: Carousel detection MUST come first to catch ALL carousel arrows
+   * ðŸš¨ CRITICAL: Carousel detection MUST come first to catch ALL carousel arrows
    */
   // @ts-expect-error - Old implementation kept for reference
   private isInteractiveElement(element: Element): boolean {
-    // 🆕 PRIORITY 0: CAROUSEL DETECTION (catches custom implementations)
+    // ðŸ†• PRIORITY 0: CAROUSEL DETECTION (catches custom implementations)
     // This MUST be first because carousel arrows might be ANY element (span, div, etc.)
     // Without this check, custom carousel arrows would be filtered out before detection runs
     try {
       const carouselCheck = this.selectorGenerator.isCarouselControl(element);
       if (carouselCheck) {
-        console.log('[EventListener] ✅ Detected carousel control:', {
+        console.log('[EventListener] âœ… Detected carousel control:', {
           tagName: element.tagName,
           className: this.getElementClassName(element),
         });
@@ -3158,7 +3282,6 @@ export class EventListener {
       'option',
       'radio',
       'checkbox',
-      'tab',
       'switch',
       'treeitem',
     ];
@@ -3435,7 +3558,7 @@ export class EventListener {
       return;
     }
 
-    // 🛡️ Skip hover tracking on extension's own UI
+    // ðŸ›¡ï¸ Skip hover tracking on extension's own UI
     if (target.closest('[id^="saveaction-"]')) {
       return;
     }
@@ -3465,7 +3588,7 @@ export class EventListener {
       return;
     }
 
-    // 🛡️ Skip hover tracking on extension's own UI
+    // ðŸ›¡ï¸ Skip hover tracking on extension's own UI
     if (target.closest('[id^="saveaction-"]')) {
       return;
     }
@@ -3474,14 +3597,14 @@ export class EventListener {
     if (this.lastHoveredElement === target) {
       const hoverDuration = Date.now() - this.hoverStartTime;
 
-      // 🆕 Only record meaningful hovers (> 300ms)
+      // ðŸ†• Only record meaningful hovers (> 300ms)
       if (hoverDuration >= this.MIN_HOVER_DURATION && this.isDropdownParent(target)) {
         console.log(
           `[EventListener] Recording hover (${hoverDuration}ms) - meaningful interaction`
         );
         this.recordHoverAction(target, hoverDuration);
       } else if (hoverDuration < this.MIN_HOVER_DURATION) {
-        console.log(`⏭️ Skipping brief hover (${hoverDuration}ms)`);
+        console.log(`â­ï¸ Skipping brief hover (${hoverDuration}ms)`);
       }
 
       // Reset hover tracking
@@ -3492,7 +3615,7 @@ export class EventListener {
 
   /**
    * Check if element is a dropdown parent
-   * ✅ STRICT: Only actual dropdown menus, not just any element with hidden children
+   * âœ… STRICT: Only actual dropdown menus, not just any element with hidden children
    */
   private isDropdownParent(element: Element): boolean {
     // Check CSS classes for dropdown patterns
@@ -3514,7 +3637,7 @@ export class EventListener {
       return true;
     }
 
-    // ⚠️ REMOVED: Generic "hidden children" check was too broad
+    // REMOVED: Generic "hidden children" check was too broad
     // This was causing non-dropdown elements to be recorded as hovers
     // Only return true for explicit dropdown patterns above
 
@@ -3592,9 +3715,6 @@ export class EventListener {
     this.hoverStartTime = 0;
   }
 
-  /**
-   * Count recent clicks on a specific element within a time window
-   */
   /**
    * Record modal lifecycle action
    */
@@ -3683,7 +3803,7 @@ export class EventListener {
       return;
     }
 
-    // ✅ NEW: Track action groups and dependencies
+    // âœ… NEW: Track action groups and dependencies
     this.trackActionGroupsAndDependencies(action);
 
     // Track for duplicate detection
@@ -3694,7 +3814,7 @@ export class EventListener {
     // Track last action for navigation trigger detection
     this.lastAction = action;
 
-    // 🆕 Track recent actions for dropdown linking
+    // ðŸ†• Track recent actions for dropdown linking
     this.recentActions.push(action);
     if (this.recentActions.length > this.MAX_RECENT_ACTIONS) {
       this.recentActions.shift(); // Remove oldest

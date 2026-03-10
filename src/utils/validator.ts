@@ -6,6 +6,7 @@ import type {
   InputAction,
   NavigationAction,
   DialogAction,
+  FileUploadAction,
 } from '@/types';
 
 /**
@@ -192,6 +193,57 @@ export function validateAction(action: Action): ValidationResult {
         errors.push({
           field: 'action.response',
           message: 'Dialog action response must be "accept" or "dismiss"',
+        });
+      }
+      break;
+    }
+
+    case 'file-upload': {
+      const fileUploadAction = action as FileUploadAction;
+      if (!fileUploadAction.selector) {
+        errors.push({
+          field: 'action.selector',
+          message: 'File upload action must have a selector',
+        });
+      } else {
+        const selectorResult = validateSelector(fileUploadAction.selector);
+        errors.push(...selectorResult.errors);
+      }
+
+      if (!fileUploadAction.files || !Array.isArray(fileUploadAction.files) || fileUploadAction.files.length === 0) {
+        errors.push({
+          field: 'action.files',
+          message: 'File upload action must have at least one file',
+        });
+      } else {
+        for (let i = 0; i < fileUploadAction.files.length; i++) {
+          const file = fileUploadAction.files[i];
+          if (!file) continue;
+          if (!file.name || typeof file.name !== 'string') {
+            errors.push({
+              field: `action.files[${i}].name`,
+              message: `File at index ${i} must have a name`,
+            });
+          }
+          if (typeof file.size !== 'number' || file.size < 0) {
+            errors.push({
+              field: `action.files[${i}].size`,
+              message: `File at index ${i} must have a valid size`,
+            });
+          }
+          if (!file.type || typeof file.type !== 'string') {
+            errors.push({
+              field: `action.files[${i}].type`,
+              message: `File at index ${i} must have a MIME type`,
+            });
+          }
+        }
+      }
+
+      if (typeof fileUploadAction.multiple !== 'boolean') {
+        errors.push({
+          field: 'action.multiple',
+          message: 'File upload action must specify whether input accepts multiple files',
         });
       }
       break;
