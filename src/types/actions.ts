@@ -419,15 +419,15 @@ export interface FileUploadAction extends BaseAction {
   type: 'file-upload';
   selector: SelectorStrategy;
   tagName: 'input';
-  inputName?: string;      // name attribute of the file input
-  inputId?: string;        // id attribute of the file input
+  inputName?: string; // name attribute of the file input
+  inputId?: string; // id attribute of the file input
   acceptAttribute?: string; // accept attribute (e.g., ".pdf,.docx", "image/*")
-  multiple: boolean;       // whether the input accepts multiple files
+  multiple: boolean; // whether the input accepts multiple files
   files: Array<{
-    name: string;          // e.g., "resume.pdf"
-    size: number;          // bytes (e.g., 204800)
-    type: string;          // MIME type (e.g., "application/pdf")
-    lastModified: number;  // timestamp of last modification
+    name: string; // e.g., "resume.pdf"
+    size: number; // bytes (e.g., 204800)
+    type: string; // MIME type (e.g., "application/pdf")
+    lastModified: number; // timestamp of last modification
   }>;
 }
 
