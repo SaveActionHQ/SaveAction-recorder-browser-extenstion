@@ -210,7 +210,11 @@ export function validateAction(action: Action): ValidationResult {
         errors.push(...selectorResult.errors);
       }
 
-      if (!fileUploadAction.files || !Array.isArray(fileUploadAction.files) || fileUploadAction.files.length === 0) {
+      if (
+        !fileUploadAction.files ||
+        !Array.isArray(fileUploadAction.files) ||
+        fileUploadAction.files.length === 0
+      ) {
         errors.push({
           field: 'action.files',
           message: 'File upload action must have at least one file',
