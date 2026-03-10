@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   Action,
   ClickAction,
   InputAction,
@@ -1645,7 +1645,6 @@ export class EventListener {
       this.emitAction(action);
       return;
     }
-
 
     // Handle file input changes - record file metadata (not file content)
     // File uploads fire 'change' events when user selects files via the file picker
@@ -3638,7 +3637,7 @@ export class EventListener {
       return true;
     }
 
-    // âš ï¸ REMOVED: Generic "hidden children" check was too broad
+    // REMOVED: Generic "hidden children" check was too broad
     // This was causing non-dropdown elements to be recorded as hovers
     // Only return true for explicit dropdown patterns above
 
@@ -4019,4 +4018,3 @@ export class EventListener {
     return false;
   }
 }
-
