@@ -43,7 +43,15 @@
     }
   ],
 
-  "permissions": ["storage", "activeTab", "tabs", "downloads", "notifications", "scripting"],
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs",
+    "downloads",
+    "notifications",
+    "scripting",
+    "webNavigation"
+  ],
 
   "host_permissions": ["<all_urls>"],
 

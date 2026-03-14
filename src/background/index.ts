@@ -957,6 +957,30 @@ async function handleResumeRecording(
 }
 
 /**
+ * Send a message to all frames (main + iframes) in a tab.
+ * Uses chrome.webNavigation.getAllFrames to discover every frame,
+ * then sends individually so each frame's listener fires reliably.
+ */
+async function sendMessageToAllFrames(
+  tabId: number,
+  message: Record<string, unknown>
+): Promise<void> {
+  const frames = await chrome.webNavigation.getAllFrames({ tabId });
+  if (!frames || frames.length === 0) return;
+
+  const results = await Promise.allSettled(
+    frames.map((frame) => chrome.tabs.sendMessage(tabId, message, { frameId: frame.frameId }))
+  );
+
+  // Log any per-frame failures for debugging, but don't fail the whole operation
+  for (const result of results) {
+    if (result.status === 'rejected') {
+      console.warn('[Background] Frame message failed:', result.reason);
+    }
+  }
+}
+
+/**
  * Enter assertion mode — auto-pauses recording and tells content script to activate inspector.
  */
 async function handleEnterAssertionMode(
@@ -971,10 +995,10 @@ async function handleEnterAssertionMode(
     return { success: false, error: 'No active tab for recording' };
   }
 
-  // Pause recording if not already paused
+  // Pause recording if not already paused (all frames)
   if (!state.isPaused) {
     try {
-      await chrome.tabs.sendMessage(tabId, { type: 'PAUSE_RECORDING' });
+      await sendMessageToAllFrames(tabId, { type: 'PAUSE_RECORDING' });
       state.isPaused = true;
       broadcastStatusUpdate();
     } catch (error) {
@@ -985,9 +1009,9 @@ async function handleEnterAssertionMode(
     }
   }
 
-  // Tell the content script to enter assertion inspector
+  // Tell ALL frames (main + iframes) to enter assertion inspector
   try {
-    await chrome.tabs.sendMessage(tabId, { type: 'ENTER_ASSERTION_MODE' });
+    await sendMessageToAllFrames(tabId, { type: 'ENTER_ASSERTION_MODE' });
     return { success: true, data: { state: 'assertion-mode' } };
   } catch (error) {
     return {
@@ -1012,10 +1036,17 @@ async function handleExitAssertionMode(
     return { success: false, error: 'No active tab for recording' };
   }
 
-  // Resume recording
+  // Tell ALL frames to exit assertion inspector
+  try {
+    await sendMessageToAllFrames(tabId, { type: 'EXIT_ASSERTION_MODE' });
+  } catch (error) {
+    console.warn('[Background] Some frames failed to exit assertion mode:', error);
+  }
+
+  // Resume recording in all frames
   if (state.isPaused) {
     try {
-      await chrome.tabs.sendMessage(tabId, { type: 'RESUME_RECORDING' });
+      await sendMessageToAllFrames(tabId, { type: 'RESUME_RECORDING' });
       state.isPaused = false;
       broadcastStatusUpdate();
     } catch (error) {

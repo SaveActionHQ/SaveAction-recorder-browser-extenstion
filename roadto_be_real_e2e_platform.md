@@ -275,18 +275,29 @@ case 'checkpoint':
 
 **Why:** Many real apps use iframes (payment forms, embedded widgets, third-party integrations). Tests that can't interact with iframes are incomplete.
 
-**Key Insight:** The extension already captures `frameId`, `frameUrl`, `frameSelector` on every action. The runner ignores them.
+**Key Insight:** The extension originally skipped all iframe execution. Recording and assertion mode needed to be enabled inside iframes, with frame context (`frameId`, `frameUrl`, `frameSelector`) populated on every action so the runner can replay them in the correct frame.
 
-**What to build:**
+**Extension Work (✅ DONE — March 14–15, 2026):**
 
-| #   | Change                      | Package                      | Details                                                                                       |
-| --- | --------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------- |
-| 4a  | Detect and switch to iframe | Core (`PlaywrightRunner.ts`) | If `action.frameSelector` exists, use `page.frameLocator(frameSelector)` to get frame context |
-| 4b  | Execute action inside frame | Core (`PlaywrightRunner.ts`) | Use frame locator for element finding instead of page                                         |
-| 4c  | Switch back to main frame   | Core (`PlaywrightRunner.ts`) | After action in iframe, return to main page context                                           |
+| #   | Change                                   | Package                                         | Details                                                                                                                                                                                                                                                                         |
+| --- | ---------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 4e  | ✅ Enable content script in iframes      | Extension (`content/index.ts`)                  | Removed `if (window.self !== window.top) return` guard. Content script now runs in lightweight mode inside iframes (ActionRecorder + EventListener only, no overlay UI).                                                                                                        |
+| 4f  | ✅ Populate frame context on all actions | Extension (`event-listener.ts`)                 | `emitAction()` detects iframe context and populates `frameUrl`, `frameId`, `frameSelector` on every captured action. `generateFrameSelector()` produces CSS selector for the `<iframe>` element (id → name → src → nth-of-type fallback). CSS.escape polyfill for jsdom compat. |
+| 4g  | ✅ Assertion mode in iframes             | Extension (`content/index.ts`)                  | Removed iframe guard from `ENTER_ASSERTION_MODE` handler. AssertionInspector now activates in all frames. Checkpoint actions include frame context before syncing to background.                                                                                                |
+| 4h  | ✅ Reliable multi-frame message routing  | Extension (`background/index.ts`)               | Added `sendMessageToAllFrames()` helper using `chrome.webNavigation.getAllFrames()` to explicitly route PAUSE_RECORDING, ENTER_ASSERTION_MODE, EXIT_ASSERTION_MODE, RESUME_RECORDING to each frame via `frameId`. Failures per-frame are isolated via `Promise.allSettled()`.   |
+| 4i  | ✅ webNavigation permission              | Extension (`manifest.json`)                     | Added `"webNavigation"` to permissions array to support `getAllFrames()`.                                                                                                                                                                                                       |
+| 4j  | ✅ Unit tests for iframe frame detection | Extension (`tests/unit/iframe-support.test.ts`) | 7 tests: main frame (no frame fields), iframe with id/name/src, nth-of-type fallback, cross-origin (null frameElement), all action types populated.                                                                                                                             |
+
+**Core/Platform Work (✅ DONE — March 12–15, 2026):**
+
+| #   | Change                                    | Package                                            | Details                                                                                                                                                                                                                          |
+| --- | ----------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 4a  | ✅ Resolve iframe context per action      | Core (`PlaywrightRunner.ts`)                       | `resolveFrameContext()` — 3 strategies: `frameSelector` (CSS + `elementHandle().contentFrame()`), `frameUrl` (`page.frame({ url })`), `frameId` (`page.frame({ name })`). Falls back to main page with warning.                  |
+| 4b  | ✅ Execute actions inside frame           | Core (`PlaywrightRunner.ts` + `ElementLocator.ts`) | All execute methods updated to accept `Page \| Frame`. Element finding uses iframe context; page-level operations (keyboard, URL tracking, navigation) stay on `Page`.                                                           |
+| 4c  | ✅ Skip URL validation for iframe actions | Core (`PlaywrightRunner.ts`)                       | `validateAndCorrectPageState()` and `attemptRecovery()` now skip URL mismatch correction when `action.frameUrl/frameId/frameSelector` is set — prevents runner from navigating away from parent page to the iframe URL directly. |
 
 **Estimated effort:** 1 day
-**Lines of code:** ~100
+**Lines of code:** ~100 (core) + ~400 (extension)
 
 ---
 
@@ -592,8 +603,8 @@ During replay, the runner registers a `page.on('dialog')` handler **before** exe
 | **P1**   | Step 3: Visual Regression          | 🟠 High     | 3 days   | ⏳ TODO                                                 |
 | **P1**   | Step 9: Browser Dialog Handling    | 🟠 High     | 1-2 days | ✅ DONE                                                 |
 | **P1**   | Step 10: Flaky Test Detection      | 🟡 Medium   | 2 days   | ⏳ TODO                                                 |
-| **P2**   | Step 4: iframe Support             | 🟡 Medium   | 1 day    | ⏳ TODO                                                 |
-| **P2**   | Step 5: File Upload                | 🟡 Medium   | 2 days   | ✅ Extension DONE; Platform TODO                       |
+| **P2**   | Step 4: iframe Support             | 🟡 Medium   | 1 day    | ✅ DONE                                                 |
+| **P2**   | Step 5: File Upload                | 🟡 Medium   | 2 days   | ✅ DONE                                                 |
 | **P2**   | Step 7: Multi-Tab                  | 🟡 Medium   | 2 days   | ⏳ TODO                                                 |
 | **P2**   | Step 11: Webhooks                  | 🟡 Medium   | 2-3 days | ⏳ TODO — schema exists, no routes                      |
 | **P3**   | Step 8: Drag & Drop                | 🟢 Low      | 1-2 days | ⏳ TODO                                                 |
@@ -616,28 +627,29 @@ During replay, the runner registers a `page.on('dialog')` handler **before** exe
 
 ## Progress Tracker
 
-| Step                                                | Status      | Date             |
-| --------------------------------------------------- | ----------- | ---------------- |
-| Step 1: Assertions — Extension (1a–1h)              | ✅ DONE     | March 6-7, 2026  |
-| Step 1: Assertions — Core (1i–1k)                   | ✅ DONE     | March 7-8, 2026  |
-| Step 1: Assertions — API (1l–1n)                    | ✅ DONE     | March 7-8, 2026  |
-| Step 1: Assertions — Web UI (1o–1q)                 | ✅ DONE     | March 7-8, 2026  |
-| Step 3: Visual Regression                           | ⏳ TODO     | —                |
-| Step 4: iframe Support                              | ⏳ TODO     | —                |
-| Step 5: File Upload                                 | ⏳ TODO     | —                |
-| Step 6: Variables — Extension (6e–6g)               | ✅ DONE     | March 6-7, 2026  |
-| Step 6: Variables — Core (6a–6c)                    | ✅ DONE     | March 7-8, 2026  |
-| Step 6: Variables — API (6h, 6j)                    | ✅ DONE     | March 7-8, 2026  |
-| Step 6: Variables — API (6k)                        | ✅ DONE     | March 7-8, 2026  |
-| Step 6: Variables — Web UI (6l)                     | ✅ DONE     | March 7-8, 2026  |
-| Step 6: Variables — Deferred (6d, 6i, 6m–6n, 6o–6q) | 🔜 DEFERRED | —                |
-| Step 5: File Upload — Extension (5a–5b)             | ✅ DONE     | March 11, 2026   |
-| Step 5: File Upload — Platform (5c–5d)              | ⏳ TODO     | —                |
-| Step 7: Multi-Tab Support                           | ⏳ TODO     | —                |
-| Step 8: Drag & Drop                                 | ⏳ TODO     | —                |
-| Step 9: Browser Dialog Handling — Extension (9a–9c) | ✅ DONE     | March 9-10, 2026 |
-| Step 9: Browser Dialog Handling — Core (9d–9i)      | ✅ DONE     | March 10, 2026   |
-| Step 9: Browser Dialog Handling — Web UI (9j)       | ✅ DONE     | March 10, 2026   |
-| Step 10: Flaky Test Detection                       | ⏳ TODO     | —                |
-| Step 11: Webhooks                                   | ⏳ TODO     | —                |
-| Step 12: Team Support                               | ⏳ TODO     | —                |
+| Step                                                | Status      | Date              |
+| --------------------------------------------------- | ----------- | ----------------- |
+| Step 1: Assertions — Extension (1a–1h)              | ✅ DONE     | March 6-7, 2026   |
+| Step 1: Assertions — Core (1i–1k)                   | ✅ DONE     | March 7-8, 2026   |
+| Step 1: Assertions — API (1l–1n)                    | ✅ DONE     | March 7-8, 2026   |
+| Step 1: Assertions — Web UI (1o–1q)                 | ✅ DONE     | March 7-8, 2026   |
+| Step 3: Visual Regression                           | ⏳ TODO     | —                 |
+| Step 4: iframe Support — Extension (4e–4j)          | ✅ DONE     | March 14–15, 2026 |
+| Step 4: iframe Support — Core (4a–4c)               | ✅ DONE     | March 12, 2026    |
+| Step 5: File Upload                                 | ✅ DONE     | March 11, 2026    |
+| Step 6: Variables — Extension (6e–6g)               | ✅ DONE     | March 6-7, 2026   |
+| Step 6: Variables — Core (6a–6c)                    | ✅ DONE     | March 7-8, 2026   |
+| Step 6: Variables — API (6h, 6j)                    | ✅ DONE     | March 7-8, 2026   |
+| Step 6: Variables — API (6k)                        | ✅ DONE     | March 7-8, 2026   |
+| Step 6: Variables — Web UI (6l)                     | ✅ DONE     | March 7-8, 2026   |
+| Step 6: Variables — Deferred (6d, 6i, 6m–6n, 6o–6q) | 🔜 DEFERRED | —                 |
+| Step 5: File Upload — Extension (5a–5b)             | ✅ DONE     | March 11, 2026    |
+| Step 5: File Upload — Platform (5c–5d)              | ✅ DONE     | March 11, 2026    |
+| Step 7: Multi-Tab Support                           | ⏳ TODO     | —                 |
+| Step 8: Drag & Drop                                 | ⏳ TODO     | —                 |
+| Step 9: Browser Dialog Handling — Extension (9a–9c) | ✅ DONE     | March 9-10, 2026  |
+| Step 9: Browser Dialog Handling — Core (9d–9i)      | ✅ DONE     | March 10, 2026    |
+| Step 9: Browser Dialog Handling — Web UI (9j)       | ✅ DONE     | March 10, 2026    |
+| Step 10: Flaky Test Detection                       | ⏳ TODO     | —                 |
+| Step 11: Webhooks                                   | ⏳ TODO     | —                 |
+| Step 12: Team Support                               | ⏳ TODO     | —                 |
