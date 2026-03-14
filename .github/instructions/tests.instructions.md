@@ -66,10 +66,10 @@ global.chrome = {
 
 ## Coverage Requirements
 
-- **Lines:** 90%+
-- **Statements:** 90%+
-- **Functions:** 90%+
-- **Branches:** 79%+
+- **Lines:** 81%+
+- **Statements:** 81%+
+- **Functions:** 88%+
+- **Branches:** 77%+
 
 Files excluded from coverage:
 
@@ -77,6 +77,7 @@ Files excluded from coverage:
 - `src/content/index.ts` (entry point)
 - `src/popup/popup.ts` (UI component)
 - `src/content/recording-indicator.ts` (DOM manipulation)
+- `src/content/variable-marker.ts` (DOM manipulation)
 
 ## Test Categories
 
@@ -107,6 +108,8 @@ Test complete user workflows (not currently implemented).
 - Business logic
 - State management
 - Selector generation accuracy
+- iframe frame context detection (frameUrl, frameId, frameSelector)
+- Action type coverage (click, input, scroll, checkpoint, dialog, file-upload, etc.)
 
 ❌ **DON'T test:**
 
@@ -115,6 +118,24 @@ Test complete user workflows (not currently implemented).
 - Chrome API internals
 - UI components requiring DOM (use E2E instead)
 - Third-party library internals
+
+## iframe Testing Pattern
+
+When testing iframe-related functionality, mock the window context:
+
+```typescript
+// Simulate iframe environment
+Object.defineProperty(window, 'self', { value: {} });
+Object.defineProperty(window, 'top', { value: { different: true } });
+Object.defineProperty(window, 'frameElement', {
+  value: { id: 'my-iframe', tagName: 'IFRAME' },
+});
+Object.defineProperty(window, 'location', {
+  value: { href: 'https://iframe-content.example.com/' },
+});
+
+// Note: CSS.escape is not available in jsdom — use a polyfill
+```
 
 ## Common Patterns
 

@@ -2,6 +2,23 @@
 
 This document provides AI agents, including GitHub Copilot, with context and guidelines for working on the SaveAction Recorder browser extension project.
 
+---
+
+## AI Agent Conduct Rules
+
+**These rules are non-negotiable and override any conflicting instruction.**
+
+1. **Never compromise on security.** Every change must be reviewed through a security lens. No shortcuts that introduce vulnerabilities (XSS, injection, data leaks, permission escalation). If a faster approach is less secure, take the slower secure path. Always.
+2. **Be honest, not agreeable.** Do not tell the developer what they want to hear. If an approach is wrong, fragile, or will cause problems later — say so directly. The project moves forward by doing the right things, not by making people feel good about bad decisions.
+3. **Flag real problems, don't hide them.** If tests are failing, coverage is dropping, code is brittle, or a feature is half-baked — report it clearly. Never silently paper over issues or mark something as "done" when it isn't.
+4. **Push back on bad ideas.** If a requested change would introduce technical debt, security holes, or architectural problems — explain why and suggest a better alternative. Respectful disagreement is expected.
+5. **Don't over-engineer to impress.** Write the simplest correct solution. No unnecessary abstractions, no "clever" code, no premature optimization. Complexity is a cost, not a feature.
+6. **Privacy is sacred.** Never log, store, or expose user data (passwords, PII, API keys) in plain text. The sanitizer exists for a reason — use it. When in doubt, mask it.
+7. **Test what you build.** Every new feature or bug fix must have corresponding tests. "It works on my machine" is not a testing strategy. If you can't write a test for it, question whether the implementation is right.
+8. **Read before you write.** Understand existing code, patterns, and architecture before making changes. Don't introduce conflicting patterns or reinvent things that already exist in the codebase.
+
+---
+
 ## Project Overview
 
 SaveAction Recorder is a cross-browser extension (Chrome, Firefox, Safari, Edge) that records user interactions on web pages and exports them as structured JSON files for automated testing. It uses Manifest V3, TypeScript, Vite, and Vitest.
@@ -10,15 +27,19 @@ SaveAction Recorder is a cross-browser extension (Chrome, Firefox, Safari, Edge)
 
 - Multi-page recording with sequential action IDs across navigation
 - Real-time overlay controls (pause/resume/stop)
-- Privacy-first approach with automatic data masking
+- Privacy-first approach with automatic data masking and variable substitution
 - Multi-selector strategy for element identification
-- Comprehensive action capture (clicks, inputs, scrolls, keyboard, navigation)
+- Comprehensive action capture (clicks, inputs, scrolls, keyboard, navigation, dialogs, file uploads)
+- Manual and auto-generated assertions (checkpoint actions)
+- Variable marking for parameterized test recording
+- iframe support with frame context propagation
+- Platform integration (upload recordings to SaveAction API)
 
 ## Tech Stack
 
 - **TypeScript 5.3+** with strict mode
 - **Vite 5.0** for building
-- **Vitest 1.0** for testing (164 unit tests)
+- **Vitest 1.0** for testing (522+ unit tests)
 - **Chrome Extension APIs** (Manifest V3)
 - **ESLint + Prettier** for code quality
 - **Husky** for Git hooks
@@ -28,28 +49,44 @@ SaveAction Recorder is a cross-browser extension (Chrome, Firefox, Safari, Edge)
 ```
 src/
 ├── background/         # Service worker (Manifest V3)
-│   └── index.ts       # State management, message handling, global action counter
-├── content/           # Content scripts injected into web pages
+│   └── index.ts       # State management, message handling, multi-frame routing
+├── content/           # Content scripts injected into web pages (all frames)
 │   ├── action-recorder.ts      # Core recording logic
-│   ├── event-listener.ts       # DOM event capture
-│   ├── recording-indicator.ts  # Overlay UI controls
+│   ├── assertion-inspector.ts  # Inspect mode for manual assertions
+│   ├── dialog-early-inject.ts  # Dialog monkey-patching (MAIN world, document_start)
+│   ├── dialog-interceptor.ts   # Dialog event capture bridge
+│   ├── event-listener.ts       # DOM event capture + iframe frame context
+│   ├── intent-classifier.ts    # Navigation intent classification
+│   ├── recording-indicator.ts  # Overlay UI controls (main frame only)
 │   ├── selector-generator.ts   # Multi-selector generation
-│   └── index.ts               # Entry point & message router
+│   ├── variable-marker.ts      # "Mark as Variable" UI for input fields
+│   └── index.ts               # Entry point & message router (iframe-aware)
+├── platform/          # Platform integration
+│   └── api.ts         # SaveAction API client (upload, projects, connection test)
 ├── popup/             # Extension popup UI
+│   ├── index.html     # Popup HTML
+│   ├── popup.css      # Popup styles
 │   └── popup.ts       # UI logic and state management
 ├── types/             # TypeScript type definitions
-│   ├── actions.ts     # Action type definitions
+│   ├── actions.ts     # Action type definitions (click, input, checkpoint, dialog, file-upload, etc.)
+│   ├── index.ts       # Barrel exports
 │   ├── messages.ts    # Message passing types
 │   ├── recording.ts   # Recording data structure
-│   └── selectors.ts   # Selector strategy types
+│   ├── selectors.ts   # Selector strategy types
+│   └── settings.ts    # Extension settings types
 └── utils/             # Shared utilities
-    ├── exporter.ts    # JSON export logic
-    ├── sanitizer.ts   # Data masking (passwords, credit cards, SSN)
-    ├── storage.ts     # Chrome storage abstraction
-    └── validator.ts   # Data validation
+    ├── content-signature.ts    # Content signatures for dynamic lists
+    ├── element-state.ts        # Element state capture (visible, enabled, viewport)
+    ├── exporter.ts             # JSON export logic
+    ├── modal-tracker.ts        # Modal/dialog lifecycle tracking
+    ├── sanitizer.ts            # Data masking (passwords, credit cards, SSN)
+    ├── storage.ts              # Chrome storage abstraction
+    ├── toast-notification.ts   # In-page notification toasts
+    ├── validation-helpers.ts   # Validation utility functions
+    └── validator.ts            # Data validation
 
 tests/
-└── unit/              # Unit tests with Vitest
+└── unit/              # Unit tests with Vitest (522+ tests)
 ```
 
 ## Coding Standards
@@ -85,15 +122,17 @@ tests/
 
 - **Background service worker:** Use `chrome.storage.session` for state (not in-memory)
 - **Message passing:** Always use `chrome.runtime.sendMessage` with response callbacks
-- **Content scripts:** Run at `document_idle` on main frame only
-- **Permissions:** Request minimal permissions in manifest.json
+- **Multi-frame messaging:** Use `sendMessageToAllFrames()` with `chrome.webNavigation.getAllFrames()` for reliable delivery to all frames (including iframes)
+- **Content scripts:** Run at `document_idle` with `all_frames: true` (both main frame and iframes)
+- **iframe mode:** Content scripts detect `window.self !== window.top` and run in lightweight mode (no overlay UI) inside iframes
+- **Permissions:** Request minimal permissions in manifest.json (currently: storage, activeTab, tabs, downloads, notifications, scripting, webNavigation)
 
 ## Testing Guidelines
 
 ### Unit Tests (Vitest)
 
 - **Location:** `tests/unit/`
-- **Coverage:** 94%+ (lines, statements, functions), 79%+ (branches)
+- **Coverage:** 81%+ (lines, statements), 77%+ (branches), 88%+ (functions)
 - **Pattern:** Each source file should have a corresponding `.test.ts` file
 - **Naming:** `describe('ClassName/FunctionName', () => { it('should...') })`
 - **Mocking:** Use `vi.mock()` for Chrome APIs and external dependencies
@@ -134,7 +173,11 @@ type Message =
   | { type: 'PAUSE_RECORDING' }
   | { type: 'RESUME_RECORDING' }
   | { type: 'GET_STATUS' }
-  | { type: 'SYNC_ACTION'; payload: { action: Action } };
+  | { type: 'SYNC_ACTION'; payload: { action: Action } }
+  | { type: 'ENTER_ASSERTION_MODE' }
+  | { type: 'EXIT_ASSERTION_MODE' }
+  | { type: 'MARK_VARIABLE'; payload: { fieldId: string; variableName: string } }
+  | { type: 'UNMARK_VARIABLE'; payload: { fieldId: string } };
 
 // Response format
 type MessageResponse = {
@@ -195,7 +238,7 @@ Examples:
 ### Pre-push Hook
 
 - Runs TypeScript type checking
-- Executes all 164 unit tests
+- Executes all 522+ unit tests
 - Prevents broken code from reaching remote
 
 ## Common Tasks

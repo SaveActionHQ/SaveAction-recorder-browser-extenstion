@@ -5,7 +5,7 @@ excludeAgent: ['code-review']
 
 # Content Scripts Instructions
 
-Content scripts run in the context of web pages and capture user interactions.
+Content scripts run in the context of web pages and capture user interactions. They run in **all frames** (main frame + iframes) with different behavior depending on context.
 
 ## Key Rules
 
@@ -14,17 +14,63 @@ Content scripts run in the context of web pages and capture user interactions.
 3. **Event cleanup** - Remove all event listeners when recording stops
 4. **Element filtering** - Don't record clicks on extension's own overlay
 5. **Selector generation** - Generate multiple selector strategies for reliability
+6. **iframe-aware** - Detect `window.self !== window.top` and adjust behavior accordingly
+7. **Frame context** - Every action inside an iframe must include `frameUrl`, `frameId`, `frameSelector`
+8. **Never store sensitive data** - Use the sanitizer for passwords, PII, API keys
 
 ## Architecture
 
 ```
 content/
-├── index.ts              # Entry point, message router
-├── action-recorder.ts    # Core recording orchestrator
-├── event-listener.ts     # DOM event capture
-├── recording-indicator.ts # Overlay UI (pause/resume/stop)
-└── selector-generator.ts  # Multi-selector generation
+├── index.ts                # Entry point, message router (iframe-aware)
+├── action-recorder.ts      # Core recording orchestrator
+├── assertion-inspector.ts  # Inspect mode for manual assertions (all frames)
+├── dialog-early-inject.ts  # Dialog monkey-patching (MAIN world, document_start)
+├── dialog-interceptor.ts   # Dialog event capture bridge
+├── event-listener.ts       # DOM event capture + iframe frame context
+├── intent-classifier.ts    # Navigation intent classification
+├── recording-indicator.ts  # Overlay UI controls (main frame ONLY)
+├── selector-generator.ts   # Multi-selector generation
+└── variable-marker.ts      # "Mark as Variable" UI for input fields
 ```
+
+## iframe Support
+
+Content scripts run in all frames (`all_frames: true` in manifest). Behavior differs:
+
+**Main frame (`window.self === window.top`):**
+
+- Full initialization: ActionRecorder + EventListener + RecordingIndicator + AssertionInspector + VariableMarker
+- Overlay UI (floating toolbar) is rendered
+
+**iframe (`window.self !== window.top`):**
+
+- Lightweight mode: Only ActionRecorder + EventListener + AssertionInspector
+- No overlay UI (RecordingIndicator, VariableMarker skipped)
+- Frame context (`frameUrl`, `frameId`, `frameSelector`) populated on every action
+
+### Frame Context Propagation
+
+```typescript
+// In EventListener.emitAction(), when inside an iframe:
+if (window.self !== window.top) {
+  action.frameUrl = window.location.href;
+  const frameEl = window.frameElement as HTMLIFrameElement | null;
+  if (frameEl) {
+    action.frameId = frameEl.id || frameEl.name || undefined;
+    action.frameSelector = generateFrameSelector(frameEl);
+  }
+}
+```
+
+### Frame Selector Priority
+
+`generateFrameSelector()` creates a CSS selector for the `<iframe>` element in the parent page:
+
+1. `#iframe-id` (if iframe has `id`)
+2. `iframe[name="..."]` (if iframe has `name`)
+3. `iframe[src="..."]` (if iframe has `src`)
+4. `iframe:nth-of-type(N)` (fallback)
 
 ## Event Listener Pattern
 
@@ -35,7 +81,7 @@ class EventListener {
     // 2. Extract element and event data
     // 3. Generate selectors
     // 4. Create action object
-    // 5. Call callback with action
+    // 5. Call callback with action (frame context auto-populated in emitAction)
   };
 
   start() {
@@ -84,6 +130,7 @@ chrome.runtime.sendMessage(
 - z-index: 2147483647 (maximum)
 - Filter out overlay clicks: `if (element.closest('#saveaction-recording-indicator')) return;`
 - Use shadow DOM to avoid style conflicts (future enhancement)
+- **Main frame only** — never render overlay UI inside iframes
 
 ## Testing Content Scripts
 
@@ -93,7 +140,8 @@ Content scripts interact with DOM. When testing:
 - Use JSDOM for DOM testing
 - Test event listener cleanup
 - Verify selector generation accuracy
-- Test cross-origin iframe handling (if applicable)
+- Test iframe frame context detection (`frameUrl`, `frameId`, `frameSelector`)
+- Include CSS.escape polyfill for jsdom compatibility (not available in jsdom natively)
 
 ## Common Pitfalls
 
@@ -102,8 +150,12 @@ Content scripts interact with DOM. When testing:
 ❌ Storing state in content script (use background)
 ❌ Generating only one selector type
 ❌ Not handling navigation properly
+❌ Rendering overlay UI inside iframes
+❌ Forgetting to populate frame context on actions inside iframes
 ✅ Filter extension overlay elements
 ✅ Remove listeners on stop
 ✅ Keep content scripts stateless
 ✅ Generate multiple selectors
 ✅ Sync actions immediately to background
+✅ Detect iframe context and populate frameUrl/frameId/frameSelector
+✅ Run lightweight mode (no UI) inside iframes
