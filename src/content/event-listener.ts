@@ -3803,7 +3803,21 @@ export class EventListener {
       return;
     }
 
-    // âœ… NEW: Track action groups and dependencies
+    // Populate frame context when running inside an iframe
+    if (window.self !== window.top) {
+      action.frameUrl = window.location.href;
+      const frameEl = window.frameElement;
+      if (frameEl) {
+        action.frameId = frameEl.getAttribute('id') || frameEl.getAttribute('name') || undefined;
+        try {
+          action.frameSelector = this.generateFrameSelector(frameEl);
+        } catch {
+          // Cross-origin parent — fall back to basic attributes
+        }
+      }
+    }
+
+    // Track action groups and dependencies
     this.trackActionGroupsAndDependencies(action);
 
     // Track for duplicate detection
@@ -3814,13 +3828,44 @@ export class EventListener {
     // Track last action for navigation trigger detection
     this.lastAction = action;
 
-    // ðŸ†• Track recent actions for dropdown linking
+    // Track recent actions for dropdown linking
     this.recentActions.push(action);
     if (this.recentActions.length > this.MAX_RECENT_ACTIONS) {
       this.recentActions.shift(); // Remove oldest
     }
 
     this.actionCallback(action);
+  }
+
+  /**
+   * Generate a CSS selector for the iframe element in the parent document.
+   * Used to populate frameSelector so the runner can locate the iframe.
+   */
+  private generateFrameSelector(frameEl: Element): string | undefined {
+    const esc = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape : (s: string) => s;
+
+    // Prefer id
+    const id = frameEl.getAttribute('id');
+    if (id) return `#${esc(id)}`;
+
+    // Prefer name
+    const name = frameEl.getAttribute('name');
+    if (name) return `iframe[name="${esc(name)}"]`;
+
+    // Prefer src (unique enough in most pages)
+    const src = frameEl.getAttribute('src');
+    if (src) return `iframe[src="${esc(src)}"]`;
+
+    // Fallback: nth-of-type
+    const parent = frameEl.parentElement;
+    if (parent) {
+      const tag = frameEl.tagName.toLowerCase();
+      const siblings = Array.from(parent.children).filter((el) => el.tagName.toLowerCase() === tag);
+      const index = siblings.indexOf(frameEl) + 1;
+      return `${tag}:nth-of-type(${index})`;
+    }
+
+    return undefined;
   }
 
   /**

@@ -1,6 +1,11 @@
 /**
  * Content Script - Main Entry Point
  * Integrates ActionRecorder with background script communication
+ *
+ * Runs in both main frame and iframes (all_frames: true in manifest).
+ * In iframes: only ActionRecorder is active (no overlay UI).
+ * Actions captured inside iframes include frameUrl, frameId, and
+ * frameSelector so the runner can switch to the correct frame.
  */
 
 import { ActionRecorder } from './action-recorder';
@@ -10,16 +15,17 @@ import { VariableMarker } from './variable-marker';
 import type { Message, MessageResponse } from '@/types/messages';
 import type { Recording } from '@/types';
 
-// Only run in the main frame, not iframes
-if (window.self !== window.top) {
-  console.log('[Content] Skipping iframe');
-} else {
+const isIframe = window.self !== window.top;
+
+{
   let recorder: ActionRecorder | null = null;
   let indicator: RecordingIndicator | null = null;
   let assertionInspector: AssertionInspector | null = null;
   let variableMarker: VariableMarker | null = null;
   let restorationComplete = false;
   let restorationPromise: Promise<void> | null = null;
+
+  const logPrefix = isIframe ? '[Content/iframe]' : '[Content]';
 
   // CRITICAL FIX: Buffer early clicks during initialization to prevent data loss
   let earlyClicksBuffer: MouseEvent[] = [];
@@ -53,18 +59,21 @@ if (window.self !== window.top) {
 
     // Start restoration
     restorationPromise = (async () => {
-      // Initialize recorder and indicator
+      // Initialize recorder (always needed — captures actions)
       if (!recorder) {
         recorder = new ActionRecorder();
-        console.log('[Content] ActionRecorder initialized');
+        console.log(logPrefix, 'ActionRecorder initialized');
       }
-      if (!indicator) {
-        indicator = new RecordingIndicator();
-        console.log('[Content] RecordingIndicator initialized');
-      }
-      if (!variableMarker) {
-        variableMarker = new VariableMarker();
-        console.log('[Content] VariableMarker initialized');
+      // UI components are only used in the main frame (not inside iframes)
+      if (!isIframe) {
+        if (!indicator) {
+          indicator = new RecordingIndicator();
+          console.log(logPrefix, 'RecordingIndicator initialized');
+        }
+        if (!variableMarker) {
+          variableMarker = new VariableMarker();
+          console.log(logPrefix, 'VariableMarker initialized');
+        }
       }
 
       // Check if there's an active recording in background
@@ -73,7 +82,7 @@ if (window.self !== window.top) {
           chrome.runtime.sendMessage({ type: 'GET_STATUS' }, resolve);
         });
 
-        console.log('[Content] Status check response:', response);
+        console.log(logPrefix, 'Status check response:', response);
 
         if (response?.success && response.data) {
           const responseData = response.data as any;
@@ -81,7 +90,8 @@ if (window.self !== window.top) {
 
           if ((recordingState === 'recording' || recordingState === 'paused') && metadata) {
             console.log(
-              '[Content] Restoring recording state:',
+              logPrefix,
+              'Restoring recording state:',
               recordingState,
               'metadata:',
               metadata
@@ -90,42 +100,50 @@ if (window.self !== window.top) {
             // Restore recording in the recorder
             if (recorder && metadata.testName) {
               try {
-                console.log('[Content] Calling recorder.restoreRecording with metadata:', metadata);
+                console.log(
+                  logPrefix,
+                  'Calling recorder.restoreRecording with metadata:',
+                  metadata
+                );
                 recorder.restoreRecording(metadata);
                 console.log(
-                  '[Content] recorder.restoreRecording completed, isRecording:',
+                  logPrefix,
+                  'recorder.restoreRecording completed, isRecording:',
                   recorder.isRecording()
                 );
 
-                // Show indicator
-                if (indicator) {
-                  console.log('[Content] Showing recording indicator');
+                // Show indicator (main frame only)
+                if (!isIframe && indicator) {
+                  console.log(logPrefix, 'Showing recording indicator');
                   indicator.show(metadata.testName);
 
                   if (recordingState === 'paused') {
-                    console.log('[Content] Setting paused state');
+                    console.log(logPrefix, 'Setting paused state');
                     indicator.setPaused(true);
                     recorder.pauseRecording();
                   }
+                } else if (isIframe && recordingState === 'paused') {
+                  // Pause recorder in iframe too (no indicator to set)
+                  recorder.pauseRecording();
                 }
 
-                // Start variable marker on restored recording
-                if (variableMarker) {
+                // Start variable marker on restored recording (main frame only)
+                if (!isIframe && variableMarker) {
                   variableMarker.start();
                   recorder.setVariableMarker(variableMarker);
                 }
 
-                console.log('[Content] Recording state restored successfully');
+                console.log(logPrefix, 'Recording state restored successfully');
               } catch (error) {
-                console.error('[Content] Failed to restore recording state:', error);
+                console.error(logPrefix, 'Failed to restore recording state:', error);
               }
             }
           } else {
-            console.log('[Content] No active recording to restore, state:', recordingState);
+            console.log(logPrefix, 'No active recording to restore, state:', recordingState);
           }
         }
       } catch (error) {
-        console.error('[Content] Failed to check recording status:', error);
+        console.error(logPrefix, 'Failed to check recording status:', error);
       }
 
       restorationComplete = true;
@@ -134,7 +152,7 @@ if (window.self !== window.top) {
       // CRITICAL FIX: Process buffered early clicks after initialization
       if (earlyClicksBuffer.length > 0 && recorder && recorder.isRecording()) {
         console.log(
-          `[Content] Processing ${earlyClicksBuffer.length} buffered clicks from initialization`
+          `${logPrefix} Processing ${earlyClicksBuffer.length} buffered clicks from initialization`
         );
         // Give recorder a moment to fully initialize, then replay buffered clicks
         setTimeout(() => {
@@ -144,7 +162,7 @@ if (window.self !== window.top) {
             event.target?.dispatchEvent(clickEvent);
           });
           earlyClicksBuffer = []; // Clear buffer
-          console.log('[Content] Buffered clicks processed');
+          console.log(logPrefix, 'Buffered clicks processed');
         }, 100);
       }
     })();
@@ -161,7 +179,7 @@ if (window.self !== window.top) {
       _sender: chrome.runtime.MessageSender,
       sendResponse: (response: MessageResponse) => void
     ) => {
-      console.log('[Content] Received message:', message.type);
+      console.log(logPrefix, 'Received message:', message.type);
 
       // Ensure recorder is ready and state is restored before handling messages
       ensureRecorderReady()
@@ -169,7 +187,7 @@ if (window.self !== window.top) {
           try {
             switch (message.type) {
               case 'START_RECORDING':
-                if (!recorder || !indicator) {
+                if (!recorder) {
                   sendResponse({
                     success: false,
                     error: 'Recorder not initialized',
@@ -182,7 +200,8 @@ if (window.self !== window.top) {
                   // skip startRecording() to avoid "already in progress" error
                   if (recorder.isRecording()) {
                     console.log(
-                      '[Content] Recording already restored by ensureRecorderReady, skipping startRecording'
+                      logPrefix,
+                      'Recording already restored by ensureRecorderReady, skipping startRecording'
                     );
                     sendResponse({
                       success: true,
@@ -195,21 +214,25 @@ if (window.self !== window.top) {
                   }
 
                   console.log(
-                    '[Content] Starting recording with testName:',
+                    logPrefix,
+                    'Starting recording with testName:',
                     message.payload.testName
                   );
                   recorder.startRecording(message.payload.testName);
-                  console.log('[Content] Recording started, isRecording:', recorder.isRecording());
+                  console.log(logPrefix, 'Recording started, isRecording:', recorder.isRecording());
 
-                  // Start variable marker for this recording session
-                  if (variableMarker) {
+                  // Start variable marker for this recording session (main frame only)
+                  if (!isIframe && variableMarker) {
                     variableMarker.clear();
                     variableMarker.start();
                     recorder.setVariableMarker(variableMarker);
                   }
 
-                  indicator.show(message.payload.testName);
-                  console.log('[Content] Indicator shown');
+                  // Show indicator (main frame only)
+                  if (!isIframe && indicator) {
+                    indicator.show(message.payload.testName);
+                    console.log(logPrefix, 'Indicator shown');
+                  }
 
                   sendResponse({
                     success: true,
@@ -219,7 +242,7 @@ if (window.self !== window.top) {
                     },
                   });
                 } catch (error) {
-                  console.error('[Content] Error starting recording:', error);
+                  console.error(logPrefix, 'Error starting recording:', error);
                   sendResponse({
                     success: false,
                     error: (error as Error).message,
@@ -228,7 +251,7 @@ if (window.self !== window.top) {
                 return false;
 
               case 'STOP_RECORDING':
-                if (!recorder || !indicator) {
+                if (!recorder) {
                   sendResponse({
                     success: false,
                     error: 'Recorder not initialized',
@@ -237,21 +260,27 @@ if (window.self !== window.top) {
                 }
 
                 try {
-                  const recording: Recording = recorder.stopRecording();
-                  indicator.hide();
-                  if (variableMarker) {
-                    variableMarker.stop();
-                    variableMarker.clear();
+                  // In iframes, just stop the recorder — main frame handles the recording data
+                  if (isIframe) {
+                    recorder.destroy();
+                    recorder = new ActionRecorder();
+                    sendResponse({ success: true });
+                  } else {
+                    const recording: Recording = recorder.stopRecording();
+                    if (indicator) indicator.hide();
+                    if (variableMarker) {
+                      variableMarker.stop();
+                      variableMarker.clear();
+                    }
+                    console.log(logPrefix, 'Recording stopped, indicator hidden');
+                    sendResponse({
+                      success: true,
+                      data: recording,
+                    });
                   }
-                  console.log('[Content] Recording stopped, indicator hidden');
-                  sendResponse({
-                    success: true,
-                    data: recording,
-                  });
                 } catch (error) {
-                  console.error('[Content] Error stopping recording:', error);
-                  // Hide indicator even on error
-                  indicator.hide();
+                  console.error(logPrefix, 'Error stopping recording:', error);
+                  if (!isIframe && indicator) indicator.hide();
                   sendResponse({
                     success: false,
                     error: (error as Error).message,
@@ -260,7 +289,7 @@ if (window.self !== window.top) {
                 return false;
 
               case 'PAUSE_RECORDING':
-                if (!recorder || !indicator) {
+                if (!recorder) {
                   sendResponse({
                     success: false,
                     error: 'Recorder not initialized',
@@ -270,7 +299,7 @@ if (window.self !== window.top) {
 
                 try {
                   recorder.pauseRecording();
-                  indicator.setPaused(true);
+                  if (!isIframe && indicator) indicator.setPaused(true);
                   sendResponse({
                     success: true,
                     data: { state: 'paused' },
@@ -284,7 +313,7 @@ if (window.self !== window.top) {
                 return false;
 
               case 'RESUME_RECORDING':
-                if (!recorder || !indicator) {
+                if (!recorder) {
                   sendResponse({
                     success: false,
                     error: 'Recorder not initialized',
@@ -294,7 +323,7 @@ if (window.self !== window.top) {
 
                 try {
                   recorder.resumeRecording();
-                  indicator.setPaused(false);
+                  if (!isIframe && indicator) indicator.setPaused(false);
                   sendResponse({
                     success: true,
                     data: { state: 'recording' },
@@ -351,15 +380,15 @@ if (window.self !== window.top) {
 
               case 'SAVE_CURRENT_STATE':
                 // Save current actions to background before page unloads
-                console.log('[Content] SAVE_CURRENT_STATE received');
+                console.log(logPrefix, 'SAVE_CURRENT_STATE received');
                 if (!recorder || !recorder.isRecording()) {
-                  console.log('[Content] No active recording, sending empty actions');
+                  console.log(logPrefix, 'No active recording, sending empty actions');
                   sendResponse({ success: true, data: { actions: [] } });
                   return false;
                 }
 
                 const actionsToSave = recorder.getActions();
-                console.log('[Content] Saving', actionsToSave.length, 'actions to background');
+                console.log(logPrefix, 'Saving', actionsToSave.length, 'actions to background');
                 sendResponse({
                   success: true,
                   data: {
@@ -378,6 +407,28 @@ if (window.self !== window.top) {
                   assertionInspector.setRecordingStartTime(recorder.recordingStartTime);
                 }
                 assertionInspector.enter((checkpointAction) => {
+                  // Populate frame context for iframe assertions
+                  if (isIframe) {
+                    checkpointAction.frameUrl = window.location.href;
+                    const frameEl = window.frameElement;
+                    if (frameEl) {
+                      checkpointAction.frameId =
+                        frameEl.getAttribute('id') || frameEl.getAttribute('name') || undefined;
+                      const esc =
+                        typeof CSS !== 'undefined' && CSS.escape ? CSS.escape : (s: string) => s;
+                      const id = frameEl.getAttribute('id');
+                      const name = frameEl.getAttribute('name');
+                      const src = frameEl.getAttribute('src');
+                      if (id) {
+                        checkpointAction.frameSelector = `#${esc(id)}`;
+                      } else if (name) {
+                        checkpointAction.frameSelector = `iframe[name="${esc(name)}"]`;
+                      } else if (src) {
+                        checkpointAction.frameSelector = `iframe[src="${esc(src)}"]`;
+                      }
+                    }
+                  }
+
                   // Emit the checkpoint action through the recorder
                   if (recorder) {
                     try {
@@ -389,16 +440,17 @@ if (window.self !== window.top) {
                         (resp) => {
                           if (chrome.runtime.lastError) {
                             console.error(
-                              '[Content] Assertion sync error:',
+                              logPrefix,
+                              'Assertion sync error:',
                               chrome.runtime.lastError
                             );
                           } else {
-                            console.log('[Content] Assertion synced:', resp);
+                            console.log(logPrefix, 'Assertion synced:', resp);
                           }
                         }
                       );
                     } catch (error) {
-                      console.error('[Content] Failed to sync assertion:', error);
+                      console.error(logPrefix, 'Failed to sync assertion:', error);
                     }
                   }
                 });
@@ -420,7 +472,7 @@ if (window.self !== window.top) {
                 return false;
             }
           } catch (error) {
-            console.error('[Content] Error handling message:', error);
+            console.error(logPrefix, 'Error handling message:', error);
             sendResponse({
               success: false,
               error: (error as Error).message,
@@ -429,7 +481,7 @@ if (window.self !== window.top) {
           }
         })
         .catch((error) => {
-          console.error('[Content] Error ensuring recorder ready:', error);
+          console.error(logPrefix, 'Error ensuring recorder ready:', error);
           sendResponse({
             success: false,
             error: 'Failed to initialize recorder',
@@ -450,7 +502,7 @@ if (window.self !== window.top) {
 
     // Save current state to background before unloading
     if (recorder && recorder.isRecording()) {
-      console.log('[Content] Page unloading - saving state, back/forward:', isBackForward);
+      console.log(logPrefix, 'Page unloading - saving state, back/forward:', isBackForward);
 
       // Note: Navigation action will be captured by background's chrome.tabs.onUpdated
       // No need to create it here as it would be redundant
@@ -460,7 +512,7 @@ if (window.self !== window.top) {
           type: 'SAVE_CURRENT_STATE',
         });
       } catch (error) {
-        console.error('[Content] Failed to save state on unload:', error);
+        console.error(logPrefix, 'Failed to save state on unload:', error);
       }
     }
 
@@ -469,7 +521,7 @@ if (window.self !== window.top) {
       assertionInspector.exit();
       assertionInspector = null;
     }
-    if (variableMarker) {
+    if (!isIframe && variableMarker) {
       variableMarker.stop();
       variableMarker = null;
     }
@@ -477,7 +529,7 @@ if (window.self !== window.top) {
       recorder.destroy();
       recorder = null;
     }
-    if (indicator) {
+    if (!isIframe && indicator) {
       indicator.hide();
       indicator = null;
     }
@@ -492,7 +544,7 @@ if (window.self !== window.top) {
   // Previously, async initialization caused race condition where clicks were lost
   (async () => {
     await ensureRecorderReady();
-    console.log('[Content] Content script loaded and ready - event listeners active');
+    console.log(logPrefix, 'Content script loaded and ready - event listeners active');
   })();
 
   // BACKUP: Also ensure ready on DOMContentLoaded (if script loads late)
@@ -501,4 +553,4 @@ if (window.self !== window.top) {
       ensureRecorderReady();
     });
   }
-} // End of main frame check
+}
