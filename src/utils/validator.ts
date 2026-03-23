@@ -7,6 +7,7 @@ import type {
   NavigationAction,
   DialogAction,
   FileUploadAction,
+  TabAction,
 } from '@/types';
 
 /**
@@ -98,7 +99,7 @@ export function validateAction(action: Action): ValidationResult {
     });
   }
 
-  if (!action.url) {
+  if (!action.url && action.type !== 'tab') {
     errors.push({
       field: 'action.url',
       message: 'Action URL is required',
@@ -249,6 +250,40 @@ export function validateAction(action: Action): ValidationResult {
           field: 'action.multiple',
           message: 'File upload action must specify whether input accepts multiple files',
         });
+      }
+      break;
+    }
+
+    case 'tab': {
+      const tabAction = action as TabAction;
+      const validOperations = ['open', 'switch', 'close'];
+      if (!tabAction.tabOperation || !validOperations.includes(tabAction.tabOperation)) {
+        errors.push({
+          field: 'action.tabOperation',
+          message: 'Tab action must have a valid tabOperation (open, switch, close)',
+        });
+      }
+      if (typeof tabAction.tabIndex !== 'number' || tabAction.tabIndex < 0) {
+        errors.push({
+          field: 'action.tabIndex',
+          message: 'Tab action must have a non-negative tabIndex',
+        });
+      }
+      if (tabAction.tabOperation === 'open') {
+        if (typeof tabAction.newTabIndex !== 'number' || tabAction.newTabIndex < 1) {
+          errors.push({
+            field: 'action.newTabIndex',
+            message: 'Tab open action must have a newTabIndex >= 1',
+          });
+        }
+      }
+      if (tabAction.tabOperation === 'switch') {
+        if (typeof tabAction.newTabIndex !== 'number' || tabAction.newTabIndex < 0) {
+          errors.push({
+            field: 'action.newTabIndex',
+            message: 'Tab switch action must have a newTabIndex',
+          });
+        }
       }
       break;
     }

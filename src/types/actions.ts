@@ -135,6 +135,7 @@ export interface BaseAction {
   frameId?: string; // iFrame identifier if in frame
   frameUrl?: string; // iFrame URL if in frame
   frameSelector?: string; // Selector to target frame
+  tabIndex?: number; // Which tab this action belongs to (0 = main tab, default)
 
   // ✅ NEW: Optional metadata for smart waits (backward compatible)
   elementState?: ElementState; // Element state when action recorded
@@ -411,6 +412,19 @@ export interface DialogAction extends BaseAction {
 }
 
 /**
+ * Tab action (new tab opened, tab switched, tab closed)
+ * Used for multi-tab recording where actions span multiple browser tabs.
+ */
+export interface TabAction extends BaseAction {
+  type: 'tab';
+  tabOperation: 'open' | 'switch' | 'close';
+  tabIndex: number; // Target tab index (0 = original)
+  newTabIndex?: number; // For 'open': the new tab's assigned index
+  triggerUrl?: string; // URL of the new tab (for matching during replay)
+  triggerType?: 'target_blank' | 'window_open' | 'popup'; // How the tab was opened
+}
+
+/**
  * File upload action (user selects file via <input type="file">)
  * Records metadata only — no file content is captured (privacy-first).
  * The platform manages test fixture files for replay via page.setInputFiles().
@@ -451,7 +465,8 @@ export type ActionType =
   | 'hover'
   | 'modal-lifecycle'
   | 'dialog'
-  | 'file-upload';
+  | 'file-upload'
+  | 'tab';
 
 /**
  * Union type of all actions
@@ -468,7 +483,8 @@ export type Action =
   | HoverAction
   | ModalLifecycleAction
   | DialogAction
-  | FileUploadAction;
+  | FileUploadAction
+  | TabAction;
 
 /**
  * Type guard for ClickAction
@@ -510,4 +526,11 @@ export function isDialogAction(action: Action): action is DialogAction {
  */
 export function isFileUploadAction(action: Action): action is FileUploadAction {
   return action.type === 'file-upload';
+}
+
+/**
+ * Type guard for TabAction
+ */
+export function isTabAction(action: Action): action is TabAction {
+  return action.type === 'tab';
 }

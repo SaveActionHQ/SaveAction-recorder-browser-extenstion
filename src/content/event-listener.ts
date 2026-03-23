@@ -24,7 +24,7 @@ import { SelectorGenerator } from './selector-generator';
 import { IntentClassifier } from './intent-classifier';
 import type { VariableMarker } from './variable-marker';
 import { generateValidation } from '@/utils/validation-helpers';
-import { DIALOG_MESSAGE_TYPE } from './dialog-interceptor';
+import { DIALOG_MESSAGE_TYPE, WINDOW_OPEN_MESSAGE_TYPE } from './dialog-interceptor';
 import {
   captureElementState,
   logElementState,
@@ -117,6 +117,7 @@ export class EventListener {
   private handleBlur: (e: FocusEvent) => void;
   private handleBeforeUnload: (e: Event) => void;
   private handleDialogMessage: (e: MessageEvent) => void;
+  private handleWindowOpenMessage: (e: MessageEvent) => void;
 
   constructor(actionCallback: (action: Action) => void) {
     this.actionCallback = actionCallback;
@@ -147,6 +148,7 @@ export class EventListener {
     this.handleBlur = this.onBlur.bind(this);
     this.handleBeforeUnload = this.onBeforeUnload.bind(this);
     this.handleDialogMessage = this.onDialogMessage.bind(this);
+    this.handleWindowOpenMessage = this.onWindowOpenMessage.bind(this);
   }
 
   /**
@@ -279,6 +281,12 @@ export class EventListener {
         break;
       }
 
+      case 'tab': {
+        // Tab operations are instant
+        completedAt = action.timestamp;
+        break;
+      }
+
       default: {
         // Exhaustive check - should never reach here
         const _exhaustiveCheck: never = action;
@@ -400,6 +408,7 @@ export class EventListener {
     document.addEventListener('blur', this.handleBlur, true);
     window.addEventListener('beforeunload', this.handleBeforeUnload);
     window.addEventListener('message', this.handleDialogMessage);
+    window.addEventListener('message', this.handleWindowOpenMessage);
   }
 
   /**
@@ -421,6 +430,7 @@ export class EventListener {
     document.removeEventListener('blur', this.handleBlur, true);
     window.removeEventListener('beforeunload', this.handleBeforeUnload);
     window.removeEventListener('message', this.handleDialogMessage);
+    window.removeEventListener('message', this.handleWindowOpenMessage);
   }
 
   /**
@@ -735,44 +745,21 @@ export class EventListener {
   }
 
   /**
-   * Handle mousedown events (for dropdown options that disappear before click fires)
+   * Handle mousedown events — track target only for dropdown detection.
+   * NOTE: Do NOT emit click actions here. onClick is the authoritative click handler.
+   * Emitting here duplicates every click (mousedown fires before click on the same element).
    */
   private onMouseDown(event: MouseEvent): void {
     if (!this.isListening) return;
 
     const clickedElement = event.target as Element;
 
-    // ðŸ›¡ï¸ Skip mousedown on extension's own UI (recording indicator overlay + variable badge/prompt)
+    // Skip mousedown on extension's own UI
     if (clickedElement.closest('[id^="saveaction-"]')) {
-      console.log('[EventListener] â­ï¸ Skipping mousedown on extension UI');
       return;
     }
 
-    // Find the interactive element (could be the target or a parent)
-    const target = this.findInteractiveElement(clickedElement);
-    if (!target) return;
-
-    // Skip hidden radio/checkbox inputs
-    if (
-      target instanceof HTMLInputElement &&
-      (target.type === 'radio' || target.type === 'checkbox') &&
-      !this.isElementVisible(target)
-    ) {
-      return;
-    }
-
-    // Skip file inputs — handled by onChange → recordFileUpload()
-    if (target instanceof HTMLInputElement && target.type === 'file') {
-      return;
-    }
-
-    // Don't record navigation clicks on mousedown (let click handler do it)
-    const willNavigate = this.isNavigationClick(target);
-    if (willNavigate) return;
-
-    // Record the action
-    const action = this.createClickAction(event, target, clickedElement, 1);
-    this.emitAction(action);
+    // Track mousedown target for dropdown detection only (no action emission)
   }
 
   /**
@@ -3788,6 +3775,31 @@ export class EventListener {
 
     console.log('[EventListener] Dialog recorded:', dialogType, action.id);
     this.emitAction(action);
+  }
+
+  /**
+   * Handle window.open messages from the injected page-context script.
+   * Relays to background so it can correlate with chrome.tabs.onCreated.
+   */
+  private onWindowOpenMessage(event: MessageEvent): void {
+    if (!this.isListening) return;
+    if (event.source !== window) return;
+
+    const data = event.data;
+    if (!data || data.type !== WINDOW_OPEN_MESSAGE_TYPE) return;
+
+    const url = String(data.url || '');
+    console.log('[EventListener] window.open() detected, relaying to background:', url);
+
+    // Relay to background for tab correlation
+    try {
+      chrome.runtime.sendMessage({
+        type: 'WINDOW_OPENED',
+        payload: { url },
+      });
+    } catch {
+      // Extension context may be invalid
+    }
   }
 
   /**

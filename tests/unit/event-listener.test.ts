@@ -902,9 +902,9 @@ describe('EventListener', () => {
   });
 
   describe('MouseDown Events', () => {
-    it('should capture mousedown events on interactive elements', () => {
+    it('should NOT capture mousedown events — onClick is the authoritative click handler', () => {
       const button = document.createElement('button');
-      button.type = 'button'; // Explicitly set type to avoid submit button behavior
+      button.type = 'button';
       button.textContent = 'Test Button';
       document.body.appendChild(button);
 
@@ -918,19 +918,13 @@ describe('EventListener', () => {
       });
       button.dispatchEvent(mouseDownEvent);
 
-      expect(capturedActions).toHaveLength(1);
-      const action = capturedActions[0];
-      expect(action?.type).toBe('click');
-
-      if (action?.type === 'click') {
-        expect(action.button).toBe('left');
-        expect(action.text).toBe('Test Button');
-      }
+      // mousedown should NOT emit actions — only onClick does
+      expect(capturedActions).toHaveLength(0);
 
       document.body.removeChild(button);
     });
 
-    it('should capture mousedown on nested elements in dropdown lists', () => {
+    it('should NOT capture mousedown on nested elements (onClick handles these)', () => {
       const ul = document.createElement('ul');
       ul.className = 'form__autocomplete';
       const li = document.createElement('li');
@@ -950,16 +944,8 @@ describe('EventListener', () => {
       });
       span.dispatchEvent(mouseDownEvent);
 
-      expect(capturedActions).toHaveLength(1);
-      const action = capturedActions[0];
-      expect(action?.type).toBe('click');
-
-      if (action?.type === 'click') {
-        // Span itself is detected as interactive (inside LI in autocomplete list)
-        // This matches real-world behavior - we want to capture the clicked element
-        expect(['li', 'span']).toContain(action.tagName);
-        expect(action.text).toBe('Dropdown Option');
-      }
+      // mousedown should NOT emit actions
+      expect(capturedActions).toHaveLength(0);
 
       document.body.removeChild(ul);
     });
@@ -999,7 +985,7 @@ describe('EventListener', () => {
       document.body.removeChild(button);
     });
 
-    it('should capture mousedown on list items', () => {
+    it('should NOT capture mousedown on list items (onClick handles these)', () => {
       const ul = document.createElement('ul');
       const li = document.createElement('li');
       li.textContent = 'List Item';
@@ -1014,19 +1000,13 @@ describe('EventListener', () => {
       });
       li.dispatchEvent(mouseDownEvent);
 
-      expect(capturedActions).toHaveLength(1);
-      const action = capturedActions[0];
-      expect(action?.type).toBe('click');
-
-      if (action?.type === 'click') {
-        expect(action.tagName).toBe('li');
-        expect(action.text).toBe('List Item');
-      }
+      // mousedown should NOT emit actions
+      expect(capturedActions).toHaveLength(0);
 
       document.body.removeChild(ul);
     });
 
-    it('should handle mousedown on elements with onclick handlers', () => {
+    it('should NOT capture mousedown on elements with onclick handlers', () => {
       const div = document.createElement('div');
       div.setAttribute('onclick', 'return false;');
       div.textContent = 'Clickable Div';
@@ -1040,9 +1020,8 @@ describe('EventListener', () => {
       });
       div.dispatchEvent(mouseDownEvent);
 
-      expect(capturedActions).toHaveLength(1);
-      const action = capturedActions[0];
-      expect(action?.type).toBe('click');
+      // mousedown should NOT emit actions
+      expect(capturedActions).toHaveLength(0);
 
       document.body.removeChild(div);
     });

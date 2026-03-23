@@ -37,6 +37,13 @@
     },
     {
       "matches": ["<all_urls>"],
+      "js": ["content/window-open-early-inject.ts"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "world": "MAIN"
+    },
+    {
+      "matches": ["<all_urls>"],
       "js": ["content/index.ts"],
       "run_at": "document_end",
       "all_frames": true

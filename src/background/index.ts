@@ -6,7 +6,7 @@
 
 import type { Message, MessageResponse, StatusResponse, RecordingResponse } from '@/types/messages';
 import type { Recording, RecordingMetadata, Variable } from '@/types/recording';
-import type { InputAction } from '@/types/actions';
+import type { InputAction, TabAction } from '@/types/actions';
 import { saveRecording } from '@/utils/storage';
 import { downloadRecording } from '@/utils/exporter';
 import { loadSettings, uploadRecording as uploadToPlatform } from '@/platform/api';
@@ -27,7 +27,8 @@ interface BackgroundState {
   actionCache: any[]; // Cache of last known actions from content script
   pollingInterval: NodeJS.Timeout | null; // Timer for periodic action syncing
   actionCounter: number; // Global action counter across all pages
-  previousUrl: string | null; // Track previous URL for back/forward navigation detection
+  previousUrl: string | null; // Track previous URL for back/forward navigation detection (primary tab)
+  tabPreviousUrls: Map<number, string>; // Per-tab URL tracking for multi-tab navigation detection
   // Dimension data from initial page
   viewport: { width: number; height: number } | null;
   windowSize: { width: number; height: number } | null;
@@ -47,6 +48,12 @@ interface BackgroundState {
     fieldType: string;
     defaultValue: string;
   }>;
+  // Multi-tab tracking
+  tabCounter: number; // Sequential tab index counter
+  tabIndexMap: Map<number, number>; // chrome tab ID → sequential tabIndex
+  activeTabId: number | null; // Currently focused tracked tab
+  lastClosedTabIndex: number | null; // Index of the last closed tab (for switch-after-close)
+  pendingWindowOpen: { url: string; timestamp: number } | null; // Pending window.open correlation
 }
 
 /**
@@ -65,12 +72,18 @@ let state: BackgroundState = {
   pollingInterval: null,
   actionCounter: 0,
   previousUrl: null,
+  tabPreviousUrls: new Map(),
   viewport: null,
   windowSize: null,
   screenSize: null,
   devicePixelRatio: null,
   lastUploadResult: null,
   markedVariables: [],
+  tabCounter: 0,
+  tabIndexMap: new Map(),
+  activeTabId: null,
+  lastClosedTabIndex: null as number | null,
+  pendingWindowOpen: null,
 };
 
 /**
@@ -311,6 +324,13 @@ chrome.runtime.onMessage.addListener(
         return true;
 
       case 'SYNC_ACTION':
+        // Stamp tabIndex from sender's tab before queuing
+        if (message.payload?.action && sender.tab?.id !== undefined) {
+          const senderTabIndex = state.tabIndexMap.get(sender.tab.id);
+          if (senderTabIndex !== undefined) {
+            message.payload.action.tabIndex = senderTabIndex;
+          }
+        }
         handleSyncAction(message.payload)
           .then(sendResponse)
           .catch((error) =>
@@ -389,6 +409,27 @@ chrome.runtime.onMessage.addListener(
         sendResponse({ success: true, data: state.markedVariables });
         return false;
 
+      case 'GET_TAB_INDEX': {
+        const senderTabId = sender.tab?.id;
+        if (senderTabId && state.tabIndexMap.has(senderTabId)) {
+          sendResponse({ success: true, data: { tabIndex: state.tabIndexMap.get(senderTabId) } });
+        } else {
+          sendResponse({ success: true, data: { tabIndex: 0 } });
+        }
+        return false;
+      }
+
+      case 'WINDOW_OPENED':
+        if (state.isRecording && message.payload?.url) {
+          state.pendingWindowOpen = {
+            url: String(message.payload.url),
+            timestamp: Date.now(),
+          };
+          console.log('[Background] window.open() detected, url:', message.payload.url);
+        }
+        sendResponse({ success: true });
+        return false;
+
       default:
         sendResponse({
           success: false,
@@ -405,22 +446,27 @@ chrome.runtime.onMessage.addListener(
  * programmatically injects the content script bundle.
  */
 async function ensureContentScriptInjected(tabId: number): Promise<void> {
+  // The manifest already injects content/index.ts into all frames at document_end.
+  // Only inject programmatically as a fallback for edge cases (e.g., chrome:// → http:// transition).
+  // Send to the specific main frame (frameId: 0) to avoid ambiguity with iframe responses.
   try {
-    await chrome.tabs.sendMessage(tabId, { type: 'GET_STATUS' });
-    // Content script already running
+    await chrome.tabs.sendMessage(tabId, { type: 'GET_STATUS' }, { frameId: 0 });
+    // Content script already running in main frame
     return;
   } catch {
-    // Content script not loaded — inject it
-    console.log('[Background] Content script not found, injecting programmatically');
+    console.log('[Background] Content script not found in main frame, injecting programmatically');
   }
 
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    files: ['content/index.js'],
-  });
-
-  // Give the script a moment to initialise its listener
-  await new Promise((resolve) => setTimeout(resolve, 150));
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId, allFrames: false },
+      files: ['content/index.js'],
+    });
+    // Give the script a moment to initialise its listener
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  } catch (error) {
+    console.log('[Background] Programmatic injection failed (page may not support it):', error);
+  }
 }
 
 /**
@@ -466,6 +512,15 @@ async function handleStartRecording(
   state.initialUrl = initialUrl; // Store initial URL
   state.previousUrl = initialUrl; // Initialize previousUrl for navigation detection
   state.metadata = null; // Will be populated from content script
+
+  // Initialize multi-tab tracking
+  state.tabCounter = 0;
+  state.tabIndexMap = new Map();
+  state.tabIndexMap.set(tabId, 0); // Recording tab = tab 0
+  state.activeTabId = tabId;
+  state.pendingWindowOpen = null;
+  state.tabPreviousUrls = new Map();
+  state.tabPreviousUrls.set(tabId, initialUrl);
 
   // Ensure content script is loaded, then start recording
   try {
@@ -541,6 +596,18 @@ async function handleStopRecording(
 
     // Try to get recording metadata from content script
     try {
+      // Send STOP_RECORDING to all tracked tabs
+      const stopPromises: Promise<any>[] = [];
+      for (const [trackedTabId] of state.tabIndexMap) {
+        if (trackedTabId !== tabId) {
+          stopPromises.push(
+            chrome.tabs.sendMessage(trackedTabId, { type: 'STOP_RECORDING' }).catch(() => {})
+          );
+        }
+      }
+      // Wait for non-primary tabs to stop (best effort)
+      await Promise.allSettled(stopPromises);
+
       const response = await chrome.tabs.sendMessage(tabId, {
         type: 'STOP_RECORDING',
       });
@@ -564,11 +631,13 @@ async function handleStopRecording(
             );
             recording.actions = [...state.accumulatedActions];
 
+            // Deduplicate before sorting/renumbering
+            recording.actions = deduplicateActions(recording.actions);
+
             // Re-sort by timestamp
             recording.actions.sort((a, b) => a.timestamp - b.timestamp);
 
-            // ✅ OPTION B: Renumber actions sequentially after sorting
-            // Ensures IDs match chronological order in final JSON (clean for open source)
+            // Renumber actions sequentially after sorting
             recording.actions.forEach((action, index) => {
               action.id = `act_${String(index + 1).padStart(3, '0')}`;
             });
@@ -633,15 +702,17 @@ async function handleStopRecording(
       screenSize,
       devicePixelRatio,
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      actions: [...state.accumulatedActions], // Use accumulated actions only (no duplication)
+      actions: [...state.accumulatedActions],
       variables: [], // Will be populated below
     };
+
+    // Deduplicate before sorting/renumbering
+    recording.actions = deduplicateActions(recording.actions);
 
     // Sort by timestamp
     recording.actions.sort((a, b) => a.timestamp - b.timestamp);
 
-    // ✅ OPTION B: Renumber actions sequentially after sorting
-    // Ensures IDs match chronological order in final JSON (clean for open source)
+    // Renumber actions sequentially after sorting
     recording.actions.forEach((action, index) => {
       action.id = `act_${String(index + 1).padStart(3, '0')}`;
     });
@@ -990,15 +1061,22 @@ async function handleEnterAssertionMode(
     return { success: false, error: 'No active recording' };
   }
 
-  const tabId = state.currentTabId;
+  // Use the currently active tracked tab (not necessarily the original recording tab)
+  const tabId = state.activeTabId || state.currentTabId;
   if (!tabId) {
     return { success: false, error: 'No active tab for recording' };
   }
 
-  // Pause recording if not already paused (all frames)
+  // Pause recording if not already paused (ALL tracked tabs, not just active)
   if (!state.isPaused) {
     try {
-      await sendMessageToAllFrames(tabId, { type: 'PAUSE_RECORDING' });
+      const pausePromises: Promise<any>[] = [];
+      for (const [trackedTabId] of state.tabIndexMap) {
+        pausePromises.push(
+          sendMessageToAllFrames(trackedTabId, { type: 'PAUSE_RECORDING' }).catch(() => {})
+        );
+      }
+      await Promise.allSettled(pausePromises);
       state.isPaused = true;
       broadcastStatusUpdate();
     } catch (error) {
@@ -1009,7 +1087,7 @@ async function handleEnterAssertionMode(
     }
   }
 
-  // Tell ALL frames (main + iframes) to enter assertion inspector
+  // Tell ALL frames of the ACTIVE tab to enter assertion inspector
   try {
     await sendMessageToAllFrames(tabId, { type: 'ENTER_ASSERTION_MODE' });
     return { success: true, data: { state: 'assertion-mode' } };
@@ -1031,7 +1109,8 @@ async function handleExitAssertionMode(
     return { success: false, error: 'No active recording' };
   }
 
-  const tabId = state.currentTabId;
+  // Use the currently active tracked tab (matches enter assertion mode)
+  const tabId = state.activeTabId || state.currentTabId;
   if (!tabId) {
     return { success: false, error: 'No active tab for recording' };
   }
@@ -1043,10 +1122,16 @@ async function handleExitAssertionMode(
     console.warn('[Background] Some frames failed to exit assertion mode:', error);
   }
 
-  // Resume recording in all frames
+  // Resume recording in ALL tracked tabs (not just active)
   if (state.isPaused) {
     try {
-      await sendMessageToAllFrames(tabId, { type: 'RESUME_RECORDING' });
+      const resumePromises: Promise<any>[] = [];
+      for (const [trackedTabId] of state.tabIndexMap) {
+        resumePromises.push(
+          sendMessageToAllFrames(trackedTabId, { type: 'RESUME_RECORDING' }).catch(() => {})
+        );
+      }
+      await Promise.allSettled(resumePromises);
       state.isPaused = false;
       broadcastStatusUpdate();
     } catch (error) {
@@ -1178,6 +1263,46 @@ class ActionQueue {
     }
 
     try {
+      // ✅ DEDUP FIX: Detect duplicate actions from multiple content script instances
+      // (e.g., main frame + iframes all sending the same click event, or re-injected scripts).
+      // Check if an identical action was recently added (same type + timestamp + selector text).
+      const recentCount = Math.min(state.accumulatedActions.length, 10);
+      for (
+        let i = state.accumulatedActions.length - 1;
+        i >= state.accumulatedActions.length - recentCount;
+        i--
+      ) {
+        const existing = state.accumulatedActions[i];
+        if (
+          existing.type === action.type &&
+          existing.timestamp === action.timestamp &&
+          existing.type !== 'tab' && // Tab actions are background-generated, never duplicated
+          existing.type !== 'navigation' // Navigation actions are background-generated
+        ) {
+          // Same type + timestamp — check selector match for clicks/inputs/checkpoints
+          const existingSel = existing.selector?.css || existing.selector?.xpath || '';
+          const actionSel = action.selector?.css || action.selector?.xpath || '';
+          if (existingSel && actionSel && existingSel === actionSel) {
+            console.log(
+              '[Background] Skipping duplicate action:',
+              action.type,
+              'timestamp:',
+              action.timestamp
+            );
+            return { success: true, data: { actionId: existing.id, counter: state.actionCounter } };
+          }
+          // For actions without selectors, match on text content
+          if (!existingSel && !actionSel && existing.text === action.text) {
+            console.log(
+              '[Background] Skipping duplicate action (text match):',
+              action.type,
+              action.text
+            );
+            return { success: true, data: { actionId: existing.id, counter: state.actionCounter } };
+          }
+        }
+      }
+
       // Read current actions from storage
       const result = await chrome.storage.session.get('saveaction_current_actions');
       const actions = result['saveaction_current_actions'] || [];
@@ -1282,9 +1407,32 @@ async function handleSaveCurrentState(
       console.log('[Background] Received', newActions.length, 'actions from content script');
 
       if (newActions.length > 0) {
-        console.log('[Background] Saving', newActions.length, 'actions before navigation');
-        state.accumulatedActions = [...state.accumulatedActions, ...newActions];
-        console.log('[Background] Total accumulated actions:', state.accumulatedActions.length);
+        // Dedup: only add actions not already in accumulatedActions
+        // Content-script actions have empty IDs, so match by type + timestamp + selector
+        let addedCount = 0;
+        for (const action of newActions) {
+          const actionSel = action.selector?.css || action.selector?.xpath || '';
+          const isDuplicate = state.accumulatedActions.some((existing: any) => {
+            if (existing.type !== action.type || existing.timestamp !== action.timestamp)
+              return false;
+            const existingSel = existing.selector?.css || existing.selector?.xpath || '';
+            if (existingSel && actionSel) return existingSel === actionSel;
+            if (!existingSel && !actionSel) return existing.text === action.text;
+            return false;
+          });
+          if (!isDuplicate) {
+            state.accumulatedActions.push(action);
+            addedCount++;
+          }
+        }
+        console.log(
+          '[Background] Saved',
+          addedCount,
+          'new actions (deduped',
+          newActions.length - addedCount,
+          '). Total:',
+          state.accumulatedActions.length
+        );
       }
     } else {
       console.log('[Background] Invalid response or no actions:', response);
@@ -1345,8 +1493,14 @@ async function resetState(): Promise<void> {
     pollingInterval: null,
     actionCounter: 0,
     previousUrl: null,
+    tabPreviousUrls: new Map(),
     lastUploadResult: preservedUploadResult,
     markedVariables: [],
+    tabCounter: 0,
+    tabIndexMap: new Map(),
+    activeTabId: null,
+    lastClosedTabIndex: null,
+    pendingWindowOpen: null,
   };
 
   // Clear storage
@@ -1363,13 +1517,267 @@ async function resetState(): Promise<void> {
 }
 
 /**
- * Handle tab close - stop recording if the recording tab is closed
+ * Handle tab close - stop recording if the PRIMARY recording tab is closed.
+ * For other tracked tabs, emit TabAction(close) + TabAction(switch).
  */
 chrome.tabs.onRemoved.addListener((tabId: number) => {
-  if (state.currentTabId === tabId && state.isRecording) {
-    console.log('[Background] Recording tab closed, stopping recording');
+  if (!state.isRecording) return;
+
+  const closedTabIndex = state.tabIndexMap.get(tabId);
+  if (closedTabIndex === undefined) return; // Not a tracked tab
+
+  // If the primary recording tab (index 0) is closed, stop recording
+  if (closedTabIndex === 0) {
+    console.log('[Background] Recording tab (tab 0) closed, stopping recording');
     resetState();
     broadcastStatusUpdate();
+    return;
+  }
+
+  // Non-primary tracked tab closed — emit close action
+  const relativeTimestamp = state.startTime ? Date.now() - state.startTime : Date.now();
+  const closeAction: TabAction = {
+    id: `act_${String(state.actionCounter + 1).padStart(3, '0')}`,
+    type: 'tab',
+    timestamp: relativeTimestamp,
+    completedAt: relativeTimestamp,
+    url: '',
+    tabOperation: 'close',
+    tabIndex: closedTabIndex,
+  };
+
+  state.actionCounter++;
+  state.accumulatedActions.push(closeAction);
+  persistActionCounter();
+  console.log('[Background] Tab closed:', closedTabIndex, 'action:', closeAction.id);
+
+  // Remove from tracking
+  state.tabIndexMap.delete(tabId);
+
+  // If the closed tab was the active one, clear activeTabId.
+  // onActivated handles same-window tab closes (fires immediately).
+  // For popup window closes, onActivated may NOT fire for the main window's tab,
+  // so we use a deferred check to emit the switch if needed.
+  if (state.activeTabId === tabId) {
+    state.activeTabId = null;
+    state.lastClosedTabIndex = closedTabIndex;
+
+    // Deferred: if onActivated hasn't fired after 200ms, query the actual active tab
+    // and emit a switch action ourselves. This handles popup/cross-window closes.
+    setTimeout(async () => {
+      if (state.activeTabId !== null || !state.isRecording) return; // onActivated already handled it
+
+      try {
+        const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        if (activeTab?.id && state.tabIndexMap.has(activeTab.id)) {
+          const targetTabIndex = state.tabIndexMap.get(activeTab.id)!;
+          state.activeTabId = activeTab.id;
+          state.lastClosedTabIndex = null;
+          const switchTimestamp = state.startTime ? Date.now() - state.startTime : Date.now();
+          const switchAction: TabAction = {
+            id: '',
+            type: 'tab',
+            timestamp: switchTimestamp,
+            completedAt: switchTimestamp,
+            url: '',
+            tabOperation: 'switch',
+            tabIndex: closedTabIndex,
+            newTabIndex: targetTabIndex,
+          };
+          await emitTabAction(switchAction);
+          console.log(
+            '[Background] Deferred switch after popup close:',
+            closedTabIndex,
+            '→',
+            targetTabIndex
+          );
+        }
+      } catch (e) {
+        console.error('[Background] Failed to detect active tab after close:', e);
+      }
+    }, 200);
+  }
+});
+
+/**
+ * Helper: Create and emit a TabAction via the accumulated actions pipeline
+ */
+async function emitTabAction(action: TabAction): Promise<void> {
+  state.actionCounter++;
+  action.id = `act_${String(state.actionCounter).padStart(3, '0')}`;
+  state.accumulatedActions.push(action);
+  await persistActionCounter();
+}
+
+/**
+ * Handle new tab creation during recording.
+ * Detects tabs opened by target="_blank" clicks or window.open() calls.
+ */
+chrome.tabs.onCreated.addListener(async (tab: chrome.tabs.Tab) => {
+  if (!state.isRecording || state.isPaused) return;
+
+  const newTabId = tab.id;
+  if (!newTabId) return;
+
+  // Skip chrome:// internal pages and explicit new-tab pages (user pressed Ctrl+T)
+  // NOTE: Do NOT skip about:blank — popup windows (e.g., OAuth) often start there
+  const tabUrl = tab.pendingUrl || tab.url || '';
+  if (
+    tabUrl === 'chrome://newtab/' ||
+    tabUrl === 'about:newtab' ||
+    tabUrl.startsWith('chrome://')
+  ) {
+    return;
+  }
+
+  // If this tab is already tracked, skip
+  if (state.tabIndexMap.has(newTabId)) return;
+
+  // Assign sequential index
+  state.tabCounter++;
+  const newTabIndex = state.tabCounter;
+  state.tabIndexMap.set(newTabId, newTabIndex);
+
+  // CRITICAL: Capture currentTabIndex and claim activeTabId IMMEDIATELY after adding
+  // the tab to the map, BEFORE any awaits. This prevents onActivated from racing
+  // (it checks tabIndexMap and activeTabId) and emitting a switch before we emit open.
+  const currentTabIndex = state.activeTabId ? (state.tabIndexMap.get(state.activeTabId) ?? 0) : 0;
+  const previousActiveTabId = state.activeTabId;
+  state.activeTabId = newTabId; // Block onActivated from emitting a duplicate switch
+
+  // Determine trigger type
+  let triggerType: TabAction['triggerType'];
+  let triggerUrl = tabUrl;
+  const CORRELATION_WINDOW = 3000; // 3 seconds
+
+  if (
+    state.pendingWindowOpen &&
+    Date.now() - state.pendingWindowOpen.timestamp < CORRELATION_WINDOW
+  ) {
+    triggerType = 'window_open';
+    triggerUrl = state.pendingWindowOpen.url || tabUrl;
+    state.pendingWindowOpen = null;
+  } else if (tab.openerTabId !== undefined && state.tabIndexMap.has(tab.openerTabId)) {
+    // Chrome sets openerTabId for target="_blank" link clicks
+    triggerType = 'target_blank';
+    // Use the opener tab's current URL as triggerUrl (new tab starts empty)
+    try {
+      const openerTab = await chrome.tabs.get(tab.openerTabId);
+      triggerUrl = openerTab.url || tabUrl;
+    } catch {
+      // Opener tab may have closed; fall back to tabUrl
+    }
+  } else {
+    triggerType = 'popup';
+    // For popup triggers, try to get the previous active tab's URL
+    if (previousActiveTabId) {
+      try {
+        const activeTab = await chrome.tabs.get(previousActiveTabId);
+        triggerUrl = activeTab.url || tabUrl;
+      } catch {
+        // Active tab may have issues; fall back to tabUrl
+      }
+    }
+  }
+
+  // Emit TabAction: open
+  const relativeTimestamp = state.startTime ? Date.now() - state.startTime : Date.now();
+  const openAction: TabAction = {
+    id: '', // Will be set by emitTabAction
+    type: 'tab',
+    timestamp: relativeTimestamp,
+    completedAt: relativeTimestamp,
+    url: '',
+    tabOperation: 'open',
+    tabIndex: currentTabIndex,
+    newTabIndex,
+    triggerUrl,
+    triggerType,
+  };
+  await emitTabAction(openAction);
+
+  // Also emit a switch action to this new tab (Chrome fires onActivated before onCreated,
+  // so the switch in onActivated may have been skipped because the tab wasn't in tabIndexMap yet).
+  // activeTabId is already set above to prevent onActivated from emitting a duplicate switch.
+  if (previousActiveTabId !== null && previousActiveTabId !== newTabId) {
+    const switchAction: TabAction = {
+      id: '',
+      type: 'tab',
+      timestamp: relativeTimestamp,
+      completedAt: relativeTimestamp,
+      url: '',
+      tabOperation: 'switch',
+      tabIndex: currentTabIndex,
+      newTabIndex,
+    };
+    await emitTabAction(switchAction);
+  }
+
+  console.log(
+    '[Background] New tab detected:',
+    newTabIndex,
+    'trigger:',
+    triggerType,
+    'url:',
+    triggerUrl
+  );
+
+  // NOTE: Do NOT inject content scripts here — the manifest already injects
+  // content/index.ts at document_end for <all_urls>. Programmatic injection
+  // would cause DUPLICATE content scripts → duplicate actions.
+  // The manifest-injected script auto-restores via ensureRecorderReady() → GET_STATUS.
+});
+
+/**
+ * Handle tab activation (user switches between tabs).
+ * Only emits TabAction(switch) for tracked tabs.
+ */
+chrome.tabs.onActivated.addListener(async (activeInfo: chrome.tabs.TabActiveInfo) => {
+  if (!state.isRecording) return;
+
+  const activatedTabId = activeInfo.tabId;
+  const activatedTabIndex = state.tabIndexMap.get(activatedTabId);
+
+  // Only track switches involving our tracked tabs
+  if (activatedTabIndex === undefined) return;
+
+  // Don't emit switch if it's already the active tab
+  if (state.activeTabId === activatedTabId) return;
+
+  const previousTabId = state.activeTabId;
+  state.activeTabId = activatedTabId;
+
+  // Determine the "from" tab index for the switch action
+  let previousTabIndex: number | null = null;
+  if (previousTabId !== null && state.tabIndexMap.has(previousTabId)) {
+    previousTabIndex = state.tabIndexMap.get(previousTabId) ?? 0;
+  } else if (previousTabId === null && state.lastClosedTabIndex !== null) {
+    // Tab was just closed — use the closed tab's index as the "from"
+    previousTabIndex = state.lastClosedTabIndex;
+    state.lastClosedTabIndex = null; // Consume it
+  }
+
+  if (previousTabIndex !== null) {
+    const relativeTimestamp = state.startTime ? Date.now() - state.startTime : Date.now();
+    const switchAction: TabAction = {
+      id: '',
+      type: 'tab',
+      timestamp: relativeTimestamp,
+      completedAt: relativeTimestamp,
+      url: '',
+      tabOperation: 'switch',
+      tabIndex: previousTabIndex,
+      newTabIndex: activatedTabIndex,
+    };
+    await emitTabAction(switchAction);
+    console.log(
+      '[Background] Tab switch from:',
+      previousTabIndex,
+      'to:',
+      activatedTabIndex,
+      'action:',
+      switchAction.id
+    );
   }
 });
 
@@ -1382,16 +1790,20 @@ chrome.tabs.onRemoved.addListener((tabId: number) => {
  * 3. No timing dependencies - browser-native event guarantees order
  */
 chrome.tabs.onUpdated.addListener(async (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+  // Check if this tab is being tracked (multi-tab: any tab in tabIndexMap, or the primary tab)
+  const isTrackedTab = state.tabIndexMap.has(tabId) || state.currentTabId === tabId;
+
   // Log all tab updates for debugging
-  if (state.currentTabId === tabId && state.isRecording) {
+  if (isTrackedTab && state.isRecording) {
     console.log('[Background] Tab updated:', {
       status: changeInfo.status,
       url: changeInfo.url,
       hasUrl: !!changeInfo.url,
+      tabIndex: state.tabIndexMap.get(tabId),
     });
   }
 
-  if (state.currentTabId === tabId && state.isRecording && changeInfo.status === 'complete') {
+  if (isTrackedTab && state.isRecording && changeInfo.status === 'complete') {
     // Get the full tab object to access current URL (changeInfo.url is undefined at 'complete')
     const tab = await chrome.tabs.get(tabId);
     const currentUrl = tab.url;
@@ -1433,9 +1845,13 @@ chrome.tabs.onUpdated.addListener(async (tabId: number, changeInfo: chrome.tabs.
     }
 
     // 🔧 STEP 2: Now detect navigation trigger using merged accumulatedActions
-    // Detect back/forward navigation by URL change
-    if (state.previousUrl && state.previousUrl !== currentUrl) {
-      console.log('[Background] URL changed from', state.previousUrl, 'to', currentUrl);
+    // Detect back/forward navigation by URL change (use per-tab URL tracking for multi-tab)
+    // For non-primary tabs, only use their own previous URL (not the global one)
+    const isPrimaryTabUpdate = tabId === state.currentTabId;
+    const previousUrlForTab =
+      state.tabPreviousUrls.get(tabId) || (isPrimaryTabUpdate ? state.previousUrl : null);
+    if (previousUrlForTab && previousUrlForTab !== currentUrl) {
+      console.log('[Background] URL changed from', previousUrlForTab, 'to', currentUrl);
 
       // Use accumulatedActions which now includes all actions from previous page
       const recentActions = state.accumulatedActions.slice(-10); // Last 10 actions for context
@@ -1455,7 +1871,7 @@ chrome.tabs.onUpdated.addListener(async (tabId: number, changeInfo: chrome.tabs.
       const LINK_CLICK_WINDOW = 3000; // 3 seconds
 
       let navigationTrigger: 'back' | 'forward' | 'form-submit' | 'click' | 'redirect' | 'manual' =
-        'back';
+        'redirect';
       let relatedActionId: string | undefined;
 
       // Get recent actions from storage (reliable source, guaranteed complete at page load)
@@ -1517,36 +1933,32 @@ chrome.tabs.onUpdated.addListener(async (tabId: number, changeInfo: chrome.tabs.
             relatedActionId = recentLinkClick.id;
             console.log('[Background] ✓ Link click navigation detected');
           }
-          // 4. CHECK: URL direction to distinguish back from forward
+          // 4. FALLBACK: No user-initiated action found (no click, no form submit).
+          // This is most likely a server-side redirect (e.g., OAuth flow, 302 redirect).
+          // We leave navigationTrigger as the default 'redirect'.
           else {
-            // Check if URL is going backward (previous URL seen before current URL)
-            const isGoingBackward = state.previousUrl && currentUrl !== state.initialUrl;
-
-            if (isGoingBackward) {
-              navigationTrigger = 'back';
-              console.log('[Background] ✓ Browser back navigation detected');
-            } else {
-              // Could be forward or first-time navigation
-              navigationTrigger = 'manual';
-              console.log('[Background] ⚠️ Manual/forward navigation (no trigger action found)');
-            }
+            console.log(
+              '[Background] ✓ Server redirect detected (no user action triggered this navigation)'
+            );
           }
         }
       }
 
       // Create navigation action with RELATIVE timestamp and proper metadata
       const relativeTimestamp = state.startTime ? Date.now() - state.startTime : Date.now();
+      const tabIndex = state.tabIndexMap.get(tabId) ?? 0;
       const navigationAction: any = {
         id: `act_${String(state.actionCounter + 1).padStart(3, '0')}`, // Will be renumbered
         type: 'navigation',
         timestamp: relativeTimestamp,
         completedAt: relativeTimestamp, // Will be updated when navigation completes
         url: currentUrl,
-        from: state.previousUrl,
+        from: previousUrlForTab,
         to: currentUrl,
         navigationTrigger,
         waitUntil: 'load',
         duration: 0, // Will be calculated from actual page load
+        tabIndex,
       };
 
       // Add relatedAction if we found one
@@ -1559,7 +1971,7 @@ chrome.tabs.onUpdated.addListener(async (tabId: number, changeInfo: chrome.tabs.
         '| Trigger:',
         navigationTrigger,
         '| From:',
-        state.previousUrl,
+        previousUrlForTab,
         '| To:',
         currentUrl,
         '| Related:',
@@ -1582,8 +1994,11 @@ chrome.tabs.onUpdated.addListener(async (tabId: number, changeInfo: chrome.tabs.
       );
     }
 
-    // Update previous URL for next navigation
+    // Update previous URL for next navigation (per-tab and global)
     state.previousUrl = currentUrl || null;
+    if (currentUrl) {
+      state.tabPreviousUrls.set(tabId, currentUrl);
+    }
 
     // Clear cache and storage after merging
     state.actionCache = [];
@@ -1596,14 +2011,56 @@ chrome.tabs.onUpdated.addListener(async (tabId: number, changeInfo: chrome.tabs.
   }
 
   // When page finishes loading, the new content script will call GET_STATUS
-  // and restore the recording state
-  if (state.currentTabId === tabId && state.isRecording && changeInfo.status === 'complete') {
+  // and restore the recording state (works for all tracked tabs)
+  if (isTrackedTab && state.isRecording && changeInfo.status === 'complete') {
     console.log(
       '[Background] Page load complete - accumulated actions:',
-      state.accumulatedActions.length
+      state.accumulatedActions.length,
+      'tabIndex:',
+      state.tabIndexMap.get(tabId)
     );
   }
 });
+
+/**
+ * Deduplicate actions by type + timestamp + selector.
+ * Safety net: removes duplicates regardless of how they got into accumulatedActions.
+ * Preserves the FIRST occurrence (which has tabIndex stamped from SYNC_ACTION handler).
+ */
+function deduplicateActions(actions: any[]): any[] {
+  const seen = new Map<string, any>();
+  const result: any[] = [];
+
+  for (const action of actions) {
+    // Tab and navigation actions are background-generated and unique by design
+    if (action.type === 'tab' || action.type === 'navigation') {
+      result.push(action);
+      continue;
+    }
+
+    // Build a dedup key from type + timestamp + selector
+    const sel = action.selector?.css || action.selector?.xpath || action.text || '';
+    const key = `${action.type}:${action.timestamp}:${sel}`;
+
+    if (!seen.has(key)) {
+      seen.set(key, action);
+      result.push(action);
+    }
+  }
+
+  if (result.length < actions.length) {
+    console.log(
+      '[Background] Dedup removed',
+      actions.length - result.length,
+      'duplicate actions. Before:',
+      actions.length,
+      'After:',
+      result.length
+    );
+  }
+
+  return result;
+}
 
 /**
  * Backfill variableName onto input actions that match a user-marked variable.

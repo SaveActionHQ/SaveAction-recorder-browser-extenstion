@@ -14,6 +14,7 @@ export default defineConfig(({ mode }) => {
           'background/index.ts',
           'content/index.ts',
           'content/dialog-early-inject.ts',
+          'content/window-open-early-inject.ts',
         ],
         scriptViteConfig: {
           build: {

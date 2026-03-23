@@ -25,7 +25,9 @@ export type MessageType =
   | 'EXIT_ASSERTION_MODE'
   | 'MARK_VARIABLE'
   | 'UNMARK_VARIABLE'
-  | 'GET_VARIABLES';
+  | 'GET_VARIABLES'
+  | 'GET_TAB_INDEX'
+  | 'WINDOW_OPENED';
 
 /**
  * Base message interface
@@ -213,6 +215,23 @@ export interface GetVariablesMessage extends BaseMessage {
 }
 
 /**
+ * Get the tab index for the current tab (content script → background)
+ */
+export interface GetTabIndexMessage extends BaseMessage {
+  type: 'GET_TAB_INDEX';
+}
+
+/**
+ * Notify background that window.open() was called (content script → background)
+ */
+export interface WindowOpenedMessage extends BaseMessage {
+  type: 'WINDOW_OPENED';
+  payload: {
+    url: string;
+  };
+}
+
+/**
  * Union type of all messages
  */
 export type Message =
@@ -236,7 +255,9 @@ export type Message =
   | ExitAssertionModeMessage
   | MarkVariableMessage
   | UnmarkVariableMessage
-  | GetVariablesMessage;
+  | GetVariablesMessage
+  | GetTabIndexMessage
+  | WindowOpenedMessage;
 
 /**
  * Message response types

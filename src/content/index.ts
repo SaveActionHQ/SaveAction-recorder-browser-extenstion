@@ -64,6 +64,7 @@ const isIframe = window.self !== window.top;
         recorder = new ActionRecorder();
         console.log(logPrefix, 'ActionRecorder initialized');
       }
+
       // UI components are only used in the main frame (not inside iframes)
       if (!isIframe) {
         if (!indicator) {
@@ -266,6 +267,7 @@ const isIframe = window.self !== window.top;
                     recorder = new ActionRecorder();
                     sendResponse({ success: true });
                   } else {
+                    // Stop recording and return data (background uses this from primary tab only)
                     const recording: Recording = recorder.stopRecording();
                     if (indicator) indicator.hide();
                     if (variableMarker) {
@@ -521,7 +523,7 @@ const isIframe = window.self !== window.top;
       assertionInspector.exit();
       assertionInspector = null;
     }
-    if (!isIframe && variableMarker) {
+    if (variableMarker) {
       variableMarker.stop();
       variableMarker = null;
     }
@@ -529,7 +531,7 @@ const isIframe = window.self !== window.top;
       recorder.destroy();
       recorder = null;
     }
-    if (!isIframe && indicator) {
+    if (indicator) {
       indicator.hide();
       indicator = null;
     }

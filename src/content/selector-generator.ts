@@ -1721,7 +1721,7 @@ export class SelectorGenerator {
     const tagName = element.tagName.toLowerCase();
 
     // Try full class combination first
-    const fullSelector = tagName + '.' + classes.join('.');
+    const fullSelector = tagName + '.' + classes.map((cls) => cssEscape(cls)).join('.');
     if (this.isUnique(fullSelector, element)) return fullSelector;
 
     // Try each class individually (most specific first)
@@ -1769,7 +1769,7 @@ export class SelectorGenerator {
       .filter((cls) => !this.isDynamicClass(cls))
       .slice(0, 2); // Max 2 classes for readability
 
-    const classStr = classes.length > 0 ? '.' + classes.join('.') : '';
+    const classStr = classes.length > 0 ? '.' + classes.map((cls) => cssEscape(cls)).join('.') : '';
     const selector = `${parentSelector} > ${tagName}${classStr}:nth-child(${index})`;
 
     if (this.isUnique(selector, element)) return selector;
@@ -1830,7 +1830,8 @@ export class SelectorGenerator {
       const classes = Array.from(current.classList)
         .filter((cls) => !this.isDynamicClass(cls))
         .slice(0, 2);
-      const classStr = classes.length > 0 ? '.' + classes.join('.') : '';
+      const classStr =
+        classes.length > 0 ? '.' + classes.map((cls) => cssEscape(cls)).join('.') : '';
 
       path.unshift(`${tagName}${classStr}:nth-child(${index + 1})`);
 
@@ -1865,7 +1866,7 @@ export class SelectorGenerator {
     // 2. All classes
     const classes = Array.from(element.classList).filter((cls) => !this.isDynamicClass(cls));
     if (classes.length > 0) {
-      tagPart += '.' + classes.join('.');
+      tagPart += '.' + classes.map((cls) => cssEscape(cls)).join('.');
     }
     parts.push(tagPart);
 
@@ -1890,7 +1891,10 @@ export class SelectorGenerator {
           .filter((cls) => !this.isDynamicClass(cls))
           .slice(0, 2);
         if (parentClasses.length > 0) {
-          parentSelector = parent.tagName.toLowerCase() + '.' + parentClasses.join('.');
+          parentSelector =
+            parent.tagName.toLowerCase() +
+            '.' +
+            parentClasses.map((cls) => cssEscape(cls)).join('.');
         }
       }
 

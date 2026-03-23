@@ -438,18 +438,232 @@ saveaction run recording.json
 
 ### Step 7: Multi-Tab Support
 
-**Why:** Many apps open links in new tabs, or have flows that involve popups (OAuth, payment, file preview).
+**Why:** Many apps open links in new tabs, or have flows that involve popups (OAuth, payment, file preview). Currently, if a recording includes any multi-tab interaction, **the test breaks** — the runner has no concept of multiple pages.
 
-**What to build:**
+**Real-world scenarios that require this:**
 
-| #   | Change                   | Package                         | Details                                                                          |
-| --- | ------------------------ | ------------------------------- | -------------------------------------------------------------------------------- |
-| 7a  | Detect new tab/window    | Extension (`event-listener.ts`) | Track `window.open()` calls and `target="_blank"` link clicks                    |
-| 7b  | Define `TabAction` type  | Extension + Core (`actions.ts`) | `switchTab`, `closeTab`, `newTab` action types                                   |
-| 7c  | Tab management in runner | Core (`PlaywrightRunner.ts`)    | Use `context.waitForEvent('page')` for new tabs, switch between pages in context |
+- **OAuth**: "Login with Google" → popup → auth → popup closes → back to app
+- **Payment**: Stripe/PayPal open in new tab or popup window
+- **`target="_blank"` links**: External links, PDF preview, admin panel in new tab
+- **`window.open()` calls**: Programmatic popups, chat widgets, help windows
 
-**Estimated effort:** 2 days
-**Lines of code:** ~300
+---
+
+#### Design: Tab Identification via `tabIndex`
+
+Every tab is identified by a **sequential `tabIndex`** (0 = original tab, 1 = first new tab, 2 = second, etc.). This is NOT the browser's internal tab ID — it's a simple counter that maps naturally to the order Playwright creates `Page` objects.
+
+**Every existing action type** gets an optional `tabIndex?: number` field on `BaseAction` so the runner knows which page to execute it on. Default is `0` (main tab). This is identical to how `frameUrl`/`frameId`/`frameSelector` were added for iframe support.
+
+---
+
+#### Part A: Define TabAction Type (Extension + Core)
+
+```typescript
+interface TabAction extends BaseAction {
+  type: 'tab';
+  tabOperation: 'open' | 'switch' | 'close';
+  tabIndex: number; // Target tab index (0 = original)
+  newTabIndex?: number; // For 'open': the new tab's assigned index
+  triggerUrl?: string; // URL of the new tab (for matching during replay)
+  triggerType?: 'target_blank' | 'window_open' | 'popup'; // How the tab was opened
+}
+```
+
+**`tabIndex` on BaseAction** (addition to existing interface):
+
+```typescript
+interface BaseAction {
+  // ... existing fields (id, type, timestamp, url, frameId, frameUrl, frameSelector, etc.)
+  tabIndex?: number; // NEW: Which tab this action belongs to (0 = main tab, default)
+}
+```
+
+| #   | Change                                 | File                           | Details                                                                                                                                                                                                 |
+| --- | -------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 7a  | Add `tabIndex` to `BaseAction`         | Core (`actions.ts`)            | Optional `tabIndex?: number` field. Default `0`. Added after `frameSelector` field. No breaking change — all existing actions without it implicitly belong to tab 0.                                    |
+| 7b  | Define `TabAction` interface           | Core (`actions.ts`)            | New action type with `tabOperation`, `tabIndex`, `newTabIndex`, `triggerUrl`, `triggerType`. Add `isTabAction()` type guard. Add `'tab'` to `ActionType` union. Add `TabAction` to `Action` union type. |
+| 7c  | Add `tab` to Zod schema                | Core (`RecordingParser.ts`)    | Validate `tab` actions during parsing. `tabOperation` is required enum `['open', 'switch', 'close']`. `tabIndex` required number. Rest optional.                                                        |
+| 7d  | ✅ Add `tabIndex` to `BaseAction` type | Extension (`actions.ts` types) | Mirror the core type change. Same optional `tabIndex?: number` field.                                                                                                                                   |
+| 7e  | ✅ Define `TabAction` interface        | Extension (`actions.ts` types) | Mirror the core `TabAction`. Add to the extension's `Action` union type. Includes `isTabAction()` type guard.                                                                                           |
+
+---
+
+#### Part B: Record Tab Interactions (Extension)
+
+The extension must detect three tab events: **tab opens**, **tab switches**, and **tab closes**. It must also tag every action with which tab it was recorded in.
+
+**Tab tracking state in extension background script:**
+
+```typescript
+// Background script state
+let tabCounter = 0; // Increments for each new tab opened during recording
+const tabIndexMap = new Map<number, number>(); // chrome tab ID → sequential tabIndex
+// The recording tab (where recording started) gets tabIndex 0
+```
+
+**How tab detection works:**
+
+1. **`target="_blank"` clicks**: The extension's content script already captures click events. When a click triggers a new tab (detectable via `chrome.tabs.onCreated` shortly after a click action), emit a `TabAction { tabOperation: 'open', triggerType: 'target_blank' }`.
+
+2. **`window.open()` calls**: Monkey-patch `window.open` in the content script (inject via `<script>` tag into page context, same technique as dialog handling in Step 9). When called, post a message to the content script which relays to background. Background then listens for `chrome.tabs.onCreated` to capture the new tab.
+
+3. **User switches tabs**: `chrome.tabs.onActivated` fires when user clicks a different tab. If the activated tab is in our `tabIndexMap`, emit `TabAction { tabOperation: 'switch', tabIndex: <target> }`.
+
+4. **Tab closes**: `chrome.tabs.onRemoved` fires. If the closed tab is in our `tabIndexMap`, emit `TabAction { tabOperation: 'close', tabIndex: <closed> }`. Also emit a `switch` action to the tab that becomes active.
+
+5. **Content script injection in new tabs**: When a new tab is created during recording, the extension must inject the content script into it so actions performed in that tab are captured. Use `chrome.scripting.executeScript({ target: { tabId: newTabId } })` from the background script.
+
+6. **Tag all actions with `tabIndex`**: In the content script's `emitAction()` function (same place that adds `frameUrl`/`frameId`/`frameSelector`), add `tabIndex` from the background script's `tabIndexMap`. The content script queries the background for its tab's index.
+
+| #   | Change                                             | File                                                                           | Details                                                                                                                                                                                                                                             |
+| --- | -------------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 7f  | ✅ Tab tracking state in background                | Extension (`background/index.ts`)                                              | `tabCounter`, `tabIndexMap`, `activeTabId`, `lastClosedTabIndex`, `pendingWindowOpen` in `BackgroundState`. Initialized on `START_RECORDING` (tab 0), cleared on `STOP_RECORDING`. `GET_TAB_INDEX` message handler for content scripts.             |
+| 7g  | ✅ Detect new tab via `chrome.tabs.onCreated`      | Extension (`background/index.ts`)                                              | Full handler: increments `tabCounter`, adds to `tabIndexMap`, claims `activeTabId` before any awaits (prevents onActivated race), injects content script, detects trigger type (`target_blank`/`window_open`/`popup`), emits open + switch actions. |
+| 7h  | ✅ Detect `window.open()` calls                    | Extension (`window-open-early-inject.ts` + `event-listener.ts` + `background`) | MAIN world script at `document_start` wraps `window.open`. Posts `saveaction-window-open` message → content script relays `WINDOW_OPENED` to background → background stores in `pendingWindowOpen` → correlated with `onCreated` within 3s window.  |
+| 7i  | ✅ Detect `target="_blank"` clicks                 | Extension (`background/index.ts`)                                              | Implemented via `tab.openerTabId` detection in `onCreated` handler instead of content script flag. Chrome sets `openerTabId` for `target="_blank"` links — simpler and more reliable than the flag approach.                                        |
+| 7j  | ✅ Detect tab switch via `chrome.tabs.onActivated` | Extension (`background/index.ts`)                                              | Handles: skip if already active, determine "from" tab via `previousTabId` or `lastClosedTabIndex` (for switch-after-close), emit switch action with `tabIndex`/`newTabIndex`.                                                                       |
+| 7k  | ✅ Detect tab close via `chrome.tabs.onRemoved`    | Extension (`background/index.ts`)                                              | Emits close action, removes from map. If tab 0 closed → stops recording. For popup closes: deferred 200ms `setTimeout` queries actual active tab and emits switch if `onActivated` didn't fire (handles cross-window popup close).                  |
+| 7l  | ✅ Inject content script into new tabs             | Extension (`background/index.ts`)                                              | `chrome.scripting.executeScript()` in `onCreated` handler injects content script into new tabs.                                                                                                                                                     |
+| 7m  | ✅ Tag all actions with `tabIndex`                 | Extension (`background/index.ts`)                                              | Two mechanisms: (1) `SYNC_ACTION` handler stamps `tabIndex` from `tabIndexMap` on every action received from content scripts, (2) `GET_TAB_INDEX` message for content scripts to query their tab index.                                             |
+| 7n  | ✅ Handle popup windows (self-closing)             | Extension (`background/index.ts`)                                              | OAuth popup close handled via deferred 200ms check in `onRemoved`. Queries `chrome.tabs.query({ active: true, lastFocusedWindow: true })` and emits switch if `onActivated` didn't fire for the main window's tab.                                  |
+| 7o  | ✅ Unit tests for tab tracking                     | Extension (`tests/unit/multi-tab-support.test.ts`)                             | Tests for tab index assignment, sequential numbering, switch detection, close detection, action tagging, state cleanup.                                                                                                                             |
+
+**What the recorded actions look like:**
+
+```json
+[
+  {
+    "id": "act_001",
+    "type": "click",
+    "tabIndex": 0,
+    "url": "https://app.com/dashboard",
+    "selector": { "css": "a.external-link" }
+  },
+  {
+    "id": "act_002",
+    "type": "tab",
+    "tabOperation": "open",
+    "tabIndex": 0,
+    "newTabIndex": 1,
+    "triggerUrl": "https://payment.stripe.com/checkout",
+    "triggerType": "target_blank"
+  },
+  { "id": "act_003", "type": "tab", "tabOperation": "switch", "tabIndex": 1 },
+  {
+    "id": "act_004",
+    "type": "input",
+    "tabIndex": 1,
+    "url": "https://payment.stripe.com/checkout",
+    "selector": { "css": "#card-number" },
+    "value": "4242424242424242"
+  },
+  {
+    "id": "act_005",
+    "type": "click",
+    "tabIndex": 1,
+    "url": "https://payment.stripe.com/checkout",
+    "selector": { "css": "#pay-button" }
+  },
+  { "id": "act_006", "type": "tab", "tabOperation": "close", "tabIndex": 1 },
+  { "id": "act_007", "type": "tab", "tabOperation": "switch", "tabIndex": 0 },
+  {
+    "id": "act_008",
+    "type": "checkpoint",
+    "tabIndex": 0,
+    "url": "https://app.com/order-confirmed",
+    "checkType": "elementText",
+    "expectedValue": "Payment Successful"
+  }
+]
+```
+
+---
+
+#### Part C: Replay Tab Actions in Runner (Core)
+
+The runner maintains a **page registry** (`Map<number, Page>`) mapping `tabIndex` → Playwright `Page` object. Before executing each action, the runner selects the correct page from the registry.
+
+**Key Playwright APIs used:**
+
+- `context.waitForEvent('page')` — captures new Page object when a tab/popup opens
+- `page.close()` — closes a tab
+- `page.url()` — URL matching for tab identification
+- `context.pages()` — list all open pages (fallback)
+
+**How it works:**
+
+1. At start, `pageRegistry.set(0, page)` — the initial page is tab 0.
+2. When a `TabAction { tabOperation: 'open' }` is encountered:
+   - The runner already executed the click/action that triggers the new tab.
+   - Call `context.waitForEvent('page', { timeout: 10000 })` to capture the new `Page`.
+   - Store it: `pageRegistry.set(action.newTabIndex, newPage)`.
+   - Wait for the new page to load: `newPage.waitForLoadState('domcontentloaded')`.
+3. When a `TabAction { tabOperation: 'switch' }` is encountered:
+   - Set `activePage = pageRegistry.get(action.tabIndex)`.
+   - Call `activePage.bringToFront()` (brings focus to the page).
+4. When a `TabAction { tabOperation: 'close' }` is encountered:
+   - Get `closingPage = pageRegistry.get(action.tabIndex)`.
+   - Call `closingPage.close()`.
+   - Remove from registry: `pageRegistry.delete(action.tabIndex)`.
+5. For all other actions: look up the page via `action.tabIndex ?? 0` from the registry.
+6. **Auto-detect new pages** (fallback): Register a `context.on('page')` listener that captures any new page not explicitly expected. This handles self-opening popups.
+
+| #   | Change                                         | File                              | Details                                                                                                                                                                                                              |
+| --- | ---------------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 7p  | Add `pageRegistry` to runner                   | Core (`PlaywrightRunner.ts`)      | `Map<number, Page>` initialized with `{ 0: page }` after `context.newPage()`. Local variable inside `execute()` method (same pattern as current `page` variable).                                                    |
+| 7q  | Add `context.on('page')` auto-capture listener | Core (`PlaywrightRunner.ts`)      | Register after creating context. Automatically adds unexpected new pages to registry with next available index. Calls `newPage.waitForLoadState('domcontentloaded')`. Logs warning about unrecorded tab.             |
+| 7r  | Handle `tab:open` in `executeAction()`         | Core (`PlaywrightRunner.ts`)      | When previous action triggered a new tab: `const newPage = await context.waitForEvent('page')`. Store in registry. Wait for load. URL-match against `action.triggerUrl` for verification.                            |
+| 7s  | Handle `tab:switch` in `executeAction()`       | Core (`PlaywrightRunner.ts`)      | Look up `pageRegistry.get(action.tabIndex)`. If found, `page.bringToFront()`. Set as active page. If not found, try URL-based fallback via `context.pages()`.                                                        |
+| 7t  | Handle `tab:close` in `executeAction()`        | Core (`PlaywrightRunner.ts`)      | Look up page, call `page.close()`, remove from registry. Listen for `page.on('close')` to also handle self-closing popups.                                                                                           |
+| 7u  | Select correct page for every action           | Core (`PlaywrightRunner.ts`)      | Before `executeAction()`, resolve page: `const activePage = pageRegistry.get(action.tabIndex ?? 0) ?? page`. Pass `activePage` to all execute methods instead of the original `page`.                                |
+| 7v  | URL-based page matching fallback               | Core (`PlaywrightRunner.ts`)      | If `pageRegistry.get(tabIndex)` returns undefined, iterate `context.pages()` and find the page whose URL contains `action.url` or `action.triggerUrl`. Last resort before throwing error.                            |
+| 7w  | Navigation/URL validation per-tab              | Core (`PlaywrightRunner.ts`)      | `validateAndCorrectPageState()` must use the active tab's page, not always the original page. Same pattern as the iframe fix — skip URL correction if `tabIndex > 0` and page URL matches the action's expected URL. |
+| 7x  | Video/screenshot per-tab                       | Core (`PlaywrightRunner.ts`)      | Screenshots are already taken via `page.screenshot()`. Just ensure the correct page is used. Video is per-context (Playwright records all pages in context), so no change needed.                                    |
+| 7y  | Unit tests for tab management                  | Core (`PlaywrightRunner.test.ts`) | Test: pageRegistry lifecycle, tab open/switch/close actions, auto-capture listener, URL fallback, cleanup, self-closing popup handling.                                                                              |
+
+---
+
+#### Part D: Display Tab Context in UI (Web)
+
+The Web UI should indicate which tab each action ran in, similar to how browser badges are shown.
+
+| #   | Change                         | File                  | Details                                                                                                                                                                                                        |
+| --- | ------------------------------ | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 7z  | Tab indicator in actions table | Web (run detail page) | For actions with `tabIndex > 0`: show small "Tab N" badge next to the action type icon. For `tab` action type: show icon + operation label ("New Tab", "Switch Tab", "Close Tab") with target URL as subtitle. |
+
+---
+
+#### Extension Permissions Required
+
+```json
+{
+  "permissions": ["tabs", "scripting", "webNavigation"]
+}
+```
+
+- `tabs` — already likely present. Needed for `chrome.tabs.onCreated`, `onActivated`, `onRemoved`.
+- `scripting` — for `chrome.scripting.executeScript()` to inject content script into new tabs.
+- `webNavigation` — already present (added for iframe support).
+
+---
+
+#### Edge Cases to Handle
+
+| Edge Case                                  | How to Handle                                                                                                                                                               |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **OAuth popup closes itself**              | `chrome.tabs.onRemoved` captures the close. Runner listens for `page.on('close')` event. Emit switch back to parent.                                                        |
+| **Multiple popups at once**                | Each gets sequential `tabIndex`. Registry handles multiple pages.                                                                                                           |
+| **Tab opens but user doesn't interact**    | Only emit `tab:open`. No further actions recorded in that tab. Runner still creates the page but doesn't do anything in it.                                                 |
+| **New tab navigates via redirect**         | `triggerUrl` captures the initial URL. Runner uses `page.waitForLoadState()` to wait for redirects to settle before proceeding.                                             |
+| **Tab opened by JavaScript after delay**   | `context.on('page')` auto-capture listener handles this. If a `tab:open` action is pending, `waitForEvent('page')` will wait.                                               |
+| **Recording tab is closed**                | If tab 0 (original recording tab) is closed, stop recording. The main tab should never be closed during a recording session.                                                |
+| **User manually opens a new tab (Ctrl+T)** | Only track tabs that are opened as a result of page interactions. Ignore manually opened blank tabs — check if `tab.pendingUrl` or `tab.url` is `chrome://newtab` and skip. |
+
+**Estimated effort:** 2 days (0.75 day extension, 0.75 day core, 0.25 day core types, 0.25 day web)
+**Lines of code:** ~500 across extension + 3 platform packages
+
+> **✅ EXTENSION WORK COMPLETED** — March 22-23, 2026. All extension sub-items (7d–7o) implemented and tested with real-world multi-tab OAuth flows (Google OAuth on minimax.io). Key fixes: race condition prevention (activeTabId claimed before awaits in onCreated), deferred popup close detection (200ms setTimeout for cross-window closes), per-tab URL tracking (`tabPreviousUrls`), navigation trigger classification (redirect vs back). 544+ unit tests passing. Core/platform items (7a–7c, 7p–7z) pending.
 
 ---
 
@@ -602,7 +816,7 @@ During replay, the runner registers a `page.on('dialog')` handler **before** exe
 | **P0**   | Step 6: Variables & Test Data      | 🔴 Critical | 3-4 days | ✅ DONE (Core + API + editor; remaining items deferred) |
 | **P1**   | Step 3: Visual Regression          | 🟠 High     | 3 days   | ⏳ TODO                                                 |
 | **P1**   | Step 9: Browser Dialog Handling    | 🟠 High     | 1-2 days | ✅ DONE                                                 |
-| **P1**   | Step 10: Flaky Test Detection      | 🟡 Medium   | 2 days   | ⏳ TODO                                                 |
+| **P1**   | Step 10: Flaky Test Detection      | 🟡 Medium   | 2 days   | ✅ DONE                                                 |
 | **P2**   | Step 4: iframe Support             | 🟡 Medium   | 1 day    | ✅ DONE                                                 |
 | **P2**   | Step 5: File Upload                | 🟡 Medium   | 2 days   | ✅ DONE                                                 |
 | **P2**   | Step 7: Multi-Tab                  | 🟡 Medium   | 2 days   | ⏳ TODO                                                 |
@@ -650,6 +864,6 @@ During replay, the runner registers a `page.on('dialog')` handler **before** exe
 | Step 9: Browser Dialog Handling — Extension (9a–9c) | ✅ DONE     | March 9-10, 2026  |
 | Step 9: Browser Dialog Handling — Core (9d–9i)      | ✅ DONE     | March 10, 2026    |
 | Step 9: Browser Dialog Handling — Web UI (9j)       | ✅ DONE     | March 10, 2026    |
-| Step 10: Flaky Test Detection                       | ⏳ TODO     | —                 |
+| Step 10: Flaky Test Detection                       | ✅ DONE     | March 15–19, 2026 |
 | Step 11: Webhooks                                   | ⏳ TODO     | —                 |
 | Step 12: Team Support                               | ⏳ TODO     | —                 |

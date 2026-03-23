@@ -22,16 +22,17 @@ Content scripts run in the context of web pages and capture user interactions. T
 
 ```
 content/
-├── index.ts                # Entry point, message router (iframe-aware)
-├── action-recorder.ts      # Core recording orchestrator
-├── assertion-inspector.ts  # Inspect mode for manual assertions (all frames)
-├── dialog-early-inject.ts  # Dialog monkey-patching (MAIN world, document_start)
-├── dialog-interceptor.ts   # Dialog event capture bridge
-├── event-listener.ts       # DOM event capture + iframe frame context
-├── intent-classifier.ts    # Navigation intent classification
-├── recording-indicator.ts  # Overlay UI controls (main frame ONLY)
-├── selector-generator.ts   # Multi-selector generation
-└── variable-marker.ts      # "Mark as Variable" UI for input fields
+├── index.ts                      # Entry point, message router (iframe-aware)
+├── action-recorder.ts            # Core recording orchestrator
+├── assertion-inspector.ts        # Inspect mode for manual assertions (all frames)
+├── dialog-early-inject.ts        # Dialog monkey-patching (MAIN world, document_start)
+├── dialog-interceptor.ts         # Dialog event capture bridge + window.open constants
+├── event-listener.ts             # DOM event capture + iframe frame context + window.open relay
+├── intent-classifier.ts          # Navigation intent classification
+├── recording-indicator.ts        # Overlay UI controls (main frame ONLY)
+├── selector-generator.ts         # Multi-selector generation
+├── variable-marker.ts            # "Mark as Variable" UI for input fields
+└── window-open-early-inject.ts   # window.open() monkey-patching (MAIN world, document_start)
 ```
 
 ## iframe Support
@@ -110,7 +111,7 @@ Always generate ALL selector types and let the consumer choose based on priority
 ## Action Syncing
 
 ```typescript
-// Send to background for ID assignment
+// Send to background for ID assignment and tabIndex stamping
 chrome.runtime.sendMessage(
   {
     type: 'SYNC_ACTION',
@@ -118,11 +119,17 @@ chrome.runtime.sendMessage(
   },
   (response) => {
     if (response?.success) {
-      // Action saved with sequential ID
+      // Action saved with sequential ID + tabIndex stamped by background
     }
   }
 );
 ```
+
+The background's `SYNC_ACTION` handler automatically stamps `tabIndex` from `tabIndexMap` based on the sender's tab ID. Content scripts can also query their tab index via `GET_TAB_INDEX` message.
+
+## window.open() Detection
+
+`window-open-early-inject.ts` runs in MAIN world at `document_start` and wraps `window.open()`. When called, it posts a `saveaction-window-open` message. The event listener in `event-listener.ts` picks this up and relays a `WINDOW_OPENED` message to background, which stores it in `pendingWindowOpen` for correlation with the next `chrome.tabs.onCreated` event (3-second window).
 
 ## Overlay UI Guidelines
 

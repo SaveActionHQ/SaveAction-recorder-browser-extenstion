@@ -109,7 +109,8 @@ Test complete user workflows (not currently implemented).
 - State management
 - Selector generation accuracy
 - iframe frame context detection (frameUrl, frameId, frameSelector)
-- Action type coverage (click, input, scroll, checkpoint, dialog, file-upload, etc.)
+- Multi-tab action coverage (tab open/switch/close, tabIndex stamping)
+- Action type coverage (click, input, scroll, checkpoint, dialog, file-upload, tab, etc.)
 
 ❌ **DON'T test:**
 
@@ -180,6 +181,7 @@ Each source file should have a corresponding test file:
 
 - `src/utils/exporter.ts` → `tests/unit/exporter.test.ts`
 - `src/content/action-recorder.ts` → `tests/unit/action-recorder.test.ts`
+- Multi-tab support → `tests/unit/multi-tab-support.test.ts`
 
 ## Debugging Tests
 
