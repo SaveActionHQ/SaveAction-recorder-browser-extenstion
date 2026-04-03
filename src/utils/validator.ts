@@ -6,6 +6,7 @@ import type {
   InputAction,
   NavigationAction,
   DialogAction,
+  DragDropAction,
   FileUploadAction,
   TabAction,
 } from '@/types';
@@ -177,6 +178,39 @@ export function validateAction(action: Action): ValidationResult {
         errors.push({
           field: 'action.to',
           message: 'Navigation action must have a "to" URL',
+        });
+      }
+      break;
+    }
+
+    case 'drag-drop': {
+      const dragDropAction = action as DragDropAction;
+      if (!dragDropAction.sourceSelector) {
+        errors.push({
+          field: 'action.sourceSelector',
+          message: 'Drag-drop action must have a sourceSelector',
+        });
+      } else {
+        const selectorResult = validateSelector(dragDropAction.sourceSelector);
+        errors.push(
+          ...selectorResult.errors.map((e) => ({ ...e, field: `action.source.${e.field}` }))
+        );
+      }
+      if (!dragDropAction.targetSelector) {
+        errors.push({
+          field: 'action.targetSelector',
+          message: 'Drag-drop action must have a targetSelector',
+        });
+      } else {
+        const selectorResult = validateSelector(dragDropAction.targetSelector);
+        errors.push(
+          ...selectorResult.errors.map((e) => ({ ...e, field: `action.target.${e.field}` }))
+        );
+      }
+      if (dragDropAction.dragType !== 'native' && dragDropAction.dragType !== 'pointer') {
+        errors.push({
+          field: 'action.dragType',
+          message: 'Drag-drop action must have dragType of "native" or "pointer"',
         });
       }
       break;

@@ -425,6 +425,22 @@ export interface TabAction extends BaseAction {
 }
 
 /**
+ * Drag and drop action (native HTML5 drag or pointer-based drag libraries)
+ * Captures source element, target element, coordinates, and detection method.
+ * dragType: 'native' = HTML5 drag API; 'pointer' = pointer/mouse event based (react-dnd, SortableJS, etc.)
+ */
+export interface DragDropAction extends BaseAction {
+  type: 'drag-drop';
+  sourceSelector: SelectorStrategy; // Element being dragged
+  targetSelector: SelectorStrategy; // Element being dropped onto
+  sourceCoordinates: { x: number; y: number }; // Start coords (viewport-relative)
+  targetCoordinates: { x: number; y: number }; // End coords (viewport-relative)
+  dragType: 'native' | 'pointer'; // How the drag was performed
+  sourceTagName: string; // Tag of the dragged element
+  targetTagName: string; // Tag of the drop target element
+}
+
+/**
  * File upload action (user selects file via <input type="file">)
  * Records metadata only — no file content is captured (privacy-first).
  * The platform manages test fixture files for replay via page.setInputFiles().
@@ -465,6 +481,7 @@ export type ActionType =
   | 'hover'
   | 'modal-lifecycle'
   | 'dialog'
+  | 'drag-drop'
   | 'file-upload'
   | 'tab';
 
@@ -483,6 +500,7 @@ export type Action =
   | HoverAction
   | ModalLifecycleAction
   | DialogAction
+  | DragDropAction
   | FileUploadAction
   | TabAction;
 
@@ -526,6 +544,13 @@ export function isDialogAction(action: Action): action is DialogAction {
  */
 export function isFileUploadAction(action: Action): action is FileUploadAction {
   return action.type === 'file-upload';
+}
+
+/**
+ * Type guard for DragDropAction
+ */
+export function isDragDropAction(action: Action): action is DragDropAction {
+  return action.type === 'drag-drop';
 }
 
 /**
