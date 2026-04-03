@@ -10,6 +10,7 @@
   HoverAction,
   ModalLifecycleAction,
   DialogAction,
+  DragDropAction,
   FileUploadAction,
   ModifierKey,
   ElementState,
@@ -87,6 +88,17 @@ export class EventListener {
   private readonly MAX_RECENT_ACTIONS = 20; // Maximum recent actions to track
   private readonly DROPDOWN_LINK_TIMEOUT = 60000; // 60s - Max time to link dropdown opening to item click
 
+  // Drag & Drop tracking
+  // Native drag (HTML5 drag API) state
+  private nativeDragSource: Element | null = null; // Element being dragged
+  private nativeDragSourceCoords: { x: number; y: number } | null = null; // Start coords
+  private nativeDragInProgress = false; // True while native drag is active
+  // Pointer-based drag state (react-dnd, SortableJS, etc.)
+  private pointerDragSource: Element | null = null; // Element where pointer was pressed
+  private pointerDragStartCoords: { x: number; y: number } | null = null; // Start coords
+  private pointerDragActive = false; // True once movement threshold exceeded
+  private readonly POINTER_DRAG_THRESHOLD = 10; // Min pixels movement to classify as drag
+
   // Checkbox/Radio deduplication tracking (prevent double-recording of click + change events)
   private recentCheckboxInteractions: Map<string, number> = new Map(); // Track recent checkbox/radio clicks
   private readonly CHECKBOX_DEBOUNCE_MS = 100; // Time window to consider events as duplicates
@@ -118,6 +130,13 @@ export class EventListener {
   private handleBeforeUnload: (e: Event) => void;
   private handleDialogMessage: (e: MessageEvent) => void;
   private handleWindowOpenMessage: (e: MessageEvent) => void;
+  // Drag & Drop handlers
+  private handleDragStart: (e: DragEvent) => void;
+  private handleDragEnd: (e: DragEvent) => void;
+  private handleDrop: (e: DragEvent) => void;
+  private handlePointerDown: (e: PointerEvent) => void;
+  private handlePointerMove: (e: PointerEvent) => void;
+  private handlePointerUp: (e: PointerEvent) => void;
 
   constructor(actionCallback: (action: Action) => void) {
     this.actionCallback = actionCallback;
@@ -149,6 +168,13 @@ export class EventListener {
     this.handleBeforeUnload = this.onBeforeUnload.bind(this);
     this.handleDialogMessage = this.onDialogMessage.bind(this);
     this.handleWindowOpenMessage = this.onWindowOpenMessage.bind(this);
+    // Drag & Drop handlers
+    this.handleDragStart = this.onDragStart.bind(this);
+    this.handleDragEnd = this.onDragEnd.bind(this);
+    this.handleDrop = this.onDrop.bind(this);
+    this.handlePointerDown = this.onPointerDown.bind(this);
+    this.handlePointerMove = this.onPointerMove.bind(this);
+    this.handlePointerUp = this.onPointerUp.bind(this);
   }
 
   /**
@@ -281,6 +307,12 @@ export class EventListener {
         break;
       }
 
+      case 'drag-drop': {
+        // Drag & drop completes instantly (source + target already captured)
+        completedAt = action.timestamp;
+        break;
+      }
+
       case 'tab': {
         // Tab operations are instant
         completedAt = action.timestamp;
@@ -387,6 +419,14 @@ export class EventListener {
     }
     this.inputObservers.clear();
     this.lastKnownValues.clear();
+
+    // Drag & Drop: reset state
+    this.nativeDragSource = null;
+    this.nativeDragSourceCoords = null;
+    this.nativeDragInProgress = false;
+    this.pointerDragSource = null;
+    this.pointerDragStartCoords = null;
+    this.pointerDragActive = false;
   }
 
   /**
@@ -409,6 +449,13 @@ export class EventListener {
     window.addEventListener('beforeunload', this.handleBeforeUnload);
     window.addEventListener('message', this.handleDialogMessage);
     window.addEventListener('message', this.handleWindowOpenMessage);
+    // Drag & Drop listeners (capture phase for early interception)
+    document.addEventListener('dragstart', this.handleDragStart, true);
+    document.addEventListener('dragend', this.handleDragEnd, true);
+    document.addEventListener('drop', this.handleDrop, true);
+    document.addEventListener('pointerdown', this.handlePointerDown, true);
+    document.addEventListener('pointermove', this.handlePointerMove, true);
+    document.addEventListener('pointerup', this.handlePointerUp, true);
   }
 
   /**
@@ -431,6 +478,13 @@ export class EventListener {
     window.removeEventListener('beforeunload', this.handleBeforeUnload);
     window.removeEventListener('message', this.handleDialogMessage);
     window.removeEventListener('message', this.handleWindowOpenMessage);
+    // Drag & Drop listeners
+    document.removeEventListener('dragstart', this.handleDragStart, true);
+    document.removeEventListener('dragend', this.handleDragEnd, true);
+    document.removeEventListener('drop', this.handleDrop, true);
+    document.removeEventListener('pointerdown', this.handlePointerDown, true);
+    document.removeEventListener('pointermove', this.handlePointerMove, true);
+    document.removeEventListener('pointerup', this.handlePointerUp, true);
   }
 
   /**
@@ -3749,6 +3803,197 @@ export class EventListener {
   /**
    * Handle dialog messages from the injected page-context script
    */
+  // ─────────────────────────────────────────────────────────────────────────
+  // Drag & Drop event handlers
+  // Supports two drag strategies:
+  //   1. Native HTML5 drag API (dragstart → drop/dragend)
+  //   2. Pointer-based drag (pointerdown → pointermove > threshold → pointerup)
+  //      Used by react-dnd, SortableJS, and other JS drag libraries
+  // Only one strategy fires per gesture — native drag sets nativeDragInProgress
+  // so pointer handlers skip the same gesture.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Handle native HTML5 dragstart — record source element
+   */
+  private onDragStart(event: DragEvent): void {
+    if (!this.isListening) return;
+
+    const target = event.target as Element;
+    if (!target) return;
+
+    // Skip extension UI elements
+    if (target.closest('[id^="saveaction-"]')) return;
+
+    this.nativeDragSource = target;
+    this.nativeDragSourceCoords = { x: event.clientX, y: event.clientY };
+    this.nativeDragInProgress = true;
+
+    console.log('[EventListener] 🖱️ Native drag started:', target.tagName);
+  }
+
+  /**
+   * Handle native HTML5 drop — record complete drag-drop action
+   */
+  private onDrop(event: DragEvent): void {
+    if (!this.isListening) return;
+    if (!this.nativeDragInProgress || !this.nativeDragSource || !this.nativeDragSourceCoords)
+      return;
+
+    const target = event.target as Element;
+    if (!target) return;
+
+    // Skip extension UI elements
+    if (target.closest('[id^="saveaction-"]')) return;
+
+    this.recordDragDropAction(
+      this.nativeDragSource,
+      this.nativeDragSourceCoords,
+      target,
+      { x: event.clientX, y: event.clientY },
+      'native'
+    );
+
+    // Reset native drag state (dragend will also fire, skip it)
+    this.nativeDragSource = null;
+    this.nativeDragSourceCoords = null;
+    this.nativeDragInProgress = false;
+  }
+
+  /**
+   * Handle native HTML5 dragend — fallback for when drop didn't fire
+   * (e.g., dropped outside a valid drop zone, or pointer drag that
+   * triggered dragstart via dataTransfer manipulation)
+   */
+  private onDragEnd(_event: DragEvent): void {
+    // If drop already fired and cleared the state, nothing to do
+    this.nativeDragSource = null;
+    this.nativeDragSourceCoords = null;
+    this.nativeDragInProgress = false;
+  }
+
+  /**
+   * Handle pointerdown — start tracking a potential pointer-based drag
+   * Skips if a native drag is already in progress for this gesture
+   */
+  private onPointerDown(event: PointerEvent): void {
+    if (!this.isListening) return;
+    if (event.button !== 0) return; // Only track primary button
+
+    const target = event.target as Element;
+    if (!target) return;
+
+    // Skip extension UI elements
+    if (target.closest('[id^="saveaction-"]')) return;
+
+    // Reset pointer drag state
+    this.pointerDragSource = target;
+    this.pointerDragStartCoords = { x: event.clientX, y: event.clientY };
+    this.pointerDragActive = false;
+  }
+
+  /**
+   * Handle pointermove — detect if movement exceeds drag threshold
+   */
+  private onPointerMove(event: PointerEvent): void {
+    if (!this.isListening) return;
+    if (!this.pointerDragSource || !this.pointerDragStartCoords) return;
+
+    // Skip if native drag is handling this gesture
+    if (this.nativeDragInProgress) return;
+
+    if (!this.pointerDragActive) {
+      const dx = event.clientX - this.pointerDragStartCoords.x;
+      const dy = event.clientY - this.pointerDragStartCoords.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance >= this.POINTER_DRAG_THRESHOLD) {
+        this.pointerDragActive = true;
+        console.log(
+          `[EventListener] 🖱️ Pointer drag threshold exceeded (${distance.toFixed(1)}px)`
+        );
+      }
+    }
+  }
+
+  /**
+   * Handle pointerup — if dragging was active, record the drag-drop action
+   */
+  private onPointerUp(event: PointerEvent): void {
+    if (!this.isListening) return;
+
+    const hadDragActive = this.pointerDragActive;
+    const source = this.pointerDragSource;
+    const startCoords = this.pointerDragStartCoords;
+
+    // Reset state before processing (prevents re-entrancy)
+    this.pointerDragSource = null;
+    this.pointerDragStartCoords = null;
+    this.pointerDragActive = false;
+
+    if (!hadDragActive || !source || !startCoords) return;
+
+    // Skip if native drag is handling this gesture
+    if (this.nativeDragInProgress) return;
+
+    // Skip extension UI elements
+    if (source.closest('[id^="saveaction-"]')) return;
+
+    // Find the element under the pointer at time of release
+    const endCoords = { x: event.clientX, y: event.clientY };
+    const targetElement = document.elementFromPoint(endCoords.x, endCoords.y);
+
+    if (!targetElement) {
+      console.log('[EventListener] ⚠️ Pointer drag: no element found at drop point, skipping');
+      return;
+    }
+
+    // Skip if dropped back onto source (not a meaningful drag)
+    if (targetElement === source || source.contains(targetElement)) {
+      console.log('[EventListener] ⚠️ Pointer drag: dropped on source element, skipping');
+      return;
+    }
+
+    // Skip extension UI elements at target
+    if (targetElement.closest('[id^="saveaction-"]')) return;
+
+    this.recordDragDropAction(source, startCoords, targetElement, endCoords, 'pointer');
+  }
+
+  /**
+   * Build and emit a DragDropAction
+   */
+  private recordDragDropAction(
+    sourceElement: Element,
+    sourceCoords: { x: number; y: number },
+    targetElement: Element,
+    targetCoords: { x: number; y: number },
+    dragType: 'native' | 'pointer'
+  ): void {
+    const sourceSelector = this.selectorGenerator.generateSelectors(sourceElement);
+    const targetSelector = this.selectorGenerator.generateSelectors(targetElement);
+
+    const action: DragDropAction = {
+      id: generateActionId(++this.actionSequence),
+      type: 'drag-drop',
+      timestamp: this.getRelativeTimestamp(),
+      completedAt: 0, // Will be set by emitAction
+      url: window.location.href,
+      sourceSelector,
+      targetSelector,
+      sourceCoordinates: sourceCoords,
+      targetCoordinates: targetCoords,
+      dragType,
+      sourceTagName: sourceElement.tagName,
+      targetTagName: targetElement.tagName,
+    };
+
+    console.log(
+      `[EventListener] 🎯 Drag & drop recorded (${dragType}): ${sourceElement.tagName} → ${targetElement.tagName}`
+    );
+    this.emitAction(action);
+  }
+
   private onDialogMessage(event: MessageEvent): void {
     if (!this.isListening) return;
     if (event.source !== window) return;
