@@ -1,27 +1,58 @@
 /**
  * Extension Settings Types
- * Defines types for platform integration settings
+ * Defines types for platform connection and recorder preferences.
  */
 
-/**
- * Extension settings stored in chrome.storage.sync
- */
-export interface ExtensionSettings {
-  platformUrl: string; // e.g., "https://saveaction.example.com"
-  apiToken: string; // e.g., "sa_live_abc123..."
-  selectedProjectId: string; // UUID of selected project (required for upload)
-  selectedProjectName: string; // For display purposes
-  autoUpload: boolean; // default: false
-  defaultTags: string; // comma-separated, e.g., "smoke,regression"
-  storeCredentials: boolean; // default: false — store passwords as plaintext in recordings
+export type ConnectionState = 'disconnected' | 'pending' | 'connected' | 'expired';
+
+export interface ConnectedAccount {
+  id: string;
+  name: string;
+  email: string;
+  avatarUrl: string | null;
+}
+
+export interface PendingConnection {
+  sessionId: string;
+  authorizeUrl: string;
+  verificationCode: string;
+  expiresAt: string;
+  pollIntervalMs: number;
+}
+
+export interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+  accessTokenExpiresAt: string;
 }
 
 /**
- * Default settings values
+ * Extension settings stored in chrome.storage.local.
+ * Local storage is used because this state contains active session material.
  */
+export interface ExtensionSettings {
+  platformUrl: string;
+  connectionState: ConnectionState;
+  account: ConnectedAccount | null;
+  pendingConnection: PendingConnection | null;
+  authTokens: AuthTokens | null;
+  selectedOrganizationId: string;
+  selectedOrganizationName: string;
+  selectedProjectId: string;
+  selectedProjectName: string;
+  autoUpload: boolean;
+  defaultTags: string;
+  storeCredentials: boolean;
+}
+
 export const DEFAULT_SETTINGS: ExtensionSettings = {
   platformUrl: '',
-  apiToken: '',
+  connectionState: 'disconnected',
+  account: null,
+  pendingConnection: null,
+  authTokens: null,
+  selectedOrganizationId: '',
+  selectedOrganizationName: '',
   selectedProjectId: '',
   selectedProjectName: '',
   autoUpload: false,
@@ -29,12 +60,14 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   storeCredentials: false,
 };
 
-/**
- * Storage keys for settings
- */
 export const SETTINGS_STORAGE_KEYS = {
   PLATFORM_URL: 'platformUrl',
-  API_TOKEN: 'apiToken',
+  CONNECTION_STATE: 'connectionState',
+  ACCOUNT: 'account',
+  PENDING_CONNECTION: 'pendingConnection',
+  AUTH_TOKENS: 'authTokens',
+  SELECTED_ORGANIZATION_ID: 'selectedOrganizationId',
+  SELECTED_ORGANIZATION_NAME: 'selectedOrganizationName',
   SELECTED_PROJECT_ID: 'selectedProjectId',
   SELECTED_PROJECT_NAME: 'selectedProjectName',
   AUTO_UPLOAD: 'autoUpload',
@@ -42,38 +75,41 @@ export const SETTINGS_STORAGE_KEYS = {
   STORE_CREDENTIALS: 'storeCredentials',
 } as const;
 
-/**
- * Connection test result
- */
 export interface ConnectionTestResult {
   success: boolean;
   error?: string;
-  errorType?: 'network' | 'auth' | 'permission' | 'server';
+  errorType?: 'network' | 'auth' | 'permission' | 'server' | 'session';
 }
 
-/**
- * Upload result from platform API
- */
+export interface BeginConnectionResult extends ConnectionTestResult {
+  pendingConnection?: PendingConnection;
+}
+
+export interface PollConnectionResult extends ConnectionTestResult {
+  status: 'pending' | 'approved' | 'expired';
+  account?: ConnectedAccount;
+}
+
 export interface UploadResult {
   success: boolean;
-  recordingId?: string; // Platform's UUID for the recording
+  recordingId?: string;
   recordingName?: string;
   error?: string;
-  errorCode?: string; // API error code
-  alreadyExists?: boolean; // true if 409 duplicate
+  errorCode?: string;
+  alreadyExists?: boolean;
+  requiresReconnect?: boolean;
 }
 
-/**
- * API health response
- */
 export interface HealthResponse {
   status: 'ok' | 'error';
   version?: string;
 }
 
-/**
- * API upload response
- */
+export interface ApiErrorPayload {
+  code: string;
+  message: string;
+}
+
 export interface UploadResponse {
   success: boolean;
   data?: {
@@ -84,15 +120,25 @@ export interface UploadResponse {
     actionCount: number;
     createdAt: string;
   };
-  error?: {
-    code: string;
-    message: string;
-  };
+  error?: ApiErrorPayload;
 }
 
-/**
- * Project from SaveAction platform
- */
+export type WorkspaceType = 'personal' | 'organization';
+
+export interface Workspace {
+  id: string;
+  name: string;
+  slug: string;
+  type: WorkspaceType;
+  role: string | null;
+  organizationId?: string | null;
+  projectCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type Organization = Workspace;
+
 export interface Project {
   id: string;
   name: string;
@@ -100,13 +146,18 @@ export interface Project {
   description: string | null;
   color: string | null;
   isDefault: boolean;
+  organizationId?: string;
   createdAt: string;
   updatedAt: string;
 }
 
-/**
- * Projects list response
- */
+export interface WorkspacesResponse {
+  success: boolean;
+  data: Workspace[];
+}
+
+export type OrganizationsResponse = WorkspacesResponse;
+
 export interface ProjectsResponse {
   success: boolean;
   data: Project[];
@@ -118,9 +169,30 @@ export interface ProjectsResponse {
   };
 }
 
-/**
- * Validate URL format
- */
+export interface ExtensionAuthStartResponse {
+  success: boolean;
+  data?: PendingConnection;
+  error?: ApiErrorPayload;
+}
+
+export interface ExtensionAuthPollResponse {
+  success: boolean;
+  data?: {
+    status: 'pending' | 'approved' | 'expired';
+    account?: ConnectedAccount;
+    accessToken?: string;
+    refreshToken?: string;
+    accessTokenExpiresAt?: string;
+  };
+  error?: ApiErrorPayload;
+}
+
+export interface ExtensionAuthRefreshResponse {
+  success: boolean;
+  data?: AuthTokens;
+  error?: ApiErrorPayload;
+}
+
 export function isValidUrl(url: string): boolean {
   if (!url) return false;
   try {
@@ -131,30 +203,30 @@ export function isValidUrl(url: string): boolean {
   }
 }
 
-/**
- * Validate API token format
- * SaveAction API tokens look like: sa_live_<64 hex characters>
- */
-export function isValidApiToken(token: string): boolean {
-  if (!token) return false;
-  return /^sa_live_[a-f0-9]{64}$/i.test(token);
-}
-
-/**
- * Parse tags from comma-separated string
- */
 export function parseTags(tagString: string): string[] {
   if (!tagString) return [];
   return tagString
     .split(',')
     .map((tag) => tag.trim())
     .filter((tag) => tag.length > 0 && tag.length <= 50)
-    .slice(0, 20); // Max 20 tags
+    .slice(0, 20);
 }
 
-/**
- * Normalize platform URL (remove trailing slashes)
- */
 export function normalizePlatformUrl(url: string): string {
   return url.replace(/\/+$/, '');
+}
+
+export function isTokenExpired(expiresAt: string, bufferMs = 30_000): boolean {
+  if (!expiresAt) return true;
+  const expiresAtMs = new Date(expiresAt).getTime();
+  if (Number.isNaN(expiresAtMs)) return true;
+  return Date.now() + bufferMs >= expiresAtMs;
+}
+
+export function hasActiveConnection(settings: ExtensionSettings): boolean {
+  return settings.connectionState === 'connected' && !!settings.authTokens?.refreshToken;
+}
+
+export function hasPendingConnection(settings: ExtensionSettings): boolean {
+  return settings.connectionState === 'pending' && !!settings.pendingConnection;
 }
