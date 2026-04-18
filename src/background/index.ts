@@ -10,7 +10,7 @@ import type { InputAction, TabAction } from '@/types/actions';
 import { saveRecording } from '@/utils/storage';
 import { downloadRecording } from '@/utils/exporter';
 import { loadSettings, uploadRecording as uploadToPlatform } from '@/platform/api';
-import { parseTags } from '@/types/settings';
+import { hasActiveConnection, parseTags } from '@/types/settings';
 
 /**
  * Global recording state managed by background script
@@ -784,7 +784,7 @@ async function handleStopAndUpload(
   try {
     const settings = await loadSettings();
 
-    if (!settings.platformUrl || !settings.apiToken) {
+    if (!settings.platformUrl || !hasActiveConnection(settings)) {
       console.log('[Background] Platform not configured, downloading locally');
       // Auto-download the recording
       await downloadRecording(recording);
@@ -842,13 +842,7 @@ async function handleStopAndUpload(
     console.log('[Background] Uploading to platform...');
     const tags = parseTags(settings.defaultTags);
 
-    const uploadResult = await uploadToPlatform(
-      settings.platformUrl,
-      settings.apiToken,
-      recording,
-      tags,
-      settings.selectedProjectId
-    );
+    const uploadResult = await uploadToPlatform(recording, tags, settings.selectedProjectId);
 
     if (uploadResult.success) {
       console.log('[Background] Upload successful:', uploadResult.recordingId);

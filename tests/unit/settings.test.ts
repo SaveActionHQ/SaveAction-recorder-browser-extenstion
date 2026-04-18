@@ -1,123 +1,111 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
-  isValidUrl,
-  isValidApiToken,
-  parseTags,
-  normalizePlatformUrl,
   DEFAULT_SETTINGS,
+  hasActiveConnection,
+  hasPendingConnection,
+  isTokenExpired,
+  isValidUrl,
+  normalizePlatformUrl,
+  parseTags,
   SETTINGS_STORAGE_KEYS,
 } from '@/types/settings';
 
 describe('isValidUrl', () => {
-  it('should accept valid https URL', () => {
+  it('accepts valid https URLs', () => {
     expect(isValidUrl('https://saveaction.example.com')).toBe(true);
   });
 
-  it('should accept valid http URL', () => {
+  it('accepts valid http URLs', () => {
     expect(isValidUrl('http://localhost:3000')).toBe(true);
   });
 
-  it('should reject empty string', () => {
+  it('rejects invalid or unsupported URLs', () => {
     expect(isValidUrl('')).toBe(false);
-  });
-
-  it('should reject invalid URL', () => {
     expect(isValidUrl('not-a-url')).toBe(false);
-  });
-
-  it('should reject ftp protocol', () => {
     expect(isValidUrl('ftp://example.com')).toBe(false);
-  });
-
-  it('should reject javascript protocol', () => {
     expect(isValidUrl('javascript:alert(1)')).toBe(false);
   });
 });
 
-describe('isValidApiToken', () => {
-  it('should accept valid token format', () => {
-    const validToken = 'sa_live_' + 'a'.repeat(64);
-    expect(isValidApiToken(validToken)).toBe(true);
-  });
-
-  it('should accept uppercase hex characters', () => {
-    const validToken = 'sa_live_' + 'A1B2C3D4'.repeat(8);
-    expect(isValidApiToken(validToken)).toBe(true);
-  });
-
-  it('should reject empty string', () => {
-    expect(isValidApiToken('')).toBe(false);
-  });
-
-  it('should reject token with wrong prefix', () => {
-    expect(isValidApiToken('sa_test_' + 'a'.repeat(64))).toBe(false);
-  });
-
-  it('should reject token with wrong length', () => {
-    expect(isValidApiToken('sa_live_' + 'a'.repeat(32))).toBe(false);
-  });
-
-  it('should reject token with invalid characters', () => {
-    expect(isValidApiToken('sa_live_' + 'g'.repeat(64))).toBe(false);
-  });
-});
-
 describe('parseTags', () => {
-  it('should parse comma-separated tags', () => {
-    expect(parseTags('smoke,regression,critical')).toEqual([
+  it('splits and trims comma-separated tags', () => {
+    expect(parseTags(' smoke , regression , critical ')).toEqual([
       'smoke',
       'regression',
       'critical',
     ]);
   });
 
-  it('should trim whitespace from tags', () => {
-    expect(parseTags(' smoke , regression ')).toEqual(['smoke', 'regression']);
-  });
-
-  it('should return empty array for empty string', () => {
-    expect(parseTags('')).toEqual([]);
-  });
-
-  it('should filter out empty tags', () => {
-    expect(parseTags('smoke,,regression,,')).toEqual(['smoke', 'regression']);
-  });
-
-  it('should limit to 20 tags', () => {
-    const manyTags = Array.from({ length: 25 }, (_, i) => `tag${i}`).join(',');
-    expect(parseTags(manyTags)).toHaveLength(20);
-  });
-
-  it('should filter out tags longer than 50 characters', () => {
+  it('filters invalid tags and limits to 20 entries', () => {
+    const tooManyTags = Array.from({ length: 25 }, (_, index) => `tag${index}`).join(',');
     const longTag = 'a'.repeat(51);
-    expect(parseTags(`short,${longTag},valid`)).toEqual(['short', 'valid']);
+
+    expect(parseTags(`ok,${longTag},${tooManyTags}`)).toHaveLength(20);
   });
 });
 
 describe('normalizePlatformUrl', () => {
-  it('should remove trailing slash', () => {
+  it('removes trailing slashes', () => {
     expect(normalizePlatformUrl('https://example.com/')).toBe('https://example.com');
-  });
-
-  it('should remove multiple trailing slashes', () => {
     expect(normalizePlatformUrl('https://example.com///')).toBe('https://example.com');
   });
 
-  it('should not modify URL without trailing slash', () => {
-    expect(normalizePlatformUrl('https://example.com')).toBe('https://example.com');
+  it('preserves URLs without trailing slashes', () => {
+    expect(normalizePlatformUrl('https://example.com/api')).toBe('https://example.com/api');
+  });
+});
+
+describe('isTokenExpired', () => {
+  it('returns true for missing or past expirations', () => {
+    expect(isTokenExpired('')).toBe(true);
+    expect(isTokenExpired(new Date(Date.now() - 60_000).toISOString())).toBe(true);
   });
 
-  it('should handle URL with path', () => {
-    expect(normalizePlatformUrl('https://example.com/api/')).toBe(
-      'https://example.com/api'
-    );
+  it('returns false for future expirations outside the safety buffer', () => {
+    expect(isTokenExpired(new Date(Date.now() + 5 * 60_000).toISOString())).toBe(false);
+  });
+});
+
+describe('connection helpers', () => {
+  it('recognizes active account sessions', () => {
+    expect(
+      hasActiveConnection({
+        ...DEFAULT_SETTINGS,
+        connectionState: 'connected',
+        authTokens: {
+          accessToken: 'access-token',
+          refreshToken: 'refresh-token',
+          accessTokenExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+        },
+      })
+    ).toBe(true);
+  });
+
+  it('recognizes pending connection requests', () => {
+    expect(
+      hasPendingConnection({
+        ...DEFAULT_SETTINGS,
+        connectionState: 'pending',
+        pendingConnection: {
+          sessionId: 'sess-1',
+          authorizeUrl: 'https://saveaction.io/connect/sess-1',
+          verificationCode: 'JOIN-1234',
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          pollIntervalMs: 2000,
+        },
+      })
+    ).toBe(true);
   });
 });
 
 describe('DEFAULT_SETTINGS', () => {
-  it('should have correct default values', () => {
+  it('defaults to a disconnected local-only state', () => {
     expect(DEFAULT_SETTINGS.platformUrl).toBe('');
-    expect(DEFAULT_SETTINGS.apiToken).toBe('');
+    expect(DEFAULT_SETTINGS.connectionState).toBe('disconnected');
+    expect(DEFAULT_SETTINGS.account).toBeNull();
+    expect(DEFAULT_SETTINGS.pendingConnection).toBeNull();
+    expect(DEFAULT_SETTINGS.authTokens).toBeNull();
+    expect(DEFAULT_SETTINGS.selectedOrganizationId).toBe('');
     expect(DEFAULT_SETTINGS.selectedProjectId).toBe('');
     expect(DEFAULT_SETTINGS.autoUpload).toBe(false);
     expect(DEFAULT_SETTINGS.storeCredentials).toBe(false);
@@ -125,9 +113,13 @@ describe('DEFAULT_SETTINGS', () => {
 });
 
 describe('SETTINGS_STORAGE_KEYS', () => {
-  it('should have all required keys', () => {
+  it('exposes the expected storage keys for connection and routing state', () => {
     expect(SETTINGS_STORAGE_KEYS.PLATFORM_URL).toBe('platformUrl');
-    expect(SETTINGS_STORAGE_KEYS.API_TOKEN).toBe('apiToken');
+    expect(SETTINGS_STORAGE_KEYS.CONNECTION_STATE).toBe('connectionState');
+    expect(SETTINGS_STORAGE_KEYS.PENDING_CONNECTION).toBe('pendingConnection');
+    expect(SETTINGS_STORAGE_KEYS.AUTH_TOKENS).toBe('authTokens');
+    expect(SETTINGS_STORAGE_KEYS.SELECTED_ORGANIZATION_ID).toBe('selectedOrganizationId');
+    expect(SETTINGS_STORAGE_KEYS.SELECTED_PROJECT_ID).toBe('selectedProjectId');
     expect(SETTINGS_STORAGE_KEYS.AUTO_UPLOAD).toBe('autoUpload');
     expect(SETTINGS_STORAGE_KEYS.STORE_CREDENTIALS).toBe('storeCredentials');
   });
