@@ -2,6 +2,39 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { EventListener } from '@/content/event-listener';
 import type { Action } from '@/types';
 
+if (!global.PointerEvent) {
+  // @ts-expect-error - Intentional test polyfill for jsdom.
+  global.PointerEvent = class PointerEvent extends MouseEvent {
+    readonly pointerId: number;
+    readonly pointerType: string;
+
+    constructor(type: string, options?: PointerEventInit & MouseEventInit) {
+      super(type, options);
+      this.pointerId = (options as any)?.pointerId ?? 1;
+      this.pointerType = (options as any)?.pointerType ?? 'mouse';
+    }
+  };
+}
+
+function firePointerEvent(
+  element: Element,
+  type: 'pointerdown' | 'pointerup',
+  coords = { x: 50, y: 20 },
+  options: Partial<PointerEventInit> = {}
+): void {
+  const event = new PointerEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    clientX: coords.x,
+    clientY: coords.y,
+    button: 0,
+    buttons: type === 'pointerup' ? 0 : 1,
+    ...options,
+  });
+
+  element.dispatchEvent(event);
+}
+
 describe('EventListener', () => {
   let eventListener: EventListener;
   let capturedActions: Action[];
@@ -166,6 +199,96 @@ describe('EventListener', () => {
       expect(capturedActions).toHaveLength(0);
 
       document.body.removeChild(div);
+    });
+
+    it('should capture autocomplete selection when widget commits before click event', async () => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'form-search-sector';
+
+      const input = document.createElement('input');
+      input.id = 'sector-input';
+      input.setAttribute('aria-label', 'Sector');
+
+      const list = document.createElement('ul');
+      list.className = 'form__autocomplete';
+
+      const item = document.createElement('li');
+      item.textContent = 'Restaurants';
+      item.style.cursor = 'pointer';
+
+      list.appendChild(item);
+      wrapper.appendChild(input);
+      wrapper.appendChild(list);
+      document.body.appendChild(wrapper);
+
+      eventListener.start();
+
+      firePointerEvent(item, 'pointerdown');
+      firePointerEvent(item, 'pointerup');
+
+      await new Promise((resolve) => setTimeout(resolve, 80));
+
+      const clickActions = capturedActions.filter((action) => action.type === 'click');
+      expect(clickActions).toHaveLength(1);
+
+      const action = clickActions[0];
+      if (action?.type === 'click') {
+        expect(action.tagName).toBe('li');
+        expect(action.text).toBe('Restaurants');
+        expect(action.isInDropdown).toBe(true);
+        expect(action.requiresParentOpen).toBe(true);
+        expect(action.parentTrigger?.id).toBe('sector-input');
+      }
+
+      document.body.removeChild(wrapper);
+    });
+
+    it('should not duplicate autocomplete selection when click event also fires', async () => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'form-search-sector';
+
+      const input = document.createElement('input');
+      input.id = 'location-input';
+      input.setAttribute('aria-label', 'Location');
+
+      const list = document.createElement('ul');
+      list.className = 'form__autocomplete';
+
+      const item = document.createElement('li');
+      item.textContent = 'London';
+      item.style.cursor = 'pointer';
+
+      list.appendChild(item);
+      wrapper.appendChild(input);
+      wrapper.appendChild(list);
+      document.body.appendChild(wrapper);
+
+      eventListener.start();
+
+      firePointerEvent(item, 'pointerdown');
+      firePointerEvent(item, 'pointerup');
+      item.dispatchEvent(
+        new MouseEvent('click', {
+          bubbles: true,
+          cancelable: true,
+          clientX: 50,
+          clientY: 20,
+          button: 0,
+        })
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 80));
+
+      const clickActions = capturedActions.filter((action) => action.type === 'click');
+      expect(clickActions).toHaveLength(1);
+
+      const action = clickActions[0];
+      if (action?.type === 'click') {
+        expect(action.text).toBe('London');
+        expect(action.isInDropdown).toBe(true);
+      }
+
+      document.body.removeChild(wrapper);
     });
   });
 

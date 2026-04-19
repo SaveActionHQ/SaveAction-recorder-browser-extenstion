@@ -35,6 +35,17 @@ import {
 import { generateContentSignature, isCarouselElement } from '@/utils/content-signature';
 import { ModalTracker, findParentModal, detectModalState } from '@/utils/modal-tracker';
 
+type ClickActionSnapshot = Omit<
+  ClickAction,
+  'id' | 'type' | 'timestamp' | 'completedAt' | 'url' | 'clickCount'
+>;
+
+interface PendingDropdownSelection {
+  target: Element;
+  snapshot: ClickActionSnapshot;
+  timeoutId: NodeJS.Timeout | null;
+}
+
 /**
  * EventListener - Captures user interactions on the page
  * Implements smart filtering and debouncing for reliable recording
@@ -87,6 +98,68 @@ export class EventListener {
   private recentActions: Action[] = []; // Buffer of recent actions for linking
   private readonly MAX_RECENT_ACTIONS = 20; // Maximum recent actions to track
   private readonly DROPDOWN_LINK_TIMEOUT = 60000; // 60s - Max time to link dropdown opening to item click
+  private pendingDropdownSelection: PendingDropdownSelection | null = null; // Fallback for autocomplete widgets that commit on pointerdown/mousedown
+  private readonly DROPDOWN_SELECTION_FALLBACK_MS = 30;
+  private readonly DROPDOWN_CONTAINER_SELECTORS = [
+    // Semantic HTML / ARIA patterns
+    '[role="menu"]',
+    '[role="listbox"]',
+    '[role="tree"]',
+    '[role="grid"]',
+    '[role="combobox"]',
+    '[aria-expanded="true"]',
+
+    // Framework dropdown patterns
+    '.dropdown-menu',
+    '.dropdown-content',
+    'ul.dropdown',
+    '.MuiMenu-paper',
+    '.MuiPopover-paper',
+    '.ant-dropdown',
+    '.ant-select-dropdown',
+
+    // Autocomplete / suggestion widgets
+    '.autocomplete-dropdown',
+    '[class*="autocomplete"]',
+    '[id*="autocomplete"]',
+    '[class*="suggest"]',
+    '[id*="suggest"]',
+    '[class*="typeahead"]',
+    '[id*="typeahead"]',
+    '[class*="listbox"]',
+    '[id*="listbox"]',
+    '[class*="option-list"]',
+    '[class*="options"]',
+    '[class*="choices"]',
+    '[class*="results"]',
+    'ul[class*="autocomplete"]',
+    'ul[class*="suggest"]',
+    'ul[class*="options"]',
+    'ul[class*="results"]',
+    'div[class*="autocomplete"]',
+    'div[class*="suggest"]',
+    'div[class*="typeahead"]',
+
+    // Generic custom dropdown patterns
+    '.menu',
+    '.select-dropdown',
+    '.select-menu',
+    '.select-options',
+    '.menu-items',
+    'ul[data-dropdown]',
+    'div[data-dropdown]',
+    '[data-dropdown]',
+    '[aria-haspopup="true"]',
+    '[class*="dropdown"]',
+    '[class*="menu"]',
+    '[id*="dropdown"]',
+    '[id*="menu"]',
+    'ul[id*="dropdown"]',
+    'ul[id*="menu"]',
+    'div[id*="dropdown"]',
+    '.popover',
+    '.tooltip-content',
+  ];
 
   // Drag & Drop tracking
   // Native drag (HTML5 drag API) state
@@ -360,6 +433,8 @@ export class EventListener {
   public stop(): void {
     if (!this.isListening) return;
 
+    this.clearPendingDropdownSelection();
+
     // âœ… CRITICAL: Flush ALL pending input actions before stopping
     // This ensures inputs are recorded when user clicks "Stop Recording" button
     // or when recording is paused/stopped programmatically
@@ -401,6 +476,7 @@ export class EventListener {
    */
   public destroy(): void {
     this.stop();
+    this.clearPendingDropdownSelection();
     if (this.inputDebounceTimer) clearTimeout(this.inputDebounceTimer);
     if (this.scrollDebounceTimer) clearTimeout(this.scrollDebounceTimer);
 
@@ -526,6 +602,7 @@ export class EventListener {
       console.log('[EventListener] âš ï¸ No interactive parent found for click - skipping');
       return;
     }
+    this.cancelPendingDropdownSelection(target);
     console.log('[EventListener] ðŸŽ¯ Interactive target:', {
       from: clickedElement.tagName,
       to: target.tagName,
@@ -852,12 +929,11 @@ export class EventListener {
   /**
    * Create click action
    */
-  private createClickAction(
-    event: MouseEvent,
+  private captureClickActionSnapshot(
+    event: MouseEvent | PointerEvent,
     target: Element,
-    clickedElement: Element,
-    clickCount: number
-  ): ClickAction {
+    clickedElement: Element
+  ): ClickActionSnapshot {
     // ðŸ†• P0 FIX: Track if we redirected from decorative child to interactive parent
     const wasRedirected = clickedElement !== target;
 
@@ -1060,18 +1136,12 @@ export class EventListener {
     });
 
     return {
-      id: generateActionId(++this.actionSequence),
-      type: 'click',
-      timestamp: this.getRelativeTimestamp(),
-      completedAt: 0, // Will be set by emitAction
-      url: window.location.href,
       selector,
       tagName: target.tagName.toLowerCase(),
       text: target.textContent?.trim(),
       coordinates: { x, y },
       coordinatesRelativeTo: 'element',
       button,
-      clickCount,
       modifiers,
       elementState,
       waitConditions,
@@ -1088,6 +1158,28 @@ export class EventListener {
       // âœ… P1: Intent classification and validation
       clickIntent,
       validation,
+    };
+  }
+
+  /**
+   * Create click action
+   */
+  private createClickAction(
+    event: MouseEvent | PointerEvent,
+    target: Element,
+    clickedElement: Element,
+    clickCount: number
+  ): ClickAction {
+    const snapshot = this.captureClickActionSnapshot(event, target, clickedElement);
+
+    return {
+      id: generateActionId(++this.actionSequence),
+      type: 'click',
+      timestamp: this.getRelativeTimestamp(),
+      completedAt: 0, // Will be set by emitAction
+      url: window.location.href,
+      clickCount,
+      ...snapshot,
     };
   }
 
@@ -2403,61 +2495,7 @@ export class EventListener {
     parentTrigger?: SelectorStrategy;
     relatedAction?: string;
   } {
-    // Common dropdown/menu selectors (framework-agnostic)
-    const dropdownSelectors = [
-      // Semantic HTML
-      '[role="menu"]',
-      '[role="listbox"]',
-      '[role="combobox"]',
-      '[aria-expanded]',
-
-      // Bootstrap patterns
-      '.dropdown-menu',
-      '.dropdown-content',
-      'ul.dropdown',
-
-      // Material UI / Ant Design patterns
-      '.MuiMenu-paper',
-      '.MuiPopover-paper',
-      '.ant-dropdown',
-      '.ant-select-dropdown',
-
-      // Custom select patterns
-      '.menu',
-      '.select-dropdown',
-      '.select-menu',
-      '.select-options',
-      '.menu-items',
-      '.autocomplete-dropdown',
-      'ul[data-dropdown]',
-      'div[data-dropdown]',
-      '[data-dropdown]',
-      '[aria-haspopup="true"]',
-
-      // Generic patterns for custom dropdowns
-      '[class*="dropdown"]',
-      '[class*="menu"]',
-      '[id*="dropdown"]',
-      '[id*="menu"]',
-      'ul[class*="dropdown"]', // Custom <ul> dropdowns
-      'ul[id*="dropdown"]',
-      'ul[id*="menu"]',
-      'div[class*="dropdown"]',
-      'div[id*="dropdown"]',
-      '.popover',
-      '.tooltip-content',
-    ];
-
-    // Find parent dropdown container
-    const dropdownParent = dropdownSelectors
-      .map((selector) => {
-        try {
-          return element.closest(selector);
-        } catch (e) {
-          return null;
-        }
-      })
-      .find((parent) => parent !== null) as Element | null;
+    const dropdownParent = this.findDropdownContainer(element);
 
     if (!dropdownParent) {
       return { isInDropdown: false };
@@ -2634,22 +2672,7 @@ export class EventListener {
           const element = mutation.target as Element;
 
           // Check if this is a dropdown element
-          const isDropdown = element.matches(
-            [
-              '[role="menu"]',
-              '[role="listbox"]',
-              '.dropdown-menu',
-              '.dropdown-content',
-              '.MuiMenu-paper',
-              '.MuiPopover-paper',
-              '.ant-dropdown',
-              '[class*="dropdown"]',
-              '[class*="menu"]',
-              'ul[class*="menu"]', // Custom <ul> menus
-              'ul[id*="menu"]',
-              'ul[id*="dropdown"]',
-            ].join(',')
-          );
+          const isDropdown = this.isDropdownContainerElement(element);
 
           if (isDropdown && this.isListening) {
             const isVisible = this.isElementVisibleForDropdown(element);
@@ -2657,7 +2680,7 @@ export class EventListener {
             if (isVisible) {
               // Dropdown just became visible - link to most recent action
               const lastAction = this.recentActions[this.recentActions.length - 1];
-              if (lastAction && lastAction.type === 'click') {
+              if (lastAction && (lastAction.type === 'click' || lastAction.type === 'input')) {
                 this.onDropdownOpen(element, lastAction.id);
                 console.log('[EventListener] ðŸ”½ Dropdown opened by action:', lastAction.id);
               }
@@ -2758,6 +2781,18 @@ export class EventListener {
       return prevSibling;
     }
 
+    // Strategy 3.5: Previous sibling that is an input/combobox (autocomplete widgets)
+    if (
+      prevSibling &&
+      (prevSibling.tagName === 'INPUT' ||
+        prevSibling.tagName === 'TEXTAREA' ||
+        prevSibling.getAttribute('role') === 'combobox' ||
+        prevSibling.hasAttribute('aria-autocomplete'))
+    ) {
+      console.log('[EventListener] Found trigger via previous input sibling');
+      return prevSibling;
+    }
+
     // Strategy 4: Previous sibling that is a button
     if (
       prevSibling &&
@@ -2792,6 +2827,14 @@ export class EventListener {
     // Strategy 7: Check parent container for ANY button (for custom dropdowns)
     const parentContainer = dropdownContainer.parentElement;
     if (parentContainer) {
+      const inputTrigger = parentContainer.querySelector(
+        'input, textarea, [role="combobox"], [aria-autocomplete]'
+      );
+      if (inputTrigger && inputTrigger !== dropdownContainer) {
+        console.log('[EventListener] Found trigger via parent container input');
+        return inputTrigger;
+      }
+
       // Look for any button in the same parent container
       const anyButton = parentContainer.querySelector('button');
       if (anyButton && anyButton !== dropdownContainer) {
@@ -3663,7 +3706,20 @@ export class EventListener {
     if (!element.classList) return false; // Guard against undefined
 
     const classList = Array.from(element.classList).map((c) => c.toLowerCase());
-    const dropdownPatterns = ['dropdown', 'menu', 'nav', 'submenu', 'popover'];
+    const dropdownPatterns = [
+      'dropdown',
+      'menu',
+      'nav',
+      'submenu',
+      'popover',
+      'autocomplete',
+      'suggest',
+      'typeahead',
+      'listbox',
+      'choices',
+      'options',
+      'results',
+    ];
 
     // Explicit dropdown classes
     const hasDropdownClass = dropdownPatterns.some((pattern) =>
@@ -3675,6 +3731,12 @@ export class EventListener {
 
     // ARIA haspopup attribute (standard dropdown indicator)
     if (element.hasAttribute('aria-haspopup')) {
+      return true;
+    }
+
+    // Standard ARIA containers for menus/autocomplete widgets
+    const role = element.getAttribute('role');
+    if (role && ['menu', 'listbox', 'combobox', 'tree', 'grid'].includes(role)) {
       return true;
     }
 
@@ -3702,6 +3764,164 @@ export class EventListener {
     }
 
     return null;
+  }
+
+  /**
+   * Check if an element matches known dropdown/autocomplete container patterns.
+   */
+  private isDropdownContainerElement(element: Element): boolean {
+    return this.DROPDOWN_CONTAINER_SELECTORS.some((selector) => {
+      try {
+        return element.matches(selector);
+      } catch {
+        return false;
+      }
+    });
+  }
+
+  /**
+   * Find the closest dropdown/autocomplete container for an element.
+   */
+  private findDropdownContainer(element: Element): Element | null {
+    for (const selector of this.DROPDOWN_CONTAINER_SELECTORS) {
+      try {
+        const container = element.closest(selector);
+        if (container) {
+          return container;
+        }
+      } catch {
+        // Ignore invalid selectors and continue searching.
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Identify dropdown/autocomplete option targets that may commit on pointerdown
+   * before a normal click event reaches the recorder.
+   */
+  private isLikelyDropdownSelectionTarget(element: Element): boolean {
+    if (!this.findDropdownContainer(element)) {
+      return false;
+    }
+
+    const tagName = element.tagName;
+    const role = element.getAttribute('role');
+    const className = this.getElementClassName(element).toLowerCase();
+
+    if (role && ['option', 'menuitem', 'menuitemradio', 'menuitemcheckbox'].includes(role)) {
+      return true;
+    }
+
+    if (tagName === 'A' || tagName === 'BUTTON') {
+      return true;
+    }
+
+    if (tagName === 'LI') {
+      return (
+        this.hasClickHandler(element) || className.includes('option') || className.includes('item')
+      );
+    }
+
+    if (tagName === 'DIV' || tagName === 'SPAN') {
+      return (
+        this.hasClickHandler(element) ||
+        className.includes('option') ||
+        className.includes('item') ||
+        className.includes('choice') ||
+        className.includes('suggest') ||
+        className.includes('result')
+      );
+    }
+
+    return false;
+  }
+
+  /**
+   * Capture pending dropdown selection data so pointerup can emit a fallback click
+   * when the site commits selection before a normal click event is fired.
+   */
+  private capturePendingDropdownSelection(event: PointerEvent, clickedElement: Element): void {
+    this.clearPendingDropdownSelection();
+
+    const target = this.findInteractiveElement(clickedElement);
+    if (!target || !this.isLikelyDropdownSelectionTarget(target)) {
+      return;
+    }
+
+    const snapshot = this.captureClickActionSnapshot(event, target, clickedElement);
+    this.pendingDropdownSelection = {
+      target,
+      snapshot,
+      timeoutId: null,
+    };
+
+    console.log('[EventListener] Pending dropdown selection captured on pointerdown:', {
+      tagName: target.tagName,
+      text: target.textContent?.trim()?.substring(0, 60),
+    });
+  }
+
+  /**
+   * Cancel a pending dropdown-selection fallback when the normal click arrives.
+   */
+  private cancelPendingDropdownSelection(target: Element): void {
+    if (!this.pendingDropdownSelection) {
+      return;
+    }
+
+    if (this.pendingDropdownSelection.target !== target) {
+      return;
+    }
+
+    this.clearPendingDropdownSelection();
+    console.log('[EventListener] Pending dropdown selection cleared by normal click');
+  }
+
+  /**
+   * Schedule fallback emission after pointerup, allowing a normal click to cancel it first.
+   */
+  private schedulePendingDropdownSelectionFallback(): void {
+    if (!this.pendingDropdownSelection || this.pendingDropdownSelection.timeoutId) {
+      return;
+    }
+
+    this.pendingDropdownSelection.timeoutId = setTimeout(() => {
+      const pendingSelection = this.pendingDropdownSelection;
+      if (!pendingSelection) {
+        return;
+      }
+
+      this.pendingDropdownSelection = null;
+
+      const action: ClickAction = {
+        id: generateActionId(++this.actionSequence),
+        type: 'click',
+        timestamp: this.getRelativeTimestamp(),
+        completedAt: 0,
+        url: window.location.href,
+        clickCount: 1,
+        ...pendingSelection.snapshot,
+      };
+
+      console.log('[EventListener] Emitting pointer-based dropdown selection fallback:', {
+        id: action.id,
+        text: action.text,
+      });
+      this.emitAction(action);
+    }, this.DROPDOWN_SELECTION_FALLBACK_MS);
+  }
+
+  /**
+   * Clear pending dropdown selection state and cancel any scheduled fallback.
+   */
+  private clearPendingDropdownSelection(): void {
+    if (this.pendingDropdownSelection?.timeoutId) {
+      clearTimeout(this.pendingDropdownSelection.timeoutId);
+    }
+
+    this.pendingDropdownSelection = null;
   }
 
   /**
@@ -3890,6 +4110,8 @@ export class EventListener {
     this.pointerDragSource = target;
     this.pointerDragStartCoords = { x: event.clientX, y: event.clientY };
     this.pointerDragActive = false;
+
+    this.capturePendingDropdownSelection(event, target);
   }
 
   /**
@@ -3909,6 +4131,7 @@ export class EventListener {
 
       if (distance >= this.POINTER_DRAG_THRESHOLD) {
         this.pointerDragActive = true;
+        this.clearPendingDropdownSelection();
         console.log(
           `[EventListener] 🖱️ Pointer drag threshold exceeded (${distance.toFixed(1)}px)`
         );
@@ -3925,6 +4148,10 @@ export class EventListener {
     const hadDragActive = this.pointerDragActive;
     const source = this.pointerDragSource;
     const startCoords = this.pointerDragStartCoords;
+
+    if (this.pendingDropdownSelection && !hadDragActive) {
+      this.schedulePendingDropdownSelectionFallback();
+    }
 
     // Reset state before processing (prevents re-entrancy)
     this.pointerDragSource = null;
