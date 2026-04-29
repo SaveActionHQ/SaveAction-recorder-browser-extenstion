@@ -6,6 +6,160 @@ import type {
   NavigationIntent,
   UrlChangeExpectation,
 } from '../types/actions';
+import { generateModalId } from './modal-tracker';
+
+interface BaseValLike {
+  baseVal?: unknown;
+}
+
+function getStringValue(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value);
+  }
+
+  const baseVal =
+    typeof value === 'object' && value !== null && 'baseVal' in value
+      ? (value as BaseValLike).baseVal
+      : undefined;
+
+  if (typeof baseVal === 'string') {
+    return baseVal;
+  }
+
+  return undefined;
+}
+
+function getLowerStringValue(value: unknown): string {
+  return getStringValue(value)?.toLowerCase() || '';
+}
+
+function getTagNameValue(element: Element): string {
+  return getLowerStringValue((element as Element & { tagName?: unknown }).tagName) || 'element';
+}
+
+function hasModalLikeIdentity(element: Element | null): boolean {
+  if (!element) {
+    return false;
+  }
+
+  const id = getLowerStringValue(element.id);
+  const role = getLowerStringValue(element.getAttribute('role'));
+  const classes = Array.from(element.classList)
+    .filter((className) => typeof className === 'string')
+    .map((className) => className.toLowerCase())
+    .join(' ');
+
+  return (
+    role === 'dialog' ||
+    role === 'alertdialog' ||
+    /modal|dialog|popup|overlay|lightbox/.test(`${id} ${classes}`)
+  );
+}
+
+function resolveControlledElement(reference: string | undefined): Element | null {
+  if (!reference) {
+    return null;
+  }
+
+  const trimmedReference = reference.trim();
+  if (!trimmedReference) {
+    return null;
+  }
+
+  const byId = document.getElementById(trimmedReference.replace(/^#/, ''));
+  if (byId) {
+    return byId;
+  }
+
+  try {
+    return document.querySelector(trimmedReference);
+  } catch {
+    return null;
+  }
+}
+
+export function isLikelyModalTrigger(element: Element): boolean {
+  const rawHref = getLowerStringValue(element.getAttribute('href')).trim();
+  const role = getLowerStringValue(element.getAttribute('role'));
+  const ariaHasPopup = getLowerStringValue(element.getAttribute('aria-haspopup'));
+  const dataToggle = getLowerStringValue(element.getAttribute('data-toggle'));
+  const dataBsToggle = getLowerStringValue(element.getAttribute('data-bs-toggle'));
+  const dataTarget = getStringValue(element.getAttribute('data-target'))?.trim();
+  const dataBsTarget = getStringValue(element.getAttribute('data-bs-target'))?.trim();
+  const ariaControls = getStringValue(element.getAttribute('aria-controls'))?.trim();
+  const hasInlineOnClick = element.getAttribute('onclick') !== null;
+  const isJavaScriptHref = rawHref.startsWith('javascript:');
+  const isHashOnlyHref = rawHref === '#' || rawHref === '';
+
+  if (ariaHasPopup === 'dialog' || dataToggle === 'modal' || dataBsToggle === 'modal') {
+    return true;
+  }
+
+  if (hasModalLikeIdentity(resolveControlledElement(dataTarget))) {
+    return true;
+  }
+
+  if (hasModalLikeIdentity(resolveControlledElement(dataBsTarget))) {
+    return true;
+  }
+
+  if (hasModalLikeIdentity(resolveControlledElement(ariaControls))) {
+    return true;
+  }
+
+  if (hasInlineOnClick && (isJavaScriptHref || isHashOnlyHref)) {
+    return true;
+  }
+
+  if ((role === 'button' || ariaHasPopup === 'true') && (isJavaScriptHref || isHashOnlyHref)) {
+    return true;
+  }
+
+  return false;
+}
+
+export function isLikelyModalDismissControl(element: Element): boolean {
+  const modalRoot = element.closest(
+    '[role="dialog"], [role="alertdialog"], [id*="modal"], [class*="modal"], [id*="popup"], [class*="popup"], [class*="dialog"], [class*="overlay"]'
+  );
+
+  if (!modalRoot) {
+    return false;
+  }
+
+  const text = getLowerStringValue(element.textContent?.trim());
+  const id = getLowerStringValue(element.id);
+  const classes = Array.from(element.classList)
+    .filter((className) => typeof className === 'string')
+    .map((className) => className.toLowerCase())
+    .join(' ');
+  const ariaLabel = getLowerStringValue(element.getAttribute('aria-label'));
+
+  const dismissPatterns = [
+    'no thanks',
+    'no-thanks',
+    'cancel',
+    'close',
+    'dismiss',
+    'not now',
+    'skip',
+    'maybe later',
+    'later',
+    '×',
+  ];
+
+  return dismissPatterns.some(
+    (pattern) =>
+      text.includes(pattern) ||
+      id.includes(pattern) ||
+      classes.includes(pattern) ||
+      ariaLabel.includes(pattern)
+  );
+}
 
 /**
  * Capture complete element state for smart waits
@@ -162,12 +316,12 @@ export async function isElementStable(element: Element, duration: number = 300):
  */
 function calculateModalScore(element: Element): number {
   let score = 0;
-  const id = element.id || '';
+  const id = getStringValue(element.id) || '';
   const idLower = id.toLowerCase();
   const classes = Array.from(element.classList)
     .filter((c) => typeof c === 'string')
     .map((c) => c.toLowerCase());
-  const role = element.getAttribute('role') || '';
+  const role = getLowerStringValue(element.getAttribute('role'));
 
   // Highest priority: Semantic HTML and ARIA
   if (role === 'dialog' || role === 'alertdialog') {
@@ -265,7 +419,7 @@ export function detectModalContext(element: Element): Partial<ActionContext> {
   if (bestModalCandidate && highestScore >= 3) {
     // Minimum threshold to avoid false positives
     context.isInsideModal = true;
-    context.modalId = bestModalCandidate.id || undefined;
+    context.modalId = getStringValue(bestModalCandidate.id) || generateModalId(bestModalCandidate);
 
     // Detect modal state by searching within the modal for state indicators
     const stateElements = bestModalCandidate.querySelectorAll(
@@ -294,8 +448,9 @@ export function detectModalContext(element: Element): Partial<ActionContext> {
 
       // Extract state from closest state element
       if (closestStateElement) {
-        if (closestStateElement.id) {
-          context.modalState = closestStateElement.id;
+        const stateId = getStringValue(closestStateElement.id);
+        if (stateId) {
+          context.modalState = stateId;
         } else {
           const stateClasses = Array.from(closestStateElement.classList)
             .filter((cls) => typeof cls === 'string')
@@ -321,9 +476,10 @@ export function detectModalContext(element: Element): Partial<ActionContext> {
     let fallbackDepth = 0;
 
     while (current && fallbackDepth < 10) {
-      if (current.id) {
-        context.modalId = current.id;
-        console.log('[Modal Detection] Using nearest ID as fallback:', current.id);
+      const currentId = getStringValue(current.id);
+      if (currentId) {
+        context.modalId = currentId;
+        console.log('[Modal Detection] Using nearest ID as fallback:', currentId);
         break;
       }
       current = current.parentElement;
@@ -395,10 +551,11 @@ export function generateAlternativeSelectors(element: Element): AlternativeSelec
   // For links and buttons
   if (element instanceof HTMLAnchorElement || element instanceof HTMLButtonElement) {
     const textContent = element.textContent?.trim();
+    const tagName = getTagNameValue(element);
     if (textContent) {
       alternatives.push({
         text: textContent,
-        xpath: `//${element.tagName.toLowerCase()}[text()="${textContent}"]`,
+        xpath: `//${tagName}[text()="${textContent}"]`,
         priority: priority++,
       });
     }
@@ -408,7 +565,7 @@ export function generateAlternativeSelectors(element: Element): AlternativeSelec
     if (ariaLabel) {
       alternatives.push({
         ariaLabel,
-        css: `${element.tagName.toLowerCase()}[aria-label="${ariaLabel}"]`,
+        css: `${tagName}[aria-label="${ariaLabel}"]`,
         priority: priority++,
       });
     }
@@ -417,10 +574,11 @@ export function generateAlternativeSelectors(element: Element): AlternativeSelec
   // For dropdown items (LI, OPTION)
   if (element.tagName === 'LI' || element.tagName === 'OPTION') {
     const textContent = element.textContent?.trim();
+    const tagName = getTagNameValue(element);
     if (textContent) {
       alternatives.push({
         text: textContent,
-        xpath: `//${element.tagName.toLowerCase()}[text()="${textContent}"]`,
+        xpath: `//${tagName}[text()="${textContent}"]`,
         priority: 1, // High priority for dropdown items
       });
     }
@@ -433,17 +591,21 @@ export function generateAlternativeSelectors(element: Element): AlternativeSelec
  * Detect navigation intent from button/link element
  */
 export function detectNavigationIntent(element: Element): NavigationIntent {
-  const text = element.textContent?.trim().toLowerCase() || '';
-  const id = element.id?.toLowerCase() || '';
+  const text = getLowerStringValue(element.textContent?.trim());
+  const id = getLowerStringValue(element.id);
   const classes = Array.from(element.classList)
     .filter((c) => typeof c === 'string')
     .map((c) => c.toLowerCase())
     .join(' ');
-  const type = (element as HTMLButtonElement).type?.toLowerCase() || '';
-  const role = element.getAttribute('role')?.toLowerCase() || '';
+  const type = getLowerStringValue((element as HTMLButtonElement).type);
+  const role = getLowerStringValue(element.getAttribute('role'));
+  const formOwner =
+    (element instanceof HTMLButtonElement || element instanceof HTMLInputElement
+      ? element.form
+      : null) || element.closest('form');
 
   // Check for form submission
-  if (type === 'submit' || (role === 'button' && element.closest('form'))) {
+  if ((type === 'submit' && formOwner) || (role === 'button' && formOwner)) {
     // Detect checkout/payment completion
     if (
       text.includes('complete') ||
@@ -477,8 +639,26 @@ export function detectNavigationIntent(element: Element): NavigationIntent {
   }
 
   // Check for modal close with redirect
-  const isInsideModal = !!element.closest('[role="dialog"], [id*="modal"], [class*="modal"]');
+  const isInsideModal = !!element.closest(
+    '[role="dialog"], [role="alertdialog"], [id*="modal"], [class*="modal"], [id*="popup"], [class*="popup"]'
+  );
   if (isInsideModal) {
+    if (isLikelyModalDismissControl(element)) {
+      const modalRoot = element.closest(
+        '[role="dialog"], [role="alertdialog"], [id*="modal"], [class*="modal"], [id*="popup"], [class*="popup"]'
+      );
+      if (modalRoot) {
+        const successIndicators = modalRoot.querySelectorAll(
+          '[class*="success"], [id*="success"], [class*="complete"], [id*="complete"]'
+        );
+        if (successIndicators.length > 0) {
+          return 'close-modal-and-redirect';
+        }
+      }
+
+      return 'none';
+    }
+
     if (
       text.includes('close') ||
       text.includes('ok') ||
@@ -509,6 +689,10 @@ export function detectNavigationIntent(element: Element): NavigationIntent {
     classes.includes('logout')
   ) {
     return 'logout';
+  }
+
+  if (isLikelyModalTrigger(element)) {
+    return 'none';
   }
 
   // Check for regular navigation (links, buttons with hrefs)
@@ -651,8 +835,9 @@ export function logElementState(
   state: ElementState,
   conditions: WaitConditions
 ): void {
-  const tagName = element.tagName.toLowerCase();
-  const id = element.id ? `#${element.id}` : '';
+  const tagName = getTagNameValue(element);
+  const idValue = getStringValue(element.id);
+  const id = idValue ? `#${idValue}` : '';
 
   // Safely get className (handles both HTML and SVG elements)
   const getClassName = (el: Element): string => {

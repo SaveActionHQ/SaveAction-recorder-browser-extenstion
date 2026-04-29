@@ -27,14 +27,92 @@ export interface ValidationResult {
   errors: ValidationError[];
 }
 
+const SELECTOR_STRING_FIELDS = [
+  'id',
+  'dataTestId',
+  'ariaLabel',
+  'name',
+  'css',
+  'xpath',
+  'xpathAbsolute',
+  'text',
+  'textContains',
+] as const;
+
+function isString(value: unknown): value is string {
+  return typeof value === 'string';
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function hasSelectorValue(selector: SelectorStrategy, key: keyof SelectorStrategy): boolean {
+  if (key === 'position') {
+    return !!selector.position;
+  }
+
+  const selectorValue = selector[key];
+  return Boolean(selectorValue);
+}
+
 /**
  * Validate a selector strategy
  */
 export function validateSelector(selector: SelectorStrategy): ValidationResult {
   const errors: ValidationError[] = [];
 
+  for (const key of SELECTOR_STRING_FIELDS) {
+    const selectorValue = selector[key];
+    if (selectorValue !== undefined && !isString(selectorValue)) {
+      errors.push({
+        field: `selector.${key}`,
+        message: `${key} must be a string`,
+      });
+    }
+  }
+
+  if (selector.position) {
+    if (!isString(selector.position.parent)) {
+      errors.push({
+        field: 'selector.position.parent',
+        message: 'Position parent must be a string',
+      });
+    }
+
+    if (typeof selector.position.index !== 'number' || selector.position.index < 0) {
+      errors.push({
+        field: 'selector.position.index',
+        message: 'Position index must be a non-negative number',
+      });
+    }
+  }
+
+  if (selector.fallback) {
+    if (selector.fallback.parentId !== undefined && !isString(selector.fallback.parentId)) {
+      errors.push({
+        field: 'selector.fallback.parentId',
+        message: 'Fallback parentId must be a string',
+      });
+    }
+
+    if (selector.fallback.uniqueParent !== undefined && !isString(selector.fallback.uniqueParent)) {
+      errors.push({
+        field: 'selector.fallback.uniqueParent',
+        message: 'Fallback uniqueParent must be a string',
+      });
+    }
+
+    if (selector.fallback.textContent !== undefined && !isString(selector.fallback.textContent)) {
+      errors.push({
+        field: 'selector.fallback.textContent',
+        message: 'Fallback textContent must be a string',
+      });
+    }
+  }
+
   // Check priority array
-  if (!selector.priority || selector.priority.length === 0) {
+  if (!Array.isArray(selector.priority) || selector.priority.length === 0) {
     errors.push({
       field: 'selector.priority',
       message: 'Priority array cannot be empty',
@@ -42,10 +120,9 @@ export function validateSelector(selector: SelectorStrategy): ValidationResult {
   }
 
   // Check that priority references actual selectors
-  if (selector.priority) {
+  if (Array.isArray(selector.priority)) {
     for (const key of selector.priority) {
-      const selectorValue = selector[key as keyof SelectorStrategy];
-      if (!selectorValue || (typeof selectorValue === 'object' && !Array.isArray(selectorValue))) {
+      if (!hasSelectorValue(selector, key as keyof SelectorStrategy)) {
         errors.push({
           field: `selector.${key}`,
           message: `Priority references "${key}" but selector is not defined`,
@@ -55,9 +132,8 @@ export function validateSelector(selector: SelectorStrategy): ValidationResult {
   }
 
   // Check that at least one selector is provided
-  const hasAnySelector = Object.keys(selector).some(
-    (key) => key !== 'priority' && selector[key as keyof SelectorStrategy]
-  );
+  const hasAnySelector =
+    SELECTOR_STRING_FIELDS.some((key) => isNonEmptyString(selector[key])) || !!selector.position;
 
   if (!hasAnySelector) {
     errors.push({
@@ -79,14 +155,14 @@ export function validateAction(action: Action): ValidationResult {
   const errors: ValidationError[] = [];
 
   // Base action validation
-  if (!action.id) {
+  if (!isNonEmptyString(action.id)) {
     errors.push({
       field: 'action.id',
       message: 'Action ID is required',
     });
   }
 
-  if (!action.type) {
+  if (!isNonEmptyString(action.type)) {
     errors.push({
       field: 'action.type',
       message: 'Action type is required',
@@ -100,7 +176,7 @@ export function validateAction(action: Action): ValidationResult {
     });
   }
 
-  if (!action.url && action.type !== 'tab') {
+  if (action.type !== 'tab' && !isNonEmptyString(action.url)) {
     errors.push({
       field: 'action.url',
       message: 'Action URL is required',
@@ -121,7 +197,7 @@ export function validateAction(action: Action): ValidationResult {
         errors.push(...selectorResult.errors);
       }
 
-      if (!clickAction.tagName) {
+      if (!isNonEmptyString(clickAction.tagName)) {
         errors.push({
           field: 'action.tagName',
           message: 'Click action must have a tagName',
@@ -149,14 +225,14 @@ export function validateAction(action: Action): ValidationResult {
         errors.push(...selectorResult.errors);
       }
 
-      if (inputAction.value === undefined || inputAction.value === null) {
+      if (!isString(inputAction.value)) {
         errors.push({
           field: 'action.value',
           message: 'Input action must have a value',
         });
       }
 
-      if (!inputAction.inputType) {
+      if (!isNonEmptyString(inputAction.inputType)) {
         errors.push({
           field: 'action.inputType',
           message: 'Input action must have an inputType',
@@ -167,14 +243,14 @@ export function validateAction(action: Action): ValidationResult {
 
     case 'navigation': {
       const navAction = action as NavigationAction;
-      if (!navAction.from) {
+      if (!isNonEmptyString(navAction.from)) {
         errors.push({
           field: 'action.from',
           message: 'Navigation action must have a "from" URL',
         });
       }
 
-      if (!navAction.to) {
+      if (!isNonEmptyString(navAction.to)) {
         errors.push({
           field: 'action.to',
           message: 'Navigation action must have a "to" URL',
@@ -218,7 +294,7 @@ export function validateAction(action: Action): ValidationResult {
 
     case 'dialog': {
       const dialogAction = action as DialogAction;
-      if (!dialogAction.dialogType) {
+      if (!isNonEmptyString(dialogAction.dialogType)) {
         errors.push({
           field: 'action.dialogType',
           message: 'Dialog action must have a dialogType',
@@ -291,7 +367,10 @@ export function validateAction(action: Action): ValidationResult {
     case 'tab': {
       const tabAction = action as TabAction;
       const validOperations = ['open', 'switch', 'close'];
-      if (!tabAction.tabOperation || !validOperations.includes(tabAction.tabOperation)) {
+      if (
+        !isNonEmptyString(tabAction.tabOperation) ||
+        !validOperations.includes(tabAction.tabOperation)
+      ) {
         errors.push({
           field: 'action.tabOperation',
           message: 'Tab action must have a valid tabOperation (open, switch, close)',
@@ -338,21 +417,21 @@ export function validateRecording(recording: Recording): ValidationResult {
   const errors: ValidationError[] = [];
 
   // Required fields
-  if (!recording.id) {
+  if (!isNonEmptyString(recording.id)) {
     errors.push({
       field: 'recording.id',
       message: 'Recording ID is required',
     });
   }
 
-  if (!recording.version) {
+  if (!isNonEmptyString(recording.version)) {
     errors.push({
       field: 'recording.version',
       message: 'Schema version is required',
     });
   }
 
-  if (!recording.testName || recording.testName.trim() === '') {
+  if (!isNonEmptyString(recording.testName)) {
     errors.push({
       field: 'recording.testName',
       message: 'Test name cannot be empty',
@@ -360,7 +439,7 @@ export function validateRecording(recording: Recording): ValidationResult {
   }
 
   // URL validation
-  if (!recording.url) {
+  if (!isNonEmptyString(recording.url)) {
     errors.push({
       field: 'recording.url',
       message: 'Recording URL is required',
@@ -377,7 +456,7 @@ export function validateRecording(recording: Recording): ValidationResult {
   }
 
   // Timestamp validation
-  if (!recording.startTime) {
+  if (!isNonEmptyString(recording.startTime)) {
     errors.push({
       field: 'recording.startTime',
       message: 'Start time is required',
@@ -392,13 +471,20 @@ export function validateRecording(recording: Recording): ValidationResult {
     }
   }
 
-  if (recording.endTime) {
-    const endDate = new Date(recording.endTime);
-    if (isNaN(endDate.getTime())) {
+  if (recording.endTime !== undefined && recording.endTime !== null) {
+    if (!isNonEmptyString(recording.endTime)) {
       errors.push({
         field: 'recording.endTime',
         message: 'End time must be valid ISO 8601 format',
       });
+    } else {
+      const endDate = new Date(recording.endTime);
+      if (isNaN(endDate.getTime())) {
+        errors.push({
+          field: 'recording.endTime',
+          message: 'End time must be valid ISO 8601 format',
+        });
+      }
     }
   }
 
@@ -461,7 +547,7 @@ export function validateRecording(recording: Recording): ValidationResult {
   }
 
   // User agent
-  if (!recording.userAgent) {
+  if (!isNonEmptyString(recording.userAgent)) {
     errors.push({
       field: 'recording.userAgent',
       message: 'User agent is required',

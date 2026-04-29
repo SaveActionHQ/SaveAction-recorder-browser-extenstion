@@ -31,9 +31,15 @@ import {
   logElementState,
   detectNavigationIntent,
   createUrlChangeExpectation,
+  isLikelyModalDismissControl,
 } from '@/utils/element-state';
 import { generateContentSignature, isCarouselElement } from '@/utils/content-signature';
-import { ModalTracker, findParentModal, detectModalState } from '@/utils/modal-tracker';
+import {
+  ModalTracker,
+  findParentModal,
+  detectModalState,
+  generateModalId,
+} from '@/utils/modal-tracker';
 
 type ClickActionSnapshot = Omit<
   ClickAction,
@@ -44,6 +50,12 @@ interface PendingDropdownSelection {
   target: Element;
   snapshot: ClickActionSnapshot;
   timeoutId: NodeJS.Timeout | null;
+}
+
+interface PendingSubmitIntent {
+  form: HTMLFormElement;
+  source: 'click' | 'keypress';
+  timestamp: number;
 }
 
 /**
@@ -65,6 +77,9 @@ export class EventListener {
     new Map(); // Track debounce timers per element
   private keystrokeTimes: number[] = []; // Track keystroke times for typing speed calculation
   private lastCapturedValues: Map<HTMLInputElement | HTMLTextAreaElement, string> = new Map(); // Track last emitted value per field to suppress duplicates on re-focus
+  private lastInputCaptureTimes: Map<HTMLInputElement | HTMLTextAreaElement, number> = new Map(); // Track when input values were last emitted to suppress immediate follow-up clicks
+  private recentTextEntryActivity: Map<string, { value: string; timestamp: number }> = new Map();
+  private readonly RECENT_INPUT_CLICK_SUPPRESSION_MS = 1500;
 
   // LAYER 2 & 3: Enhanced Input Capture (99.9% reliability
   private focusedField: HTMLInputElement | HTMLTextAreaElement | null = null; // Currently focused input field
@@ -100,6 +115,8 @@ export class EventListener {
   private readonly DROPDOWN_LINK_TIMEOUT = 60000; // 60s - Max time to link dropdown opening to item click
   private pendingDropdownSelection: PendingDropdownSelection | null = null; // Fallback for autocomplete widgets that commit on pointerdown/mousedown
   private readonly DROPDOWN_SELECTION_FALLBACK_MS = 30;
+  private pendingSubmitIntent: PendingSubmitIntent | null = null;
+  private readonly SUBMIT_INTENT_WINDOW_MS = 500;
   private readonly DROPDOWN_CONTAINER_SELECTORS = [
     // Semantic HTML / ARIA patterns
     '[role="menu"]',
@@ -487,6 +504,8 @@ export class EventListener {
     this.inputDebounceTimers.clear();
     this.inputStartTimes.clear();
     this.lastCapturedValues.clear();
+    this.lastInputCaptureTimes.clear();
+    this.recentTextEntryActivity.clear();
 
     // LAYER 2 & 3: Final cleanup
     this.stopFieldPolling();
@@ -571,9 +590,7 @@ export class EventListener {
 
     const clickedElement = event.target as Element;
 
-    // ðŸ›¡ï¸ Skip clicks on extension's own UI (recording indicator overlay + variable badge/prompt)
-    if (clickedElement.closest('[id^="saveaction-"]')) {
-      console.log('[EventListener] â­ï¸ Skipping click on extension UI');
+    if (this.shouldIgnoreCapturedElement(clickedElement)) {
       return;
     }
 
@@ -666,9 +683,6 @@ export class EventListener {
       }
     }
 
-    this.lastClickTarget = target;
-    this.lastClickTime = now;
-
     // Track in click history for carousel detection
     this.clickHistory.push({ element: target, timestamp: now });
     if (this.clickHistory.length > this.MAX_CLICK_HISTORY) {
@@ -722,6 +736,7 @@ export class EventListener {
     // This ensures password fields are recorded even if user clicks submit immediately
     // without clicking outside the field or waiting for debounce
     // ESPECIALLY important for multi-step forms where submit triggers AJAX/state changes
+    const flushedInputs = new Set<HTMLInputElement | HTMLTextAreaElement>();
     if (this.inputDebounceTimers.size > 0) {
       console.log(
         '[EventListener] ðŸ”¥ Flushing',
@@ -729,6 +744,7 @@ export class EventListener {
         'pending inputs before click'
       );
       for (const [inputElement, timerId] of this.inputDebounceTimers) {
+        flushedInputs.add(inputElement);
         clearTimeout(timerId);
         this.flushInputAction(inputElement);
       }
@@ -738,6 +754,17 @@ export class EventListener {
       // Uses synchronous loop to ensure all inputs are emitted before click is processed
       console.log('[EventListener] âœ… All inputs flushed synchronously');
     }
+
+    if (this.shouldSkipClickAfterInputFlush(target, flushedInputs)) {
+      console.log(
+        '[EventListener] â­ï¸ Skipping click on text field immediately after input flush:',
+        target.id || (target as HTMLInputElement).name || target.tagName
+      );
+      return;
+    }
+
+    this.lastClickTarget = target;
+    this.lastClickTime = now;
 
     // Check if we need to record a hover action for dropdown parent
     // This happens when clicking on a child element that only becomes visible on hover
@@ -761,7 +788,8 @@ export class EventListener {
     if (willNavigate || isSubmitButton) {
       // ðŸ†• CRITICAL FIX #2: AJAX form detection
       if (isSubmitButton) {
-        const form = target.closest('form');
+        const form = target.closest('form') as HTMLFormElement | null;
+        this.rememberSubmitIntent(form, 'click');
 
         // Log for debugging multi-step forms
         console.log('[EventListener] Submit button detected - starting AJAX detection:', {
@@ -885,8 +913,7 @@ export class EventListener {
 
     const clickedElement = event.target as Element;
 
-    // Skip mousedown on extension's own UI
-    if (clickedElement.closest('[id^="saveaction-"]')) {
+    if (this.shouldIgnoreCapturedElement(clickedElement)) {
       return;
     }
 
@@ -901,9 +928,7 @@ export class EventListener {
 
     const clickedElement = event.target as Element;
 
-    // ðŸ›¡ï¸ Skip double-click on extension's own UI (recording indicator overlay + variable badge/prompt)
-    if (clickedElement.closest('[id^="saveaction-"]')) {
-      console.log('[EventListener] â­ï¸ Skipping double-click on extension UI');
+    if (this.shouldIgnoreCapturedElement(clickedElement)) {
       return;
     }
 
@@ -1019,7 +1044,7 @@ export class EventListener {
       // ðŸ†• Detect modal context
       const parentModal = findParentModal(target);
       if (parentModal) {
-        const modalId = parentModal.id || 'unknown-modal';
+        const modalId = generateModalId(parentModal);
         const modalState = detectModalState(parentModal);
 
         context.isInsideModal = true;
@@ -1234,6 +1259,7 @@ export class EventListener {
 
     // Track keystroke for typing speed calculation
     this.keystrokeTimes.push(Date.now());
+    this.trackRecentTextEntryActivity(target);
 
     // Clear previous debounce timer for this input
     if (this.inputDebounceTimers.has(target)) {
@@ -1337,6 +1363,8 @@ export class EventListener {
     this.emitAction(action);
     // Track emitted value so re-focus on same unchanged field won't duplicate
     this.lastCapturedValues.set(target, target.value);
+    this.lastInputCaptureTimes.set(target, Date.now());
+    this.trackRecentTextEntryActivity(target);
   }
 
   /**
@@ -2047,6 +2075,12 @@ export class EventListener {
       }
     }
 
+    if (this.shouldSkipSyntheticSubmit(target)) {
+      return;
+    }
+
+    this.pendingSubmitIntent = null;
+
     const selector = this.selectorGenerator.generateSelectors(target);
 
     const action: SubmitAction = {
@@ -2159,6 +2193,10 @@ export class EventListener {
     // Handle Enter key in input fields (form submit)
     if (event.key === 'Enter' && event.target) {
       const enterTarget = event.target as HTMLInputElement | HTMLTextAreaElement;
+      if (enterTarget instanceof HTMLInputElement) {
+        this.rememberSubmitIntent(enterTarget.form, 'keypress');
+      }
+
       if (
         (enterTarget.tagName === 'INPUT' || enterTarget.tagName === 'TEXTAREA') &&
         this.inputStartTimes.has(enterTarget)
@@ -2312,12 +2350,111 @@ export class EventListener {
       return false;
     }
 
-    // Check if it's a link
-    if (element.tagName === 'A' && (element as HTMLAnchorElement).href) {
+    const navigationIntent = detectNavigationIntent(element);
+    return (
+      navigationIntent === 'navigate-to-page' ||
+      navigationIntent === 'logout' ||
+      navigationIntent === 'close-modal-and-redirect'
+    );
+  }
+
+  private shouldSkipClickAfterInputFlush(
+    target: Element,
+    flushedInputs: Set<HTMLInputElement | HTMLTextAreaElement>
+  ): boolean {
+    if (!this.isTextEntryElement(target)) {
+      return false;
+    }
+
+    return flushedInputs.has(target) || this.shouldSkipRecentInputClickNoise(target);
+  }
+
+  private shouldSkipRecentInputClickNoise(target: HTMLInputElement | HTMLTextAreaElement): boolean {
+    if (this.inputStartTimes.has(target) && target.value.length > 0) {
       return true;
     }
 
-    return false;
+    const lastCaptureTime = this.lastInputCaptureTimes.get(target);
+    const lastCapturedValue = this.lastCapturedValues.get(target);
+    if (lastCaptureTime && lastCapturedValue !== undefined && lastCapturedValue === target.value) {
+      return Date.now() - lastCaptureTime < this.RECENT_INPUT_CLICK_SUPPRESSION_MS;
+    }
+
+    const fieldKey = this.getTextEntryFieldKey(target);
+    if (!fieldKey) {
+      return false;
+    }
+
+    const recentActivity = this.recentTextEntryActivity.get(fieldKey);
+    if (!recentActivity || recentActivity.value !== target.value) {
+      return false;
+    }
+
+    return Date.now() - recentActivity.timestamp < this.RECENT_INPUT_CLICK_SUPPRESSION_MS;
+  }
+
+  private trackRecentTextEntryActivity(target: HTMLInputElement | HTMLTextAreaElement): void {
+    const fieldKey = this.getTextEntryFieldKey(target);
+    if (!fieldKey) {
+      return;
+    }
+
+    this.recentTextEntryActivity.set(fieldKey, {
+      value: target.value,
+      timestamp: Date.now(),
+    });
+  }
+
+  private getTextEntryFieldKey(element: Element): string | null {
+    if (!this.isTextEntryElement(element)) {
+      return null;
+    }
+
+    const tagName = element.tagName.toLowerCase();
+    const inputType = element instanceof HTMLInputElement ? element.type || 'text' : 'textarea';
+    const id = element.getAttribute('id') || '';
+    const name =
+      element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement
+        ? element.name || ''
+        : '';
+    const ariaLabel = element.getAttribute('aria-label') || '';
+    const placeholder = element.placeholder || '';
+    const labelText = Array.from(element.labels ?? [])
+      .map((label) => label.textContent?.trim() || '')
+      .filter(Boolean)
+      .join(' ');
+    const formId =
+      element.form?.getAttribute('id') || element.closest('form')?.getAttribute('id') || '';
+    const stableIdentity = id || name || ariaLabel || placeholder || labelText;
+
+    if (!stableIdentity) {
+      return null;
+    }
+
+    return `${tagName}:${inputType}:${formId}:${stableIdentity}`;
+  }
+
+  private isTextEntryElement(element: Element): element is HTMLInputElement | HTMLTextAreaElement {
+    if (element instanceof HTMLTextAreaElement) {
+      return true;
+    }
+
+    if (!(element instanceof HTMLInputElement)) {
+      return false;
+    }
+
+    return ![
+      'button',
+      'checkbox',
+      'color',
+      'file',
+      'hidden',
+      'image',
+      'radio',
+      'range',
+      'reset',
+      'submit',
+    ].includes(element.type);
   }
 
   /**
@@ -2333,38 +2470,34 @@ export class EventListener {
    * 4. Primary/CTA buttons in form contexts (behavioral detection)
    */
   private isSubmitButton(element: Element): boolean {
+    // Dropdown/autocomplete options inside forms are selections, not submits.
+    if (this.findDropdownContainer(element)) {
+      return false;
+    }
+
+    if (isLikelyModalDismissControl(element)) {
+      return false;
+    }
+
     // 1. Standard HTML submit buttons (most reliable)
     if (element.tagName === 'BUTTON') {
       const button = element as HTMLButtonElement;
-      if (button.type === 'submit') {
-        return true;
-      }
-
-      // Buttons without explicit type inside forms are submit buttons by default (HTML spec)
-      // Note: button.type defaults to 'submit' in HTML, but some frameworks might not set it
-      const form = button.closest('form');
-      if (form && button.type !== 'button' && button.type !== 'reset') {
-        return true;
-      }
+      return button.form !== null && button.type === 'submit';
     }
 
     // 2. Input submit buttons ONLY (NOT text/email/password inputs)
     if (element.tagName === 'INPUT') {
       const input = element as HTMLInputElement;
       // CRITICAL FIX: Only detect input[type="submit"], not regular form inputs
-      if (input.type === 'submit') {
-        return true;
-      }
-      // DO NOT detect other input types (text, email, password, etc.)
-      return false;
+      return input.form !== null && input.type === 'submit';
     }
 
     // 3. ARIA-based detection (works for React, Vue, Angular, etc.)
     // Frameworks often use role="button" with form-related ARIA attributes
     const role = element.getAttribute('role');
+    const form = element.closest('form');
     if (role === 'button') {
       // Check if inside a form (strong signal)
-      const form = element.closest('form');
       if (form) {
         // Check if it's the primary button in the form
         const isPrimary = this.isPrimaryButton(element);
@@ -2388,8 +2521,7 @@ export class EventListener {
 
     // 4. Behavioral detection: Primary buttons in form contexts
     // This catches AJAX/SPA forms that don't use <form> tags
-    const hasFormContext = this.hasFormContext(element);
-    if (hasFormContext) {
+    if (this.isSubmitLikeControl(element) && (form || this.hasFormContext(element))) {
       const isPrimary = this.isPrimaryButton(element);
       if (isPrimary) {
         return true;
@@ -2397,6 +2529,22 @@ export class EventListener {
     }
 
     return false;
+  }
+
+  private isSubmitLikeControl(element: Element): boolean {
+    if (['BUTTON', 'INPUT', 'A', 'SUMMARY'].includes(element.tagName)) {
+      return true;
+    }
+
+    const role = element.getAttribute('role');
+    if (role === 'button') {
+      return true;
+    }
+
+    const className = this.getElementClassName(element).toLowerCase();
+    return ['btn', 'button', 'submit', 'cta', 'primary', 'action', 'confirm'].some((pattern) =>
+      className.includes(pattern)
+    );
   }
 
   /**
@@ -2480,6 +2628,43 @@ export class EventListener {
     }
 
     return false;
+  }
+
+  private rememberSubmitIntent(
+    form: HTMLFormElement | null,
+    source: PendingSubmitIntent['source']
+  ): void {
+    if (!form) {
+      return;
+    }
+
+    this.pendingSubmitIntent = {
+      form,
+      source,
+      timestamp: Date.now(),
+    };
+  }
+
+  private shouldSkipSyntheticSubmit(form: HTMLFormElement): boolean {
+    if (!this.pendingSubmitIntent) {
+      return false;
+    }
+
+    const { form: pendingForm, source, timestamp } = this.pendingSubmitIntent;
+    const timeDiff = Date.now() - timestamp;
+
+    if (timeDiff > this.SUBMIT_INTENT_WINDOW_MS) {
+      this.pendingSubmitIntent = null;
+      return false;
+    }
+
+    if (pendingForm !== form) {
+      return false;
+    }
+
+    console.log(`[EventListener] Skipping synthetic submit after ${source} (${timeDiff}ms)`);
+    this.pendingSubmitIntent = null;
+    return true;
   }
 
   /**
@@ -3100,6 +3285,16 @@ export class EventListener {
       return null;
     }
 
+    const dropdownOptionAncestor = this.findDropdownOptionAncestor(element);
+    if (dropdownOptionAncestor && dropdownOptionAncestor !== element) {
+      return dropdownOptionAncestor;
+    }
+
+    const semanticAncestor = this.findSemanticInteractiveAncestor(element);
+    if (semanticAncestor && !this.isSemanticInteractiveElement(element)) {
+      return semanticAncestor;
+    }
+
     // STEP 2: Check if clicked element itself is interactive
     if (this.isInteractiveElementStrict(element)) {
       return element;
@@ -3181,6 +3376,41 @@ export class EventListener {
     }
 
     return false;
+  }
+
+  private isSemanticInteractiveElement(element: Element): boolean {
+    const semanticTags = ['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'LABEL', 'SUMMARY'];
+    const role = element.getAttribute('role');
+
+    if (semanticTags.includes(element.tagName)) {
+      return true;
+    }
+
+    return !!role && ['button', 'link', 'menuitem', 'tab', 'option'].includes(role);
+  }
+
+  private findSemanticInteractiveAncestor(element: Element): Element | null {
+    let current = element.parentElement;
+    let depth = 0;
+
+    while (current && current !== document.body && depth < 6) {
+      if (this.isSemanticInteractiveElement(current)) {
+        return current;
+      }
+
+      current = current.parentElement;
+      depth++;
+    }
+
+    return null;
+  }
+
+  private findDropdownOptionAncestor(element: Element): Element | null {
+    if (!this.findDropdownContainer(element)) {
+      return null;
+    }
+
+    return element.closest('li, [role="option"], option');
   }
 
   private findInteractiveElement(element: Element): Element | null {
@@ -3642,13 +3872,12 @@ export class EventListener {
       return;
     }
 
-    // ðŸ›¡ï¸ Skip hover tracking on extension's own UI
-    if (target.closest('[id^="saveaction-"]')) {
+    if (this.shouldIgnoreCapturedElement(target)) {
       return;
     }
 
-    // Check if this element could be a dropdown parent
-    if (this.isDropdownParent(target)) {
+    // Only track hover when it can plausibly reveal more UI.
+    if (this.isHoverTriggerElement(target)) {
       this.lastHoveredElement = target;
       this.hoverStartTime = Date.now();
       console.log(
@@ -3672,8 +3901,7 @@ export class EventListener {
       return;
     }
 
-    // ðŸ›¡ï¸ Skip hover tracking on extension's own UI
-    if (target.closest('[id^="saveaction-"]')) {
+    if (this.shouldIgnoreCapturedElement(target)) {
       return;
     }
 
@@ -3682,7 +3910,7 @@ export class EventListener {
       const hoverDuration = Date.now() - this.hoverStartTime;
 
       // ðŸ†• Only record meaningful hovers (> 300ms)
-      if (hoverDuration >= this.MIN_HOVER_DURATION && this.isDropdownParent(target)) {
+      if (hoverDuration >= this.MIN_HOVER_DURATION && this.isHoverTriggerElement(target)) {
         console.log(
           `[EventListener] Recording hover (${hoverDuration}ms) - meaningful interaction`
         );
@@ -3745,6 +3973,69 @@ export class EventListener {
     // Only return true for explicit dropdown patterns above
 
     return false;
+  }
+
+  private isHoverTriggerElement(element: Element): boolean {
+    if (!this.isDropdownParent(element)) {
+      return false;
+    }
+
+    if (
+      element instanceof HTMLInputElement ||
+      element instanceof HTMLTextAreaElement ||
+      element instanceof HTMLSelectElement
+    ) {
+      return false;
+    }
+
+    const role = element.getAttribute('role');
+    if (role && ['combobox', 'listbox', 'grid', 'tree'].includes(role)) {
+      return false;
+    }
+
+    if (element.hasAttribute('aria-autocomplete')) {
+      return false;
+    }
+
+    const className = this.getElementClassName(element).toLowerCase();
+    const nonHoverPatterns = [
+      'autocomplete',
+      'suggest',
+      'typeahead',
+      'combobox',
+      'listbox',
+      'results',
+      'options',
+      'choices',
+    ];
+    if (nonHoverPatterns.some((pattern) => className.includes(pattern))) {
+      return false;
+    }
+
+    if (element.hasAttribute('aria-haspopup')) {
+      return true;
+    }
+
+    if (role && ['button', 'link', 'menuitem', 'tab'].includes(role)) {
+      return true;
+    }
+
+    if (['A', 'BUTTON', 'SUMMARY'].includes(element.tagName)) {
+      return true;
+    }
+
+    if (element.tagName === 'LI') {
+      return role === 'menuitem' || className.includes('menu') || className.includes('nav');
+    }
+
+    const hoverTriggerPatterns = ['dropdown-toggle', 'menu-item', 'nav-item', 'submenu'];
+    return (
+      hoverTriggerPatterns.some((pattern) => className.includes(pattern)) ||
+      (this.hasClickHandler(element) &&
+        ['dropdown', 'menu', 'nav', 'submenu', 'popover'].some((pattern) =>
+          className.includes(pattern)
+        ))
+    );
   }
 
   /**
@@ -4103,8 +4394,10 @@ export class EventListener {
     const target = event.target as Element;
     if (!target) return;
 
-    // Skip extension UI elements
-    if (target.closest('[id^="saveaction-"]')) return;
+    if (this.shouldIgnoreCapturedElement(target)) {
+      this.resetPointerGestureState();
+      return;
+    }
 
     // Reset pointer drag state
     this.pointerDragSource = target;
@@ -4119,6 +4412,10 @@ export class EventListener {
    */
   private onPointerMove(event: PointerEvent): void {
     if (!this.isListening) return;
+    if (this.isOverlayInteractionSuppressed()) {
+      this.resetPointerGestureState();
+      return;
+    }
     if (!this.pointerDragSource || !this.pointerDragStartCoords) return;
 
     // Skip if native drag is handling this gesture
@@ -4144,6 +4441,11 @@ export class EventListener {
    */
   private onPointerUp(event: PointerEvent): void {
     if (!this.isListening) return;
+
+    if (this.isOverlayInteractionSuppressed()) {
+      this.resetPointerGestureState();
+      return;
+    }
 
     const hadDragActive = this.pointerDragActive;
     const source = this.pointerDragSource;
@@ -4185,6 +4487,38 @@ export class EventListener {
     if (targetElement.closest('[id^="saveaction-"]')) return;
 
     this.recordDragDropAction(source, startCoords, targetElement, endCoords, 'pointer');
+  }
+
+  private resetPointerGestureState(): void {
+    this.pointerDragSource = null;
+    this.pointerDragStartCoords = null;
+    this.pointerDragActive = false;
+    this.clearPendingDropdownSelection();
+  }
+
+  private shouldIgnoreCapturedElement(element: Element): boolean {
+    return this.isOverlayInteractionSuppressed() || element.closest('[id^="saveaction-"]') !== null;
+  }
+
+  private isOverlayInteractionSuppressed(): boolean {
+    if (document.documentElement.getAttribute('data-saveaction-overlay-dragging') === 'true') {
+      return true;
+    }
+
+    const suppressUntil = Number(
+      document.documentElement.getAttribute('data-saveaction-overlay-suppress-until') || ''
+    );
+
+    if (!Number.isFinite(suppressUntil)) {
+      return false;
+    }
+
+    if (Date.now() >= suppressUntil) {
+      document.documentElement.removeAttribute('data-saveaction-overlay-suppress-until');
+      return false;
+    }
+
+    return true;
   }
 
   /**

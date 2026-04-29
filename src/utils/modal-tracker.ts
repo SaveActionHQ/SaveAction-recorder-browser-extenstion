@@ -1,5 +1,108 @@
 import type { ModalLifecycleAction } from '@/types';
 
+interface BaseValLike {
+  baseVal?: unknown;
+}
+
+const MODAL_CONTAINER_TAGS = new Set(['DIV', 'DIALOG', 'SECTION', 'ASIDE', 'ARTICLE', 'FORM']);
+
+function getStringValue(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : undefined;
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value);
+  }
+
+  const baseVal =
+    typeof value === 'object' && value !== null && 'baseVal' in value
+      ? (value as BaseValLike).baseVal
+      : undefined;
+
+  if (typeof baseVal === 'string') {
+    const trimmed = baseVal.trim();
+    return trimmed ? trimmed : undefined;
+  }
+
+  return undefined;
+}
+
+function getElementIdValue(element: Element): string {
+  return (
+    getStringValue(element.getAttribute('id')) ||
+    getStringValue((element as Element & { id?: unknown }).id) ||
+    ''
+  );
+}
+
+function getElementClassName(element: Element): string {
+  return (
+    getStringValue(element.getAttribute('class')) ||
+    getStringValue((element as Element & { className?: unknown }).className) ||
+    ''
+  );
+}
+
+function isInteractiveControlElement(element: Element): boolean {
+  const tagName = element.tagName.toUpperCase();
+  const role = element.getAttribute('role');
+
+  if (
+    ['A', 'BUTTON', 'INPUT', 'LABEL', 'OPTION', 'SELECT', 'SUMMARY', 'TEXTAREA'].includes(tagName)
+  ) {
+    return true;
+  }
+
+  return !!role && ['button', 'link', 'menuitem', 'option', 'switch', 'tab'].includes(role);
+}
+
+function isLikelyModalContainer(element: Element): boolean {
+  const role = element.getAttribute('role');
+  if (role === 'dialog' || role === 'alertdialog') {
+    return true;
+  }
+
+  if (MODAL_CONTAINER_TAGS.has(element.tagName.toUpperCase())) {
+    return true;
+  }
+
+  if (isInteractiveControlElement(element)) {
+    return false;
+  }
+
+  return element.children.length > 0;
+}
+
+function isModalSubsection(text: string): boolean {
+  return /(?:^|[\s_-]|__)(close|header|footer)(?:$|[\s_-]|__)/.test(text);
+}
+
+function findPreferredContainedModal(element: Element): Element | null {
+  const candidates = element.querySelectorAll(
+    '[role="dialog"], [role="alertdialog"], .popup__body, [class*="modal-body"], [class*="popup-body"], [class*="dialog-body"], [class*="modal-content"], [class*="dialog-content"], [id*="modal-body"], [id*="popup-body"]'
+  );
+
+  for (const candidate of candidates) {
+    if (!(candidate instanceof Element) || candidate === element) {
+      continue;
+    }
+
+    const candidateIdentity =
+      `${getElementIdValue(candidate).toLowerCase()} ${getElementClassName(candidate).toLowerCase()}`.trim();
+    if (candidateIdentity && isModalSubsection(candidateIdentity)) {
+      continue;
+    }
+
+    if (isLikelyModalContainer(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
 /**
  * Modal detection and lifecycle tracking utilities
  */
@@ -8,8 +111,10 @@ import type { ModalLifecycleAction } from '@/types';
  * Check if an element is a modal/dialog
  */
 export function isModal(element: Element): boolean {
+  const idValue = getElementIdValue(element);
+
   // Exclude extension's own UI elements from modal detection
-  if (element.id?.startsWith('saveaction-')) {
+  if (idValue.startsWith('saveaction-')) {
     return false;
   }
 
@@ -19,15 +124,25 @@ export function isModal(element: Element): boolean {
     return true;
   }
 
+  const className = getElementClassName(element).toLowerCase();
+  const modalIdentity = `${idValue.toLowerCase()} ${className}`.trim();
+  if (modalIdentity && isModalSubsection(modalIdentity)) {
+    return false;
+  }
+
+  const isContainerLike = isLikelyModalContainer(element);
+  if (!isContainerLike) {
+    return false;
+  }
+
   // Check common modal ID patterns
-  const id = element.id?.toLowerCase() || '';
+  const id = idValue.toLowerCase();
   const modalIdPatterns = /modal|dialog|popup|overlay|lightbox/i;
   if (modalIdPatterns.test(id)) {
     return true;
   }
 
   // Check class names
-  const className = element.className?.toString().toLowerCase() || '';
   const modalClassPatterns = /modal|dialog|popup|overlay|sweet-?alert|swal|lightbox/i;
   if (modalClassPatterns.test(className)) {
     return true;
@@ -89,8 +204,9 @@ export function isModal(element: Element): boolean {
  */
 export function generateModalId(element: Element): string {
   // Use existing ID if available
-  if (element.id) {
-    return element.id;
+  const elementId = getElementIdValue(element);
+  if (elementId) {
+    return elementId;
   }
 
   // Generate from class names
@@ -102,9 +218,10 @@ export function generateModalId(element: Element): string {
     return `modal-${classes}`;
   }
 
-  // Fallback: generate from position and timestamp
+  // Fallback: generate a deterministic ID from geometry so repeated lookups
+  // within the same modal session stay stable.
   const rect = element.getBoundingClientRect();
-  return `modal-${Math.round(rect.top)}-${Math.round(rect.left)}-${Date.now()}`;
+  return `modal-${element.tagName.toLowerCase()}-${Math.round(rect.top)}-${Math.round(rect.left)}-${Math.round(rect.width)}x${Math.round(rect.height)}`;
 }
 
 /**
@@ -223,7 +340,21 @@ export function findParentModal(element: Element): Element | null {
   let current: Element | null = element;
 
   while (current && current !== document.body) {
+    const currentIdentity =
+      `${getElementIdValue(current).toLowerCase()} ${getElementClassName(current).toLowerCase()}`.trim();
+    if (currentIdentity && isModalSubsection(currentIdentity)) {
+      const associatedModal = findPreferredContainedModal(current.parentElement || current);
+      if (associatedModal) {
+        return associatedModal;
+      }
+    }
+
     if (isModal(current)) {
+      const containedModal = findPreferredContainedModal(current);
+      if (containedModal) {
+        return containedModal;
+      }
+
       return current;
     }
     current = current.parentElement;
@@ -237,9 +368,10 @@ export function findParentModal(element: Element): Element | null {
  */
 export function generateModalSelector(element: Element): string {
   const tagName = element.tagName.toLowerCase();
+  const elementId = getElementIdValue(element);
 
-  if (element.id) {
-    return `${tagName}#${element.id}`;
+  if (elementId) {
+    return `${tagName}#${elementId}`;
   }
 
   const classes = Array.from(element.classList)

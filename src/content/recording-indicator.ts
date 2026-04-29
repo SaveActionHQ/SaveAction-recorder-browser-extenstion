@@ -12,6 +12,10 @@ const ICON_PLAY = `<svg width="16" height="16" viewBox="0 0 24 24" fill="current
 const ICON_FINISH = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 const ICON_VARIABLE = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`;
 const ICON_DRAG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" opacity="0.45"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>`;
+const OVERLAY_DRAGGING_ATTR = 'data-saveaction-overlay-dragging';
+const OVERLAY_SUPPRESS_UNTIL_ATTR = 'data-saveaction-overlay-suppress-until';
+const OVERLAY_SUPPRESS_MS = 400;
+const OVERLAY_RELEASE_SUPPRESS_MS = 150;
 
 export class RecordingIndicator {
   private container: HTMLDivElement | null = null;
@@ -49,6 +53,8 @@ export class RecordingIndicator {
     this.stopPolling();
     this.cleanupDragListeners();
     this.hideVariablePopup();
+    this.setOverlayDragging(false);
+    this.clearOverlaySuppression();
 
     if (this.container?.parentNode) {
       this.container.parentNode.removeChild(this.container);
@@ -421,6 +427,8 @@ export class RecordingIndicator {
     if (e.button !== 0 || !this.container) return;
 
     this.isDragging = true;
+    this.setOverlayDragging(true);
+    this.suppressRecorderCapture(OVERLAY_SUPPRESS_MS);
     const rect = this.container.getBoundingClientRect();
     this.dragOffsetX = e.clientX - rect.left;
     this.dragOffsetY = e.clientY - rect.top;
@@ -438,11 +446,13 @@ export class RecordingIndicator {
     this.boundOnDragEnd = () => this.onDragEnd();
     document.addEventListener('mousemove', this.boundOnDragMove, true);
     document.addEventListener('mouseup', this.boundOnDragEnd, true);
+    e.stopPropagation();
     e.preventDefault();
   }
 
   private onDragMove(e: MouseEvent): void {
     if (!this.isDragging || !this.container) return;
+    this.suppressRecorderCapture(OVERLAY_SUPPRESS_MS);
     const rect = this.container.getBoundingClientRect();
     const newLeft = Math.max(
       0,
@@ -458,11 +468,35 @@ export class RecordingIndicator {
 
   private onDragEnd(): void {
     this.isDragging = false;
+    this.setOverlayDragging(false);
+    this.suppressRecorderCapture(OVERLAY_RELEASE_SUPPRESS_MS);
     if (this.container) {
       const header = this.container.firstElementChild as HTMLElement;
       if (header) header.style.cursor = 'grab';
     }
     this.cleanupDragListeners();
+  }
+
+  private setOverlayDragging(isDragging: boolean): void {
+    const root = document.documentElement;
+
+    if (isDragging) {
+      root.setAttribute(OVERLAY_DRAGGING_ATTR, 'true');
+      return;
+    }
+
+    root.removeAttribute(OVERLAY_DRAGGING_ATTR);
+  }
+
+  private suppressRecorderCapture(durationMs: number): void {
+    document.documentElement.setAttribute(
+      OVERLAY_SUPPRESS_UNTIL_ATTR,
+      String(Date.now() + durationMs)
+    );
+  }
+
+  private clearOverlaySuppression(): void {
+    document.documentElement.removeAttribute(OVERLAY_SUPPRESS_UNTIL_ATTR);
   }
 
   private cleanupDragListeners(): void {
