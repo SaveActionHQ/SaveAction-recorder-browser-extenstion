@@ -114,6 +114,45 @@ describe('Exporter Utils', () => {
       expect(parsed.actions).toHaveLength(1);
       expect(parsed.actions[0].type).toBe('click');
     });
+
+    it('should sanitize sensitive input actions with baseVal-backed selector fields', () => {
+      const recording: Recording = {
+        id: 'rec_123',
+        testName: 'Sensitive Input Test',
+        url: 'https://example.com',
+        startTime: '2025-11-18T10:00:00.000Z',
+        endTime: '2025-11-18T10:01:00.000Z',
+        variables: [],
+        actions: [
+          {
+            id: 'act_001',
+            type: 'input',
+            timestamp: Date.now(),
+            completedAt: Date.now() + 50,
+            url: 'https://example.com',
+            selector: {
+              id: { baseVal: 'password-field' },
+              name: { baseVal: 'password' },
+              priority: ['id'],
+            } as any,
+            tagName: 'input',
+            value: 'hunter2',
+            inputType: 'password',
+            isSensitive: true,
+            simulationType: 'type',
+          },
+        ],
+        ...mockDimensions,
+        userAgent: 'Mozilla/5.0',
+        version: '1.0.0',
+      };
+
+      const json = exportAsJSON(recording);
+      const parsed = JSON.parse(json);
+
+      expect(parsed.actions[0].value).not.toBe('hunter2');
+      expect(parsed.actions[0].selector.id).toBe('password-field');
+    });
   });
 
   describe('downloadRecording', () => {
@@ -430,6 +469,63 @@ describe('Exporter Utils', () => {
       expect(result.valid).toBe(false);
       const hasError = result.errors.includes('Actions must be an array');
       expect(hasError).toBe(true);
+    });
+  });
+
+  describe('filterExtensionUIActions', () => {
+    it('should filter extension UI actions when selector values are baseVal-backed', () => {
+      const recording: Recording = {
+        id: 'rec_123',
+        testName: 'Filter Overlay Actions',
+        url: 'https://example.com',
+        startTime: '2025-11-18T10:00:00.000Z',
+        endTime: '2025-11-18T10:01:00.000Z',
+        variables: [],
+        actions: [
+          {
+            id: 'act_001',
+            type: 'click',
+            timestamp: Date.now(),
+            completedAt: Date.now() + 50,
+            url: 'https://example.com',
+            selector: {
+              id: { baseVal: 'saveaction-overlay-button' },
+              priority: ['id'],
+            } as any,
+            tagName: 'button',
+            coordinates: { x: 10, y: 20 },
+            coordinatesRelativeTo: 'element',
+            button: 'left',
+            clickCount: 1,
+            modifiers: [],
+          },
+          {
+            id: 'act_002',
+            type: 'click',
+            timestamp: Date.now() + 100,
+            completedAt: Date.now() + 150,
+            url: 'https://example.com',
+            selector: {
+              id: 'real-button',
+              priority: ['id'],
+            },
+            tagName: 'button',
+            coordinates: { x: 30, y: 40 },
+            coordinatesRelativeTo: 'element',
+            button: 'left',
+            clickCount: 1,
+            modifiers: [],
+          },
+        ],
+        ...mockDimensions,
+        userAgent: 'Mozilla/5.0',
+        version: '1.0.0',
+      };
+
+      const filtered = filterExtensionUIActions(recording);
+
+      expect(filtered.actions).toHaveLength(1);
+      expect(filtered.actions[0]?.id).toBe('act_002');
     });
   });
 

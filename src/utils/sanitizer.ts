@@ -1,4 +1,8 @@
 import type { Action, InputAction, Recording } from '@/types';
+import {
+  getNormalizedLowerStringValue,
+  getNormalizedStringValue,
+} from '@/utils/recording-normalizer';
 
 /**
  * Mask a password with bullets
@@ -42,18 +46,21 @@ export function maskEmail(value: string): string {
  * Check if a field is sensitive based on type, name, or id
  */
 export function isSensitiveField(
-  type: string,
-  inputType: string,
-  name: string = '',
-  id: string = ''
+  type: unknown,
+  inputType: unknown,
+  name: unknown = '',
+  id: unknown = ''
 ): boolean {
+  const normalizedType = getNormalizedLowerStringValue(type);
+  const normalizedInputType = getNormalizedLowerStringValue(inputType);
+
   // Password type is always sensitive
-  if (type === 'password' || inputType === 'password') {
+  if (normalizedType === 'password' || normalizedInputType === 'password') {
     return true;
   }
 
-  const lowerName = name.toLowerCase();
-  const lowerId = id.toLowerCase();
+  const lowerName = getNormalizedLowerStringValue(name);
+  const lowerId = getNormalizedLowerStringValue(id);
   const combined = `${lowerName} ${lowerId}`;
 
   // Password patterns
@@ -95,21 +102,23 @@ export function isSensitiveField(
  */
 export function sanitizeValue(
   value: string,
-  type: string,
-  name: string = '',
-  id: string = ''
+  type: unknown,
+  name: unknown = '',
+  id: unknown = ''
 ): string {
+  const normalizedType = getNormalizedLowerStringValue(type);
+
   // Check if field is sensitive
-  if (!isSensitiveField(type, type, name, id)) {
+  if (!isSensitiveField(normalizedType, normalizedType, name, id)) {
     // Handle email type specially (partial masking)
-    if (type === 'email' && value.includes('@')) {
+    if (normalizedType === 'email' && value.includes('@')) {
       return maskEmail(value);
     }
     return value;
   }
 
-  const lowerName = name.toLowerCase();
-  const lowerId = id.toLowerCase();
+  const lowerName = getNormalizedLowerStringValue(name);
+  const lowerId = getNormalizedLowerStringValue(id);
   const combined = `${lowerName} ${lowerId}`;
 
   // Credit card number (show last 4)
@@ -142,11 +151,13 @@ export function sanitizeAction(action: Action): Action {
   }
 
   // Get selector info for field detection
-  const name = inputAction.selector.name || '';
-  const id = inputAction.selector.id || '';
+  const name = getNormalizedStringValue(inputAction.selector.name) || '';
+  const id = getNormalizedStringValue(inputAction.selector.id) || '';
+  const inputType = getNormalizedStringValue(inputAction.inputType) || '';
+  const value = getNormalizedStringValue(inputAction.value) || '';
 
   // Sanitize the value
-  const sanitizedValue = sanitizeValue(inputAction.value, inputAction.inputType, name, id);
+  const sanitizedValue = sanitizeValue(value, inputType, name, id);
 
   return {
     ...inputAction,

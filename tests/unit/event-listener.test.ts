@@ -54,6 +54,9 @@ describe('EventListener', () => {
   afterEach(() => {
     eventListener.destroy();
     capturedActions = [];
+    vi.useRealTimers();
+    document.documentElement.removeAttribute('data-saveaction-overlay-dragging');
+    document.documentElement.removeAttribute('data-saveaction-overlay-suppress-until');
   });
 
   describe('Click Events', () => {
@@ -290,6 +293,44 @@ describe('EventListener', () => {
 
       document.body.removeChild(wrapper);
     });
+
+    it('should record autocomplete option containers instead of nested decorative spans', () => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'form-search-sector';
+
+      const input = document.createElement('input');
+      input.id = 'sector-input';
+
+      const list = document.createElement('ul');
+      list.className = 'form__autocomplete';
+
+      const item = document.createElement('li');
+      item.style.cursor = 'pointer';
+
+      const label = document.createElement('span');
+      label.textContent = 'Restaurants for Sale';
+      item.appendChild(label);
+
+      list.appendChild(item);
+      wrapper.appendChild(input);
+      wrapper.appendChild(list);
+      document.body.appendChild(wrapper);
+
+      eventListener.start();
+
+      label.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+
+      const clickAction = capturedActions.find((action) => action.type === 'click');
+      expect(clickAction?.type).toBe('click');
+
+      if (clickAction?.type === 'click') {
+        expect(clickAction.tagName).toBe('li');
+        expect(clickAction.text).toBe('Restaurants for Sale');
+        expect(clickAction.isInDropdown).toBe(true);
+      }
+
+      document.body.removeChild(wrapper);
+    });
   });
 
   describe('Input Events', () => {
@@ -412,6 +453,90 @@ describe('EventListener', () => {
       }, 600);
 
       document.body.removeChild(passwordInput);
+    });
+
+    it('should skip click noise on the same text field after flushing pending input', () => {
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.id = 'location-input';
+      document.body.appendChild(input);
+
+      eventListener.start();
+
+      input.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+      input.value = 'London';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+
+      const inputActions = capturedActions.filter((action) => action.type === 'input');
+      const clickActions = capturedActions.filter((action) => action.type === 'click');
+
+      expect(inputActions).toHaveLength(1);
+      expect(clickActions).toHaveLength(0);
+
+      document.body.removeChild(input);
+    });
+
+    it('should skip click noise after the input was already flushed on blur', () => {
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.id = 'sector-input';
+      document.body.appendChild(input);
+
+      eventListener.start();
+
+      input.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+      input.value = 'Res';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+
+      input.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+
+      const inputActions = capturedActions.filter((action) => action.type === 'input');
+      const clickActions = capturedActions.filter((action) => action.type === 'click');
+
+      expect(inputActions).toHaveLength(1);
+      expect(clickActions).toHaveLength(0);
+
+      document.body.removeChild(input);
+    });
+
+    it('should skip click noise when autocomplete rerenders the same input element', () => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'form-search-sector';
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.id = 'sector-input';
+      input.name = 'category';
+      input.setAttribute('aria-label', 'Sector');
+      wrapper.appendChild(input);
+      document.body.appendChild(wrapper);
+
+      eventListener.start();
+
+      input.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+      input.value = 'Rest';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+
+      const rerenderedInput = input.cloneNode() as HTMLInputElement;
+      rerenderedInput.type = 'text';
+      rerenderedInput.id = 'sector-input';
+      rerenderedInput.name = 'category';
+      rerenderedInput.value = 'Rest';
+      rerenderedInput.setAttribute('aria-label', 'Sector');
+      wrapper.replaceChild(rerenderedInput, input);
+
+      rerenderedInput.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+
+      const inputActions = capturedActions.filter((action) => action.type === 'input');
+      const clickActions = capturedActions.filter((action) => action.type === 'click');
+
+      expect(inputActions).toHaveLength(1);
+      expect(clickActions).toHaveLength(0);
+
+      document.body.removeChild(wrapper);
     });
   });
 
@@ -937,6 +1062,135 @@ describe('EventListener', () => {
 
       document.body.removeChild(form);
     });
+
+    it('should not classify plain buttons outside forms as submit clicks', () => {
+      const button = document.createElement('button');
+      button.textContent = 'Accept';
+      document.body.appendChild(button);
+
+      eventListener.start();
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+
+      expect(capturedActions).toHaveLength(1);
+      const action = capturedActions[0];
+
+      if (action?.type === 'click') {
+        expect(action.clickType).toBe('standard');
+      }
+
+      document.body.removeChild(button);
+    });
+
+    it('should not classify dropdown options inside forms as submit clicks', () => {
+      const form = document.createElement('form');
+      const wrapper = document.createElement('div');
+      const input = document.createElement('input');
+      input.id = 'location-input';
+      const list = document.createElement('ul');
+      list.className = 'form__autocomplete';
+      const item = document.createElement('li');
+      item.textContent = 'London';
+      item.style.backgroundColor = 'rgb(255, 255, 255)';
+      item.style.fontSize = '14px';
+
+      list.appendChild(item);
+      wrapper.appendChild(input);
+      wrapper.appendChild(list);
+      form.appendChild(wrapper);
+      document.body.appendChild(form);
+
+      eventListener.start();
+      item.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+
+      expect(capturedActions).toHaveLength(1);
+      const action = capturedActions[0];
+
+      if (action?.type === 'click') {
+        expect(action.tagName).toBe('li');
+        expect(action.clickType).toBe('standard');
+        expect(action.isInDropdown).toBe(true);
+      }
+
+      document.body.removeChild(form);
+    });
+
+    it('should preserve custom primary role buttons in forms as submit clicks', () => {
+      const form = document.createElement('form');
+      const button = document.createElement('div');
+      button.setAttribute('role', 'button');
+      button.className = 'cta primary';
+      button.textContent = 'Search';
+      form.appendChild(button);
+      document.body.appendChild(form);
+
+      eventListener.start();
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+
+      expect(capturedActions).toHaveLength(1);
+      const action = capturedActions[0];
+
+      if (action?.type === 'click') {
+        expect(action.clickType).toBe('submit');
+      }
+
+      document.body.removeChild(form);
+    });
+
+    it('should suppress synthetic submit after clicking a submit button', () => {
+      const form = document.createElement('form');
+      const button = document.createElement('button');
+      button.type = 'submit';
+      const label = document.createElement('span');
+      label.textContent = 'Search';
+      button.appendChild(label);
+      form.appendChild(button);
+      document.body.appendChild(form);
+
+      eventListener.start();
+
+      label.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+
+      const clickActions = capturedActions.filter((action) => action.type === 'click');
+      const submitActions = capturedActions.filter((action) => action.type === 'submit');
+
+      expect(clickActions).toHaveLength(1);
+      expect(submitActions).toHaveLength(0);
+
+      const clickAction = clickActions[0];
+      if (clickAction?.type === 'click') {
+        expect(clickAction.tagName).toBe('button');
+        expect(clickAction.clickType).toBe('submit');
+      }
+
+      document.body.removeChild(form);
+    });
+
+    it('should suppress synthetic submit after pressing Enter in a form input', () => {
+      const form = document.createElement('form');
+      const input = document.createElement('input');
+      input.name = 'search';
+      form.appendChild(input);
+      document.body.appendChild(form);
+
+      eventListener.start();
+
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Enter',
+          code: 'Enter',
+          bubbles: true,
+        })
+      );
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+      const keypressActions = capturedActions.filter((action) => action.type === 'keypress');
+      const submitActions = capturedActions.filter((action) => action.type === 'submit');
+
+      expect(keypressActions).toHaveLength(1);
+      expect(submitActions).toHaveLength(0);
+
+      document.body.removeChild(form);
+    });
   });
 
   describe('Keypress Events', () => {
@@ -1259,6 +1513,67 @@ describe('EventListener', () => {
       document.body.removeChild(div);
     });
 
+    it('should not record hover noise for autocomplete containers', () => {
+      vi.useFakeTimers();
+
+      const list = document.createElement('ul');
+      list.className = 'form__autocomplete';
+      const item = document.createElement('li');
+      item.textContent = 'London';
+      list.appendChild(item);
+      document.body.appendChild(list);
+
+      eventListener.start();
+
+      list.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+      vi.advanceTimersByTime(350);
+      list.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+
+      const hoverActions = capturedActions.filter((action) => action.type === 'hover');
+      expect(hoverActions).toHaveLength(0);
+
+      document.body.removeChild(list);
+    });
+
+    it('should still record hover for hover-triggered navigation menus', () => {
+      vi.useFakeTimers();
+
+      const trigger = document.createElement('button');
+      trigger.setAttribute('aria-haspopup', 'true');
+      trigger.className = 'nav-item dropdown-toggle';
+      trigger.textContent = 'Products';
+      document.body.appendChild(trigger);
+
+      eventListener.start();
+
+      trigger.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+      vi.advanceTimersByTime(350);
+      trigger.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+
+      const hoverActions = capturedActions.filter((action) => action.type === 'hover');
+      expect(hoverActions).toHaveLength(1);
+
+      document.body.removeChild(trigger);
+    });
+
+    it('should ignore page interactions while overlay dragging suppression is active', () => {
+      const button = document.createElement('button');
+      button.textContent = 'Page Action';
+      document.body.appendChild(button);
+      document.documentElement.setAttribute(
+        'data-saveaction-overlay-suppress-until',
+        String(Date.now() + 500)
+      );
+
+      eventListener.start();
+
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+
+      expect(capturedActions).toHaveLength(0);
+
+      document.body.removeChild(button);
+    });
+
     it('should allow actions after debounce window expires', async () => {
       const button = document.createElement('button');
       button.id = 'test-btn';
@@ -1569,6 +1884,173 @@ describe('EventListener', () => {
 
       document.body.removeChild(radio);
       document.body.removeChild(label);
+    });
+
+    it('should use a stable generated modal id for clicks inside id-less modals', () => {
+      const modal = document.createElement('div');
+      modal.className = 'popup__body';
+
+      const closeButton = document.createElement('button');
+      closeButton.textContent = 'Close';
+      modal.appendChild(closeButton);
+      document.body.appendChild(modal);
+
+      eventListener.start();
+
+      closeButton.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+
+      const clickAction = capturedActions.find((action) => action.type === 'click');
+      expect(clickAction?.type).toBe('click');
+
+      if (clickAction?.type === 'click') {
+        expect(clickAction.context?.modalId).toBe('modal-popup__body');
+        expect(clickAction.context?.modalId).not.toBe('unknown-modal');
+      }
+
+      document.body.removeChild(modal);
+    });
+
+    it('should keep popup close controls inside the containing modal context', () => {
+      const modal = document.createElement('div');
+      modal.className = 'popup__body';
+
+      const header = document.createElement('div');
+      header.className = 'popup__header';
+
+      const closeButton = document.createElement('span');
+      closeButton.className = 'popup__close search-recommend-item-delete';
+      closeButton.textContent = '×';
+      closeButton.setAttribute('role', 'button');
+
+      header.appendChild(closeButton);
+      modal.appendChild(header);
+      document.body.appendChild(modal);
+
+      eventListener.start();
+
+      closeButton.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+
+      const clickAction = capturedActions.find((action) => action.type === 'click');
+      expect(clickAction?.type).toBe('click');
+
+      if (clickAction?.type === 'click') {
+        expect(clickAction.context?.modalId).toBe('modal-popup__body');
+        expect(clickAction.context?.modalId).not.toBe('modal-popup__close');
+      }
+
+      document.body.removeChild(modal);
+    });
+
+    it('should classify modal trigger links as generic clicks instead of navigation', () => {
+      const modal = document.createElement('div');
+      modal.id = 'contact-modal';
+      modal.className = 'popup__body';
+      document.body.appendChild(modal);
+
+      const link = document.createElement('a');
+      link.textContent = 'Contact';
+      link.setAttribute('href', '#');
+      link.setAttribute('data-bs-toggle', 'modal');
+      link.setAttribute('data-bs-target', '#contact-modal');
+      document.body.appendChild(link);
+
+      eventListener.start();
+
+      link.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+
+      const clickAction = capturedActions.find((action) => action.type === 'click');
+      expect(clickAction?.type).toBe('click');
+
+      if (clickAction?.type === 'click') {
+        expect(clickAction.clickIntent?.type).toBe('generic-click');
+      }
+
+      const navigationActions = capturedActions.filter((action) => action.type === 'navigation');
+      expect(navigationActions).toHaveLength(0);
+
+      document.body.removeChild(link);
+      document.body.removeChild(modal);
+    });
+
+    it('should not classify modal dismiss links as submit or navigation clicks', () => {
+      const modal = document.createElement('div');
+      modal.id = 'listing-alert-popup-body';
+      modal.className = 'listing-alert-popup-dialog popup';
+
+      const emailInput = document.createElement('input');
+      emailInput.type = 'email';
+      modal.appendChild(emailInput);
+
+      const dismissLink = document.createElement('a');
+      dismissLink.textContent = 'No thanks';
+      dismissLink.className = 'btn-outline btn-outline-blue btn-inline';
+      dismissLink.href = 'https://www.example.com/search';
+      modal.appendChild(dismissLink);
+      document.body.appendChild(modal);
+
+      eventListener.start();
+
+      dismissLink.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+
+      const clickAction = capturedActions.find((action) => action.type === 'click');
+      expect(clickAction?.type).toBe('click');
+
+      if (clickAction?.type === 'click') {
+        expect(clickAction.clickType).toBe('standard');
+        expect(clickAction.clickIntent?.type).toBe('generic-click');
+        expect(clickAction.context?.navigationIntent ?? 'none').toBe('none');
+      }
+
+      const navigationActions = capturedActions.filter((action) => action.type === 'navigation');
+      expect(navigationActions).toHaveLength(0);
+
+      document.body.removeChild(modal);
+    });
+
+    it('should resolve popup close controls through iframe-style wrappers to the popup body', () => {
+      const popupBase = document.createElement('div');
+      popupBase.id = 'popup-base';
+
+      const iframeWrapper = document.createElement('div');
+      iframeWrapper.id = 'iframe';
+      iframeWrapper.style.position = 'fixed';
+      iframeWrapper.style.zIndex = '2000';
+      iframeWrapper.style.width = '1200px';
+      iframeWrapper.style.height = '800px';
+
+      const header = document.createElement('div');
+      header.className = 'popup__header';
+
+      const closeButton = document.createElement('span');
+      closeButton.className = 'popup__close search-recommend-item-delete';
+      closeButton.textContent = '×';
+      closeButton.setAttribute('role', 'button');
+      header.appendChild(closeButton);
+
+      const modalBody = document.createElement('div');
+      modalBody.className = 'popup__body';
+      const enquiry = document.createElement('div');
+      enquiry.id = 'enquiry';
+      modalBody.appendChild(enquiry);
+
+      iframeWrapper.appendChild(header);
+      iframeWrapper.appendChild(modalBody);
+      popupBase.appendChild(iframeWrapper);
+      document.body.appendChild(popupBase);
+
+      eventListener.start();
+
+      closeButton.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+
+      const clickAction = capturedActions.find((action) => action.type === 'click');
+      expect(clickAction?.type).toBe('click');
+
+      if (clickAction?.type === 'click') {
+        expect(clickAction.context?.modalId).toBe('modal-popup__body');
+        expect(clickAction.context?.modalId).not.toBe('iframe');
+      }
+
+      document.body.removeChild(popupBase);
     });
   });
 });

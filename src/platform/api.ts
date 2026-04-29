@@ -33,6 +33,8 @@ import {
   parseTags,
   SETTINGS_STORAGE_KEYS,
 } from '@/types/settings';
+import { normalizeRecording } from '@/utils/recording-normalizer';
+import { validateRecording } from '@/utils/validator';
 
 interface AuthFetchResult {
   success: boolean;
@@ -784,10 +786,24 @@ export async function uploadRecording(
     };
   }
 
+  const normalizedRecording = normalizeRecording(recording);
+  const validation = validateRecording(normalizedRecording);
+  if (!validation.isValid) {
+    return {
+      success: false,
+      error:
+        validation.errors
+          .slice(0, 5)
+          .map(({ field, message }) => `${field}: ${message}`)
+          .join('; ') || 'Invalid recording data',
+      errorCode: 'VALIDATION_ERROR',
+    };
+  }
+
   const requestBody: Record<string, unknown> = {
-    name: recording.testName,
+    name: normalizedRecording.testName,
     tags,
-    data: recording,
+    data: normalizedRecording,
     projectId,
   };
 

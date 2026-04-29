@@ -1,5 +1,6 @@
 import type { Recording } from '@/types/recording';
 import type { Action } from '@/types/actions';
+import { normalizeRecording, valueIncludes } from '@/utils/recording-normalizer';
 import { sanitizeRecording } from '@/utils/sanitizer';
 import { DEFAULT_SETTINGS } from '@/types/settings';
 
@@ -16,28 +17,28 @@ function isExtensionUIAction(action: Action): boolean {
     // Check all selector strategies for extension UI reference
     if (typeof selector === 'object') {
       // Check CSS selector
-      if (selector.css && selector.css.includes('saveaction-')) {
+      if (valueIncludes(selector.css, 'saveaction-')) {
         return true;
       }
       // Check XPath selector
-      if (selector.xpath && selector.xpath.includes('saveaction-')) {
+      if (valueIncludes(selector.xpath, 'saveaction-')) {
         return true;
       }
       // Check ID selector
-      if (selector.id && selector.id.includes('saveaction-')) {
+      if (valueIncludes(selector.id, 'saveaction-')) {
         return true;
       }
       // Check data-testid selector
-      if (selector.dataTestId && selector.dataTestId.includes('saveaction-')) {
+      if (valueIncludes(selector.dataTestId, 'saveaction-')) {
         return true;
       }
       // Check fallback parent references
       if (selector.fallback) {
         const fb = selector.fallback as Record<string, unknown>;
-        if (typeof fb.parentId === 'string' && fb.parentId.includes('saveaction-')) {
+        if (valueIncludes(fb.parentId, 'saveaction-')) {
           return true;
         }
-        if (typeof fb.uniqueParent === 'string' && fb.uniqueParent.includes('saveaction-')) {
+        if (valueIncludes(fb.uniqueParent, 'saveaction-')) {
           return true;
         }
       }
@@ -47,10 +48,10 @@ function isExtensionUIAction(action: Action): boolean {
   // Check alternative selectors
   if ('alternativeSelectors' in action && action.alternativeSelectors) {
     for (const altSelector of action.alternativeSelectors) {
-      if (altSelector.css?.includes('saveaction-')) {
+      if (valueIncludes(altSelector.css, 'saveaction-')) {
         return true;
       }
-      if (altSelector.xpath?.includes('saveaction-')) {
+      if (valueIncludes(altSelector.xpath, 'saveaction-')) {
         return true;
       }
     }
@@ -59,7 +60,7 @@ function isExtensionUIAction(action: Action): boolean {
   // Check selectors array (multi-strategy selectors)
   if ('selectors' in action && action.selectors) {
     for (const selectorWithConfidence of action.selectors) {
-      if (selectorWithConfidence.value?.includes('saveaction-')) {
+      if (valueIncludes(selectorWithConfidence.value, 'saveaction-')) {
         return true;
       }
     }
@@ -103,8 +104,9 @@ export interface ValidationResult {
 export function exportAsJSON(recording: Recording, storeCredentials = false): string {
   // Filter out extension UI actions before export
   const filteredRecording = filterExtensionUIActions(recording);
+  const normalizedRecording = normalizeRecording(filteredRecording);
   // Sanitize sensitive values unless storeCredentials is enabled
-  const output = storeCredentials ? filteredRecording : sanitizeRecording(filteredRecording);
+  const output = storeCredentials ? normalizedRecording : sanitizeRecording(normalizedRecording);
   return JSON.stringify(output, null, 2);
 }
 
@@ -129,10 +131,11 @@ export async function downloadRecording(recording: Recording): Promise<void> {
     try {
       // Filter out extension UI actions before export
       const filteredRecording = filterExtensionUIActions(recording);
+      const normalizedRecording = normalizeRecording(filteredRecording);
       // Sanitize sensitive values unless storeCredentials is enabled
       const outputRecording = storeCredentials
-        ? filteredRecording
-        : sanitizeRecording(filteredRecording);
+        ? normalizedRecording
+        : sanitizeRecording(normalizedRecording);
 
       // Generate filename from test name
       const sanitizedName = outputRecording.testName

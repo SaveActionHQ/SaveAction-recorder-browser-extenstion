@@ -20,6 +20,40 @@ function cssEscape(value: string): string {
   });
 }
 
+interface BaseValLike {
+  baseVal?: unknown;
+}
+
+function getStringValue(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value);
+  }
+
+  const baseVal =
+    typeof value === 'object' && value !== null && 'baseVal' in value
+      ? (value as BaseValLike).baseVal
+      : undefined;
+
+  if (typeof baseVal === 'string') {
+    return baseVal;
+  }
+
+  return undefined;
+}
+
+function getElementIdValue(element: Element): string | undefined {
+  const rawId =
+    getStringValue(element.getAttribute('id')) ||
+    getStringValue((element as Element & { id?: unknown }).id);
+
+  const trimmedId = rawId?.trim();
+  return trimmedId ? trimmedId : undefined;
+}
+
 /**
  * SelectorGenerator - Generates multiple selector strategies for reliable element identification
  * Follows priority order: ID > data-testid > ARIA > name > CSS > text > XPath > position
@@ -470,10 +504,11 @@ export class SelectorGenerator {
 
     while (parent && depth < 10) {
       // Check for ID
-      if (parent.id && !this.isDynamicId(parent.id)) {
+      const parentId = getElementIdValue(parent);
+      if (parentId && !this.isDynamicId(parentId)) {
         return {
           type: 'id',
-          selector: `#${cssEscape(parent.id)}`,
+          selector: `#${cssEscape(parentId)}`,
           element: parent,
           pageType,
         };
@@ -863,7 +898,7 @@ export class SelectorGenerator {
     }
 
     // Strategy 2: ID (if not auto-generated)
-    const id = element.id;
+    const id = getElementIdValue(element);
     if (id && !this.isDynamicId(id)) {
       selectors.push({
         strategy: 'id',
@@ -1187,7 +1222,7 @@ export class SelectorGenerator {
    * Generate ID selector
    */
   private generateIdSelector(element: Element): string | undefined {
-    const id = element.id;
+    const id = getElementIdValue(element);
     if (!id) return undefined;
 
     // Skip if ID looks dynamically generated
@@ -1333,8 +1368,9 @@ export class SelectorGenerator {
     }
 
     // Try ID-based XPath first
-    if (element.id && !this.isDynamicId(element.id)) {
-      return `//${tagName}[@id="${element.id}"]`;
+    const elementId = getElementIdValue(element);
+    if (elementId && !this.isDynamicId(elementId)) {
+      return `//${tagName}[@id="${elementId}"]`;
     }
 
     // Try data-testid
@@ -1437,8 +1473,9 @@ export class SelectorGenerator {
   public getElementSelectorPart(element: Element): string {
     const tagName = element.tagName.toLowerCase();
 
-    if (element.id && !this.isDynamicId(element.id)) {
-      return `${tagName}#${cssEscape(element.id)}`;
+    const elementId = getElementIdValue(element);
+    if (elementId && !this.isDynamicId(elementId)) {
+      return `${tagName}#${cssEscape(elementId)}`;
     }
 
     const classes = Array.from(element.classList)
@@ -1549,8 +1586,9 @@ export class SelectorGenerator {
       const parentTag = parent.tagName.toLowerCase();
 
       // Stop at meaningful containers
-      if (parent.id) {
-        parentParts.unshift(`${parentTag}[@id='${parent.id}']`);
+      const parentId = getElementIdValue(parent);
+      if (parentId) {
+        parentParts.unshift(`${parentTag}[@id='${parentId}']`);
         break;
       }
 
@@ -1782,8 +1820,9 @@ export class SelectorGenerator {
    */
   private getUniqueParentSelector(parent: Element): string | null {
     // Try ID
-    if (parent.id && !this.isDynamicId(parent.id)) {
-      const selector = `#${cssEscape(parent.id)}`;
+    const parentId = getElementIdValue(parent);
+    if (parentId && !this.isDynamicId(parentId)) {
+      const selector = `#${cssEscape(parentId)}`;
       if (this.isUnique(selector, parent)) return selector;
     }
 
@@ -1797,11 +1836,12 @@ export class SelectorGenerator {
     // Try parent's parent + nth-child
     const grandParent = parent.parentElement;
     if (grandParent) {
-      if (grandParent.id && !this.isDynamicId(grandParent.id)) {
+      const grandParentId = getElementIdValue(grandParent);
+      if (grandParentId && !this.isDynamicId(grandParentId)) {
         const siblings = Array.from(grandParent.children);
         const index = siblings.indexOf(parent) + 1;
         const tagName = parent.tagName.toLowerCase();
-        const selector = `#${cssEscape(grandParent.id)} > ${tagName}:nth-child(${index})`;
+        const selector = `#${cssEscape(grandParentId)} > ${tagName}:nth-child(${index})`;
         if (this.isUnique(selector, parent)) return selector;
       }
     }
@@ -1836,8 +1876,9 @@ export class SelectorGenerator {
       path.unshift(`${tagName}${classStr}:nth-child(${index + 1})`);
 
       // If parent has ID, stop here
-      if (parent.id && !this.isDynamicId(parent.id)) {
-        path.unshift(`#${cssEscape(parent.id)}`);
+      const parentId = getElementIdValue(parent);
+      if (parentId && !this.isDynamicId(parentId)) {
+        path.unshift(`#${cssEscape(parentId)}`);
         break;
       }
 
@@ -1884,8 +1925,9 @@ export class SelectorGenerator {
     if (parent) {
       let parentSelector = '';
 
-      if (parent.id && !this.isDynamicId(parent.id)) {
-        parentSelector = `#${cssEscape(parent.id)}`;
+      const parentId = getElementIdValue(parent);
+      if (parentId && !this.isDynamicId(parentId)) {
+        parentSelector = `#${cssEscape(parentId)}`;
       } else {
         const parentClasses = Array.from(parent.classList)
           .filter((cls) => !this.isDynamicClass(cls))
@@ -2077,7 +2119,7 @@ export class SelectorGenerator {
       },
       textContent: element.textContent?.trim().substring(0, 100),
       siblingIndex: parent ? Array.from(parent.children).indexOf(element) : 0,
-      parentId: parent?.id || undefined,
+      parentId: parent ? getElementIdValue(parent) : undefined,
       uniqueParent: parent ? this.getUniqueParentSelector(parent) || undefined : undefined,
     };
   }

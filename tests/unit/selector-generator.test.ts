@@ -479,6 +479,57 @@ describe('SelectorGenerator', () => {
       document.body.removeChild(element);
     });
 
+    it('should normalize shadowed form ids in iframe-style popup markup', () => {
+      const iframeContainer = document.createElement('div');
+      iframeContainer.id = 'contact-seller-iframe';
+
+      const modalBody = document.createElement('div');
+      modalBody.className = 'popup__body';
+
+      const form = document.createElement('form');
+      form.setAttribute('id', 'contact-form');
+
+      const shadowingInput = document.createElement('input');
+      shadowingInput.name = 'id';
+      Object.defineProperty(form, 'id', {
+        configurable: true,
+        value: shadowingInput,
+      });
+
+      const clearButton = document.createElement('span');
+      clearButton.className = 'clear-input';
+      clearButton.textContent = '×';
+
+      form.appendChild(clearButton);
+      modalBody.appendChild(form);
+      iframeContainer.appendChild(modalBody);
+      document.body.appendChild(iframeContainer);
+
+      const strategy = generator.generateSelectors(clearButton);
+
+      expect(generator.getElementSelectorPart(form)).toBe('form#contact-form');
+      expect(strategy.position?.parent).toBe('form#contact-form');
+      expect(strategy.fallback?.parentId).toBe('contact-form');
+      expect(strategy.fallback?.uniqueParent || '').not.toContain('[object HTMLInputElement]');
+      expect(strategy.css).not.toContain('[object HTMLInputElement]');
+      expect(strategy.xpath).not.toContain('[object HTMLInputElement]');
+
+      document.body.removeChild(iframeContainer);
+    });
+
+    it('should omit empty parent ids from fallback metadata', () => {
+      const parent = document.createElement('div');
+      const child = document.createElement('button');
+      parent.appendChild(child);
+      document.body.appendChild(parent);
+
+      const strategy = generator.generateSelectors(child);
+
+      expect(strategy.fallback?.parentId).toBeUndefined();
+
+      document.body.removeChild(parent);
+    });
+
     it('should handle select elements with name attribute', () => {
       const select = document.createElement('select');
       select.name = 'country';

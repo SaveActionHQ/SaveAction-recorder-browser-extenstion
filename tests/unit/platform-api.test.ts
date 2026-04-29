@@ -477,6 +477,142 @@ describe('platform api', () => {
       expect(body.tags).toEqual(['smoke', 'checkout']);
     });
 
+    it('normalizes baseVal-backed selector fields before upload', async () => {
+      seedConnectedSession();
+
+      (global.fetch as any).mockResolvedValueOnce({
+        status: 201,
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            success: true,
+            data: {
+              id: 'rec-uploaded-2',
+              name: 'Checkout Flow',
+            },
+          }),
+      });
+
+      const malformedRecording: Recording = {
+        ...mockRecording,
+        actions: [
+          {
+            id: 'act_001',
+            type: 'click',
+            timestamp: Date.now(),
+            completedAt: Date.now() + 50,
+            url: 'https://example.com',
+            selector: {
+              id: { baseVal: 'checkout-button' },
+              priority: ['id'],
+            } as any,
+            tagName: 'button',
+            coordinates: { x: 10, y: 20 },
+            coordinatesRelativeTo: 'element',
+            button: 'left',
+            clickCount: 1,
+            modifiers: [],
+          },
+        ],
+      };
+
+      const result = await uploadRecording(malformedRecording, ['smoke'], 'proj-1');
+
+      expect(result.success).toBe(true);
+
+      const fetchCall = (global.fetch as any).mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body);
+      expect(body.data.actions[0].selector.id).toBe('checkout-button');
+    });
+
+    it('accepts selectors that use position in the priority list', async () => {
+      seedConnectedSession();
+
+      (global.fetch as any).mockResolvedValueOnce({
+        status: 201,
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            success: true,
+            data: {
+              id: 'rec-uploaded-3',
+              name: 'Checkout Flow',
+            },
+          }),
+      });
+
+      const positionedRecording: Recording = {
+        ...mockRecording,
+        actions: [
+          {
+            id: 'act_001',
+            type: 'click',
+            timestamp: Date.now(),
+            completedAt: Date.now() + 50,
+            url: 'https://example.com',
+            selector: {
+              css: 'ul.results > li:nth-child(3)',
+              position: {
+                parent: 'ul.results',
+                index: 2,
+              },
+              priority: ['css', 'position'],
+            },
+            tagName: 'li',
+            coordinates: { x: 10, y: 20 },
+            coordinatesRelativeTo: 'element',
+            button: 'left',
+            clickCount: 1,
+            modifiers: [],
+          },
+        ],
+      };
+
+      const result = await uploadRecording(positionedRecording, ['smoke'], 'proj-1');
+
+      expect(result.success).toBe(true);
+
+      const fetchCall = (global.fetch as any).mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body);
+      expect(body.data.actions[0].selector.position).toEqual({
+        parent: 'ul.results',
+        index: 2,
+      });
+    });
+
+    it('returns a local validation error when selectors remain invalid after normalization', async () => {
+      seedConnectedSession();
+
+      const invalidRecording: Recording = {
+        ...mockRecording,
+        actions: [
+          {
+            id: 'act_001',
+            type: 'click',
+            timestamp: Date.now(),
+            completedAt: Date.now() + 50,
+            url: 'https://example.com',
+            selector: {
+              id: { nested: 'still-invalid' },
+              priority: ['id'],
+            } as any,
+            tagName: 'button',
+            coordinates: { x: 10, y: 20 },
+            coordinatesRelativeTo: 'element',
+            button: 'left',
+            clickCount: 1,
+            modifiers: [],
+          },
+        ],
+      };
+
+      const result = await uploadRecording(invalidRecording, [], 'proj-1');
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe('VALIDATION_ERROR');
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
     it('requires reconnect when refresh fails before upload', async () => {
       seedConnectedSession();
       mockStorage.authTokens = {

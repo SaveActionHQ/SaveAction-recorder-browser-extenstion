@@ -73,6 +73,21 @@ describe('Validator', () => {
       );
     });
 
+    it('should allow position selectors in the priority array', () => {
+      const selector: SelectorStrategy = {
+        priority: ['position'],
+        position: {
+          parent: '.results-list',
+          index: 2,
+        },
+      };
+
+      const result = validateSelector(selector);
+
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
     it('should fail if no selectors are provided', () => {
       const selector: SelectorStrategy = {
         priority: ['id'],

@@ -1,4 +1,5 @@
 import type { ClickIntent } from '@/types';
+import { detectNavigationIntent } from '@/utils/element-state';
 
 /**
  * IntentClassifier - Classifies user click intent for intelligent duplicate detection
@@ -140,14 +141,12 @@ export class IntentClassifier {
    * Detect navigation elements (links, nav buttons)
    */
   private isNavigationElement(element: Element): boolean {
-    const tagName = element.tagName.toLowerCase();
-    const href = (element as HTMLAnchorElement).href;
-    const role = element.getAttribute('role');
+    const navigationIntent = detectNavigationIntent(element);
 
     return (
-      (tagName === 'a' && !!href && href !== '#' && !href.startsWith('javascript:')) ||
-      role === 'link' ||
-      element.closest('nav') !== null
+      navigationIntent === 'navigate-to-page' ||
+      navigationIntent === 'logout' ||
+      navigationIntent === 'close-modal-and-redirect'
     );
   }
 
