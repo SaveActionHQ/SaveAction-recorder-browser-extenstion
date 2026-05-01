@@ -18,6 +18,7 @@
   ActionContext,
   AlternativeSelector,
   ContentSignature,
+  ModalReplayContext,
   SelectorStrategy,
 } from '@/types';
 import { generateActionId } from '@/types';
@@ -39,6 +40,7 @@ import {
   findParentModal,
   detectModalState,
   generateModalId,
+  generateModalSelector,
 } from '@/utils/modal-tracker';
 
 type ClickActionSnapshot = Omit<
@@ -1012,26 +1014,11 @@ export class EventListener {
     }
     const modifiers = this.getModifierKeys(event);
 
-    // ðŸ†• Generate content signature for list items (v2.0.0)
-    let contentSignature: ContentSignature | undefined;
-    try {
-      const signature = generateContentSignature(target);
-      if (signature) {
-        contentSignature = signature;
-        console.log('[EventListener] Content signature generated:', {
-          type: signature.elementType,
-          heading: signature.contentFingerprint.heading,
-          position: signature.fallbackPosition,
-        });
-      }
-    } catch (error) {
-      console.warn('[EventListener] Failed to generate content signature:', error);
-    }
-
     // Capture element state for smart waits
     let elementState: ElementState | undefined;
     let waitConditions: WaitConditions | undefined;
     let context: Partial<ActionContext> | undefined;
+    let modalContext: ModalReplayContext | undefined;
     let alternativeSelectors: AlternativeSelector[] | undefined;
 
     try {
@@ -1046,11 +1033,19 @@ export class EventListener {
       if (parentModal) {
         const modalId = generateModalId(parentModal);
         const modalState = detectModalState(parentModal);
+        const modalSelector = generateModalSelector(parentModal);
 
         context.isInsideModal = true;
         context.modalId = modalId;
         context.modalState = modalState;
         context.requiresModalState = true; // Runner must wait for this modal state
+        modalContext = {
+          modalSessionId: modalId,
+          modalSelector,
+          required: true,
+          insideModal: true,
+          state: modalState,
+        };
 
         console.log('[EventListener] Element inside modal:', {
           modalId,
@@ -1103,6 +1098,24 @@ export class EventListener {
       logElementState(target, elementState, waitConditions);
     } catch (error) {
       console.warn('[EventListener] Failed to capture element state:', error);
+    }
+
+    // ðŸ†• Generate content signature for list items (v2.0.0)
+    let contentSignature: ContentSignature | undefined;
+    if (this.shouldCaptureContentSignature(target, context)) {
+      try {
+        const signature = generateContentSignature(target);
+        if (signature) {
+          contentSignature = signature;
+          console.log('[EventListener] Content signature generated:', {
+            type: signature.elementType,
+            heading: signature.contentFingerprint.heading,
+            position: signature.fallbackPosition,
+          });
+        }
+      } catch (error) {
+        console.warn('[EventListener] Failed to generate content signature:', error);
+      }
     }
 
     // ðŸ†• CRITICAL FIX #1: Detect checkbox/radio clicks
@@ -1171,6 +1184,7 @@ export class EventListener {
       elementState,
       waitConditions,
       context,
+      modalContext,
       alternativeSelectors,
       // ðŸ†• v2.0.0 improvements
       contentSignature,
@@ -1184,6 +1198,21 @@ export class EventListener {
       clickIntent,
       validation,
     };
+  }
+
+  private shouldCaptureContentSignature(
+    target: Element,
+    context?: Partial<ActionContext>
+  ): boolean {
+    if (context?.isInsideModal || context?.navigationIntent === 'logout') {
+      return false;
+    }
+
+    if (isLikelyModalDismissControl(target)) {
+      return false;
+    }
+
+    return true;
   }
 
   /**
@@ -4281,6 +4310,13 @@ export class EventListener {
         this.getRelativeTimestamp() +
         (lifecycleEvent.animationDuration || lifecycleEvent.transitionDuration || 0),
       url: window.location.href,
+      modalContext: {
+        modalSessionId: lifecycleEvent.modalId,
+        modalSelector: lifecycleEvent.modalSelector,
+        required: true,
+        insideModal: true,
+        state: lifecycleEvent.toState || lifecycleEvent.initialState,
+      },
       ...lifecycleEvent,
     };
 

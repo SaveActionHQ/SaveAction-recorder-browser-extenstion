@@ -1905,6 +1905,13 @@ describe('EventListener', () => {
       if (clickAction?.type === 'click') {
         expect(clickAction.context?.modalId).toBe('modal-popup__body');
         expect(clickAction.context?.modalId).not.toBe('unknown-modal');
+        expect(clickAction.modalContext).toEqual({
+          modalSessionId: 'modal-popup__body',
+          modalSelector: 'div.popup__body',
+          required: true,
+          insideModal: true,
+          state: 'default',
+        });
       }
 
       document.body.removeChild(modal);
@@ -2051,6 +2058,57 @@ describe('EventListener', () => {
       }
 
       document.body.removeChild(popupBase);
+    });
+
+    it('should omit polluted content signatures for logout clicks', () => {
+      const container = document.createElement('div');
+      container.className = 'container';
+
+      const row = document.createElement('div');
+      row.className = 'row gap-4';
+
+      const sidebar = document.createElement('div');
+      sidebar.className = 'sidebar col-md-3';
+
+      const links = document.createElement('div');
+      links.id = 'sidebarLinks';
+
+      const title = document.createElement('h2');
+      title.textContent = 'ADMIN PORTAL BMUK';
+      links.appendChild(title);
+
+      const description = document.createElement('p');
+      description.textContent =
+        'Manage donations, update timetables, and connect with your community.';
+      links.appendChild(description);
+
+      const menuButton = document.createElement('button');
+      menuButton.textContent = 'Menu';
+      links.appendChild(menuButton);
+
+      const logoutLink = document.createElement('a');
+      logoutLink.href = '/logout';
+      logoutLink.textContent = 'Logout';
+      links.appendChild(logoutLink);
+
+      sidebar.appendChild(links);
+      row.appendChild(sidebar);
+      container.appendChild(row);
+      document.body.appendChild(container);
+
+      eventListener.start();
+
+      logoutLink.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+
+      const clickAction = capturedActions.find((action) => action.type === 'click');
+      expect(clickAction?.type).toBe('click');
+
+      if (clickAction?.type === 'click') {
+        expect(clickAction.context?.navigationIntent).toBe('logout');
+        expect(clickAction.contentSignature).toBeUndefined();
+      }
+
+      document.body.removeChild(container);
     });
   });
 });
