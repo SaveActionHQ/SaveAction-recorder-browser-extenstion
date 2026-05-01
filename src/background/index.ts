@@ -9,6 +9,7 @@ import type { Recording, RecordingMetadata, Variable } from '@/types/recording';
 import type { InputAction, TabAction } from '@/types/actions';
 import { saveRecording } from '@/utils/storage';
 import { downloadRecording } from '@/utils/exporter';
+import { detectNavigationAttribution } from '@/utils/navigation-attribution';
 import { loadSettings, uploadRecording as uploadToPlatform } from '@/platform/api';
 import { hasActiveConnection, parseTags } from '@/types/settings';
 
@@ -1859,83 +1860,21 @@ chrome.tabs.onUpdated.addListener(async (tabId: number, changeInfo: chrome.tabs.
           .join(', ')
       );
 
-      // 🔧 FIXED: Smart Navigation Trigger Detection
-      // Correctly identifies form submissions, back/forward, and regular navigations
-      const FORM_SUBMIT_WINDOW = 5000; // 5 seconds
-      const LINK_CLICK_WINDOW = 3000; // 3 seconds
-
-      let navigationTrigger: 'back' | 'forward' | 'form-submit' | 'click' | 'redirect' | 'manual' =
-        'redirect';
-      let relatedActionId: string | undefined;
-
-      // Get recent actions from storage (reliable source, guaranteed complete at page load)
-
       // Calculate current relative timestamp
       const currentRelativeTime = state.startTime ? Date.now() - state.startTime : Date.now();
+      const { navigationTrigger, relatedActionId } = detectNavigationAttribution(
+        recentActions,
+        currentRelativeTime
+      );
 
-      // 1. CHECK: Was there a recent form submission? (HIGHEST PRIORITY)
-      const recentSubmit = recentActions
-        .slice()
-        .reverse()
-        .find((action) => {
-          const timeDiff = currentRelativeTime - action.timestamp;
-          return action.type === 'submit' && timeDiff < FORM_SUBMIT_WINDOW;
-        });
-
-      if (recentSubmit) {
-        navigationTrigger = 'form-submit';
-        relatedActionId = recentSubmit.id;
+      if (navigationTrigger === 'form-submit') {
         console.log('[Background] ✓ Form submit detected, navigation triggered by form');
-      }
-      // 2. CHECK: Was there a recent submit button click?
-      else {
-        const recentSubmitClick = recentActions
-          .slice()
-          .reverse()
-          .find((action) => {
-            const timeDiff = currentRelativeTime - action.timestamp;
-            return (
-              action.type === 'click' &&
-              'context' in action &&
-              action.context?.navigationIntent === 'submit-form' &&
-              timeDiff < FORM_SUBMIT_WINDOW
-            );
-          });
-
-        if (recentSubmitClick) {
-          navigationTrigger = 'form-submit';
-          relatedActionId = recentSubmitClick.id;
-          console.log('[Background] ✓ Submit button click detected, navigation triggered by form');
-        }
-        // 3. CHECK: Link click navigation
-        else {
-          const recentLinkClick = recentActions
-            .slice()
-            .reverse()
-            .find((action) => {
-              const timeDiff = currentRelativeTime - action.timestamp;
-              return (
-                action.type === 'click' &&
-                'tagName' in action &&
-                (action.tagName === 'a' || action.tagName === 'img') &&
-                timeDiff < LINK_CLICK_WINDOW
-              );
-            });
-
-          if (recentLinkClick) {
-            navigationTrigger = 'click';
-            relatedActionId = recentLinkClick.id;
-            console.log('[Background] ✓ Link click navigation detected');
-          }
-          // 4. FALLBACK: No user-initiated action found (no click, no form submit).
-          // This is most likely a server-side redirect (e.g., OAuth flow, 302 redirect).
-          // We leave navigationTrigger as the default 'redirect'.
-          else {
-            console.log(
-              '[Background] ✓ Server redirect detected (no user action triggered this navigation)'
-            );
-          }
-        }
+      } else if (navigationTrigger === 'click') {
+        console.log('[Background] ✓ Click-triggered navigation detected');
+      } else {
+        console.log(
+          '[Background] ✓ Server redirect detected (no user action triggered this navigation)'
+        );
       }
 
       // Create navigation action with RELATIVE timestamp and proper metadata

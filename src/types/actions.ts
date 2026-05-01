@@ -47,6 +47,14 @@ export interface ActionContext {
   dependentActions?: string[]; // Action IDs that depend on this action's success
 }
 
+export interface ModalReplayContext {
+  modalSessionId: string; // Stable modal instance/session ID
+  modalSelector: string; // Canonical modal selector for replay
+  required: boolean; // Action requires this modal to be present
+  insideModal: boolean; // Action happened inside the modal
+  state?: string; // Current modal state when action was recorded
+}
+
 /**
  * Alternative selector strategies (fallback options)
  */
@@ -141,6 +149,7 @@ export interface BaseAction {
   elementState?: ElementState; // Element state when action recorded
   waitConditions?: WaitConditions; // Conditions to wait for before executing
   context?: ActionContext; // Additional context about interaction
+  modalContext?: ModalReplayContext; // Normalized modal replay metadata
   alternativeSelectors?: AlternativeSelector[]; // Fallback selector strategies
 
   // ✅ NEW: Content signature for dynamic list items (v2.0.0)

@@ -1,5 +1,9 @@
 import type { ModalLifecycleAction } from '@/types';
 
+const MODAL_SESSION_ATTR = 'data-saveaction-modal-session-id';
+const MODAL_CLOSE_DELAY_MS = 80;
+let modalSessionCounter = 0;
+
 interface BaseValLike {
   baseVal?: unknown;
 }
@@ -79,9 +83,26 @@ function isModalSubsection(text: string): boolean {
   return /(?:^|[\s_-]|__)(close|header|footer)(?:$|[\s_-]|__)/.test(text);
 }
 
+function isSweetAlertSubsection(text: string): boolean {
+  return /swal2-(?:html-container|actions|title|content|footer|header|close)/.test(text);
+}
+
 function findPreferredContainedModal(element: Element): Element | null {
   const candidates = element.querySelectorAll(
-    '[role="dialog"], [role="alertdialog"], .popup__body, [class*="modal-body"], [class*="popup-body"], [class*="dialog-body"], [class*="modal-content"], [class*="dialog-content"], [id*="modal-body"], [id*="popup-body"]'
+    [
+      '[role="dialog"]',
+      '[role="alertdialog"]',
+      '.swal2-popup',
+      '[class*="swal2-popup"]',
+      '.popup__body',
+      '[class*="modal-body"]',
+      '[class*="popup-body"]',
+      '[class*="dialog-body"]',
+      '[class*="modal-content"]',
+      '[class*="dialog-content"]',
+      '[id*="modal-body"]',
+      '[id*="popup-body"]',
+    ].join(', ')
   );
 
   for (const candidate of candidates) {
@@ -91,7 +112,10 @@ function findPreferredContainedModal(element: Element): Element | null {
 
     const candidateIdentity =
       `${getElementIdValue(candidate).toLowerCase()} ${getElementClassName(candidate).toLowerCase()}`.trim();
-    if (candidateIdentity && isModalSubsection(candidateIdentity)) {
+    if (
+      candidateIdentity &&
+      (isModalSubsection(candidateIdentity) || isSweetAlertSubsection(candidateIdentity))
+    ) {
       continue;
     }
 
@@ -101,6 +125,72 @@ function findPreferredContainedModal(element: Element): Element | null {
   }
 
   return null;
+}
+
+function findContainingModalAncestor(element: Element): Element | null {
+  let current: Element | null = element.parentElement;
+
+  while (current && current !== document.body) {
+    const containedModal = findPreferredContainedModal(current);
+    if (containedModal) {
+      return containedModal;
+    }
+
+    if (isModal(current)) {
+      return current;
+    }
+
+    current = current.parentElement;
+  }
+
+  return null;
+}
+
+function getCanonicalModalElement(element: Element): Element {
+  const elementIdentity =
+    `${getElementIdValue(element).toLowerCase()} ${getElementClassName(element).toLowerCase()}`.trim();
+
+  if (
+    elementIdentity &&
+    (isModalSubsection(elementIdentity) || isSweetAlertSubsection(elementIdentity))
+  ) {
+    const containingModal = findContainingModalAncestor(element);
+    if (containingModal) {
+      return containingModal;
+    }
+  }
+
+  const containedModal = findPreferredContainedModal(element);
+  return containedModal || element;
+}
+
+function createModalSessionId(): string {
+  modalSessionCounter += 1;
+  return `modal-session-${modalSessionCounter}`;
+}
+
+function getStoredModalSessionId(element: Element): string | null {
+  return element.getAttribute(MODAL_SESSION_ATTR);
+}
+
+function findExistingModalSessionId(element: Element): string | null {
+  let current: Element | null = element;
+
+  while (current) {
+    const stored = getStoredModalSessionId(current);
+    if (stored) {
+      return stored;
+    }
+
+    current = current.parentElement;
+  }
+
+  const descendantWithSession = element.querySelector(`[${MODAL_SESSION_ATTR}]`);
+  return descendantWithSession?.getAttribute(MODAL_SESSION_ATTR) || null;
+}
+
+function setStoredModalSessionId(element: Element, modalId: string): void {
+  element.setAttribute(MODAL_SESSION_ATTR, modalId);
 }
 
 /**
@@ -126,7 +216,10 @@ export function isModal(element: Element): boolean {
 
   const className = getElementClassName(element).toLowerCase();
   const modalIdentity = `${idValue.toLowerCase()} ${className}`.trim();
-  if (modalIdentity && isModalSubsection(modalIdentity)) {
+  if (
+    modalIdentity &&
+    (isModalSubsection(modalIdentity) || isSweetAlertSubsection(modalIdentity))
+  ) {
     return false;
   }
 
@@ -143,7 +236,8 @@ export function isModal(element: Element): boolean {
   }
 
   // Check class names
-  const modalClassPatterns = /modal|dialog|popup|overlay|sweet-?alert|swal|lightbox/i;
+  const modalClassPatterns =
+    /modal|dialog|popup|overlay|sweet-?alert|lightbox|swal2-(?:popup|container|modal)/i;
   if (modalClassPatterns.test(className)) {
     return true;
   }
@@ -203,25 +297,34 @@ export function isModal(element: Element): boolean {
  * Generate unique modal ID from element
  */
 export function generateModalId(element: Element): string {
+  const canonicalElement = getCanonicalModalElement(element);
+  const storedModalId = findExistingModalSessionId(canonicalElement);
+  if (storedModalId) {
+    setStoredModalSessionId(canonicalElement, storedModalId);
+    return storedModalId;
+  }
+
   // Use existing ID if available
-  const elementId = getElementIdValue(element);
+  const elementId = getElementIdValue(canonicalElement);
   if (elementId) {
+    setStoredModalSessionId(canonicalElement, elementId);
     return elementId;
   }
 
   // Generate from class names
-  const classes = Array.from(element.classList)
+  const classes = Array.from(canonicalElement.classList)
     .filter((cls) => /modal|dialog|popup/i.test(cls))
     .join('-');
 
   if (classes) {
-    return `modal-${classes}`;
+    const modalId = `modal-${classes}`;
+    setStoredModalSessionId(canonicalElement, modalId);
+    return modalId;
   }
 
-  // Fallback: generate a deterministic ID from geometry so repeated lookups
-  // within the same modal session stay stable.
-  const rect = element.getBoundingClientRect();
-  return `modal-${element.tagName.toLowerCase()}-${Math.round(rect.top)}-${Math.round(rect.left)}-${Math.round(rect.width)}x${Math.round(rect.height)}`;
+  const modalId = createModalSessionId();
+  setStoredModalSessionId(canonicalElement, modalId);
+  return modalId;
 }
 
 /**
@@ -342,8 +445,11 @@ export function findParentModal(element: Element): Element | null {
   while (current && current !== document.body) {
     const currentIdentity =
       `${getElementIdValue(current).toLowerCase()} ${getElementClassName(current).toLowerCase()}`.trim();
-    if (currentIdentity && isModalSubsection(currentIdentity)) {
-      const associatedModal = findPreferredContainedModal(current.parentElement || current);
+    if (
+      currentIdentity &&
+      (isModalSubsection(currentIdentity) || isSweetAlertSubsection(currentIdentity))
+    ) {
+      const associatedModal = findContainingModalAncestor(current);
       if (associatedModal) {
         return associatedModal;
       }
@@ -367,14 +473,15 @@ export function findParentModal(element: Element): Element | null {
  * Generate CSS selector for modal element
  */
 export function generateModalSelector(element: Element): string {
-  const tagName = element.tagName.toLowerCase();
-  const elementId = getElementIdValue(element);
+  const canonicalElement = getCanonicalModalElement(element);
+  const tagName = canonicalElement.tagName.toLowerCase();
+  const elementId = getElementIdValue(canonicalElement);
 
   if (elementId) {
     return `${tagName}#${elementId}`;
   }
 
-  const classes = Array.from(element.classList)
+  const classes = Array.from(canonicalElement.classList)
     .filter((cls) => /modal|dialog|popup/i.test(cls))
     .slice(0, 2);
 
@@ -383,7 +490,7 @@ export function generateModalSelector(element: Element): string {
   }
 
   // Fallback to role
-  const role = element.getAttribute('role');
+  const role = canonicalElement.getAttribute('role');
   if (role) {
     return `${tagName}[role="${role}"]`;
   }
@@ -396,6 +503,7 @@ export function generateModalSelector(element: Element): string {
  */
 export class ModalTracker {
   private trackedModals: Map<string, string> = new Map(); // modalId -> current state
+  private pendingCloseTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private modalObserver: MutationObserver | null = null;
   private modalStateObserver: MutationObserver | null = null;
 
@@ -417,10 +525,12 @@ export class ModalTracker {
         // Check added nodes
         for (const node of mutation.addedNodes) {
           if (node.nodeType === 1) {
-            const element = node as Element;
+            const rawElement = node as Element;
+            const element = getCanonicalModalElement(rawElement);
             // Stronger check: must be modal AND visible AND not already tracked
             if (isModal(element) && isModalVisible(element)) {
               const modalId = generateModalId(element);
+              this.cancelPendingClose(modalId);
               if (!this.trackedModals.has(modalId)) {
                 this.handleModalOpened(element);
               }
@@ -431,11 +541,12 @@ export class ModalTracker {
         // Check removed nodes
         for (const node of mutation.removedNodes) {
           if (node.nodeType === 1) {
-            const element = node as Element;
+            const rawElement = node as Element;
+            const element = getCanonicalModalElement(rawElement);
             const modalId = generateModalId(element);
             // Only handle if we were tracking this modal
             if (isModal(element) && this.trackedModals.has(modalId)) {
-              this.handleModalClosed(element);
+              this.scheduleModalClosed(element, modalId);
             }
           }
         }
@@ -456,12 +567,16 @@ export class ModalTracker {
 
         if (!modal || !isModal(modal)) continue;
 
-        const modalId = generateModalId(modal);
-        const currentState = detectModalState(modal);
+        const canonicalModal = getCanonicalModalElement(modal);
+
+        const modalId = generateModalId(canonicalModal);
+        const currentState = detectModalState(canonicalModal);
         const previousState = this.trackedModals.get(modalId);
 
+        this.cancelPendingClose(modalId);
+
         if (previousState && currentState !== previousState) {
-          this.handleModalStateChanged(modal, previousState, currentState);
+          this.handleModalStateChanged(canonicalModal, previousState, currentState);
         }
       }
     });
@@ -479,7 +594,44 @@ export class ModalTracker {
   public stop(): void {
     this.modalObserver?.disconnect();
     this.modalStateObserver?.disconnect();
+    for (const timer of this.pendingCloseTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.pendingCloseTimers.clear();
     this.trackedModals.clear();
+  }
+
+  private cancelPendingClose(modalId: string): void {
+    const timer = this.pendingCloseTimers.get(modalId);
+    if (timer) {
+      clearTimeout(timer);
+      this.pendingCloseTimers.delete(modalId);
+    }
+  }
+
+  private isModalSessionStillPresent(modalId: string): boolean {
+    if (typeof document === 'undefined') {
+      return false;
+    }
+
+    const candidates = document.querySelectorAll(`[${MODAL_SESSION_ATTR}="${modalId}"]`);
+    return Array.from(candidates).some((candidate) => isModalVisible(candidate));
+  }
+
+  private scheduleModalClosed(element: Element, modalId: string): void {
+    this.cancelPendingClose(modalId);
+
+    const timer = setTimeout(() => {
+      this.pendingCloseTimers.delete(modalId);
+
+      if (this.isModalSessionStillPresent(modalId)) {
+        return;
+      }
+
+      this.handleModalClosed(element, modalId);
+    }, MODAL_CLOSE_DELAY_MS);
+
+    this.pendingCloseTimers.set(modalId, timer);
   }
 
   /**
@@ -511,8 +663,8 @@ export class ModalTracker {
   /**
    * Handle modal closed event
    */
-  private handleModalClosed(element: Element): void {
-    const modalId = generateModalId(element);
+  private handleModalClosed(element: Element, modalId = generateModalId(element)): void {
+    this.cancelPendingClose(modalId);
 
     console.log('[ModalTracker] ❌ Modal closed:', {
       modalId,
