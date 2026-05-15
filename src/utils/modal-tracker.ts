@@ -431,9 +431,22 @@ export function estimateAnimationDuration(element: Element): number {
  * Check if modal is currently visible
  */
 export function isModalVisible(element: Element): boolean {
-  const style = window.getComputedStyle(element);
+  let current: Element | null = element;
 
-  return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+  while (current) {
+    if (current.hasAttribute('hidden') || current.getAttribute('aria-hidden') === 'true') {
+      return false;
+    }
+
+    const style = window.getComputedStyle(current);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+      return false;
+    }
+
+    current = current.parentElement;
+  }
+
+  return true;
 }
 
 /**
@@ -561,19 +574,27 @@ export class ModalTracker {
     // Observer for modal state changes
     this.modalStateObserver = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
-        const modal = (mutation.target as Element).closest(
-          '[id*="modal"], [class*="modal"], [role="dialog"]'
-        );
+        const target = mutation.target as Element;
+        const canonicalModal = getCanonicalModalElement(target);
 
-        if (!modal || !isModal(modal)) continue;
-
-        const canonicalModal = getCanonicalModalElement(modal);
+        if (!isModal(canonicalModal)) continue;
 
         const modalId = generateModalId(canonicalModal);
         const currentState = detectModalState(canonicalModal);
         const previousState = this.trackedModals.get(modalId);
+        const isVisible = isModalVisible(canonicalModal);
 
         this.cancelPendingClose(modalId);
+
+        if (!previousState && isVisible) {
+          this.handleModalOpened(canonicalModal);
+          continue;
+        }
+
+        if (previousState && !isVisible) {
+          this.scheduleModalClosed(canonicalModal, modalId);
+          continue;
+        }
 
         if (previousState && currentState !== previousState) {
           this.handleModalStateChanged(canonicalModal, previousState, currentState);

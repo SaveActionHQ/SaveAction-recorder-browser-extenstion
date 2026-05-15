@@ -92,6 +92,68 @@ describe('modal-tracker', () => {
     expect(events[1]).toEqual({ event: 'modal-closed', modalId: 'modal-swal2-popup-swal2-modal' });
   });
 
+  it('should emit modal-opened when a SweetAlert popup becomes visible after insertion', async () => {
+    const events: Array<{ event: string; modalId: string }> = [];
+    const tracker = new ModalTracker((event) => {
+      events.push({ event: event.event, modalId: event.modalId });
+    });
+
+    tracker.start();
+
+    const container = document.createElement('div');
+    container.className = 'swal2-container swal2-center';
+
+    const popup = document.createElement('div');
+    popup.className = 'swal2-popup swal2-modal';
+    popup.setAttribute('role', 'dialog');
+    popup.style.display = 'none';
+    container.appendChild(popup);
+
+    document.body.appendChild(container);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(events).toHaveLength(0);
+
+    popup.style.display = 'block';
+    popup.className = 'swal2-popup swal2-modal swal2-show';
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    tracker.stop();
+
+    expect(events).toEqual([{ event: 'modal-opened', modalId: 'modal-swal2-popup-swal2-modal' }]);
+  });
+
+  it('should emit modal-opened when SweetAlert container mutations reveal a hidden popup', async () => {
+    const events: Array<{ event: string; modalId: string }> = [];
+    const tracker = new ModalTracker((event) => {
+      events.push({ event: event.event, modalId: event.modalId });
+    });
+
+    tracker.start();
+
+    const container = document.createElement('div');
+    container.className = 'swal2-container swal2-center';
+    container.style.display = 'none';
+
+    const popup = document.createElement('div');
+    popup.className = 'swal2-popup swal2-modal';
+    popup.setAttribute('role', 'dialog');
+    container.appendChild(popup);
+
+    document.body.appendChild(container);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(events).toHaveLength(0);
+
+    container.style.display = 'block';
+    container.className = 'swal2-container swal2-center swal2-backdrop-show';
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    tracker.stop();
+
+    expect(events).toEqual([{ event: 'modal-opened', modalId: 'modal-swal2-popup-swal2-modal' }]);
+  });
+
   it('should reuse the same modal id across SweetAlert container and popup nodes', () => {
     const container = document.createElement('div');
     container.className = 'swal2-container swal2-center';
