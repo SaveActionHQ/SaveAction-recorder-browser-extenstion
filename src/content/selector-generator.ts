@@ -1042,49 +1042,39 @@ export class SelectorGenerator {
     const selectors: Partial<SelectorStrategy> = {};
     const priority: SelectorType[] = [];
 
-    // Detect dropdown context early (before building priority)
-    const isDropdownItem =
-      element.tagName === 'LI' || element.tagName === 'OPTION' || element.tagName === 'A';
-
-    // Also check if element is a child of a dropdown item (e.g., <span> inside <li>)
-    const isChildOfDropdownItem = (() => {
-      const parent = element.parentElement;
-      return (
-        parent && (parent.tagName === 'LI' || parent.tagName === 'OPTION' || parent.tagName === 'A')
-      );
-    })();
-
-    const hasDropdownContext = (() => {
-      if (!isDropdownItem && !isChildOfDropdownItem) return false;
-
-      let parent = element.parentElement;
+    // Detect if element is inside dynamic content (dropdown, autocomplete suggestions, etc.)
+    // Used to apply dynamic-friendly selector priority (id/text over structural).
+    const isInsideDynamicContent = (() => {
+      let current: Element | null = element;
       let depth = 0;
       const maxDepth = 15;
 
-      while (parent && parent !== document.body && depth < maxDepth) {
-        const parentClasses = Array.from(parent.classList)
+      const dynamicPatterns = [
+        'dropdown',
+        'menu',
+        'autocomplete',
+        'select',
+        'options',
+        'list',
+        'popover',
+        'picker',
+        'listbox',
+        'combobox',
+        'suggest',
+        'typeahead',
+        'results',
+        'choices',
+      ];
+
+      while (current && current !== document.body && depth < maxDepth) {
+        const parentClasses = Array.from(current.classList)
           .filter((c) => typeof c === 'string')
           .map((c) => c.toLowerCase());
-        const dropdownPatterns = [
-          'dropdown',
-          'menu',
-          'autocomplete',
-          'select',
-          'options',
-          'list',
-          'popover',
-          'picker',
-          'listbox',
-          'combobox',
-        ];
 
-        if (
-          parentClasses.some((cls) => dropdownPatterns.some((pattern) => cls.includes(pattern)))
-        ) {
+        if (parentClasses.some((cls) => dynamicPatterns.some((pattern) => cls.includes(pattern)))) {
           return true;
         }
-
-        parent = parent.parentElement;
+        current = current.parentElement;
         depth++;
       }
       return false;
@@ -1123,25 +1113,20 @@ export class SelectorGenerator {
       if (position) selectors.position = position;
     }
 
-    // ✅ CRITICAL FIX: Build priority array with dropdown-aware ordering
-    if ((isDropdownItem || isChildOfDropdownItem) && hasDropdownContext) {
-      // For dropdown items AND their children: prioritize TEXT FIRST (most reliable for dynamic lists)
-      // Even if text is not globally unique, it's better than nth-child selectors
-      if (selectors.text) priority.push('text');
-      if (selectors.textContains) priority.push('textContains');
-
-      // Then structural selectors
+    // Build priority array with dynamic-content-aware ordering
+    if (isInsideDynamicContent) {
+      // For elements inside dynamic content: stable identifiers first (id, data-testid),
+      // then text selectors (more reliable than structural for dynamic lists),
+      // then structural selectors as fallback.
       if (selectors.id) priority.push('id');
       if (selectors.dataTestId) priority.push('dataTestId');
       if (selectors.ariaLabel) priority.push('ariaLabel');
       if (selectors.name) priority.push('name');
-
-      // CSS last (contains fragile nth-child)
-      if (selectors.css) priority.push('css');
-
-      // Fallbacks
+      if (selectors.text) priority.push('text');
+      if (selectors.textContains) priority.push('textContains');
       if (selectors.xpath) priority.push('xpath');
       if (selectors.xpathAbsolute) priority.push('xpathAbsolute');
+      if (selectors.css) priority.push('css');
       if (selectors.position) priority.push('position');
     } else {
       // For regular elements: standard priority order
