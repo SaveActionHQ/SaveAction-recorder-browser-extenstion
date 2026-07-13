@@ -82,6 +82,7 @@ export class EventListener {
   private lastInputCaptureTimes: Map<HTMLInputElement | HTMLTextAreaElement, number> = new Map(); // Track when input values were last emitted to suppress immediate follow-up clicks
   private recentTextEntryActivity: Map<string, { value: string; timestamp: number }> = new Map();
   private readonly RECENT_INPUT_CLICK_SUPPRESSION_MS = 1500;
+  private readonly TYPING_COOLDOWN_MS = 500;
 
   // LAYER 2 & 3: Enhanced Input Capture (99.9% reliability
   private focusedField: HTMLInputElement | HTMLTextAreaElement | null = null; // Currently focused input field
@@ -3072,6 +3073,42 @@ export class EventListener {
       return customButton;
     }
 
+    // Strategy 9: Portaled / body-mounted dropdown fallback
+    // When autocomplete suggestion lists are appended to <body>, there is no
+    // sibling or parent relationship with the trigger input. Search globally.
+    const isPortaled =
+      dropdownContainer.parentElement === document.body ||
+      dropdownContainer.parentElement?.parentElement === document.body;
+    if (isPortaled) {
+      const dropdownId = dropdownContainer.id;
+
+      // 9a: ARIA relationship attributes
+      if (dropdownId) {
+        const ariaTrigger = document.querySelector<HTMLElement>(
+          `[aria-controls="${dropdownId}"], [aria-owns="${dropdownId}"]`
+        );
+        if (ariaTrigger) {
+          console.log('[EventListener] Found trigger via global ARIA relationship');
+          return ariaTrigger;
+        }
+      }
+
+      // 9b: Focused field as trigger
+      if (this.focusedField && this.focusedField !== dropdownContainer) {
+        console.log('[EventListener] Found trigger via focusedField fallback');
+        return this.focusedField;
+      }
+
+      // 9c: Global search for input/combobox with autocomplete
+      const globalInput = document.querySelector<HTMLElement>(
+        'input[aria-autocomplete], [role="combobox"], input[autocomplete="off"]'
+      );
+      if (globalInput && globalInput !== dropdownContainer) {
+        console.log('[EventListener] Found trigger via global autocomplete input');
+        return globalInput;
+      }
+    }
+
     console.log('[EventListener] âš ï¸ No trigger found for dropdown');
     return null;
   }
@@ -3905,6 +3942,9 @@ export class EventListener {
       return;
     }
 
+    // Suppress hover tracking during active typing
+    if (this.isRecentlyTyping()) return;
+
     // Only track hover when it can plausibly reveal more UI.
     if (this.isHoverTriggerElement(target)) {
       this.lastHoveredElement = target;
@@ -3931,6 +3971,16 @@ export class EventListener {
     }
 
     if (this.shouldIgnoreCapturedElement(target)) {
+      return;
+    }
+
+    // Suppress hover tracking during active typing
+    if (this.isRecentlyTyping()) {
+      // Still clear tracking state to avoid stale references when typing ends
+      if (this.lastHoveredElement === target) {
+        this.lastHoveredElement = null;
+        this.hoverStartTime = 0;
+      }
       return;
     }
 
@@ -4068,6 +4118,25 @@ export class EventListener {
   }
 
   /**
+   * Check if the user has typed into any input within the cooldown period.
+   * Used to suppress drag/hover recording during text entry.
+   */
+  private isRecentlyTyping(): boolean {
+    const now = Date.now();
+    for (const startTime of this.inputStartTimes.values()) {
+      if (now - startTime < this.TYPING_COOLDOWN_MS) {
+        return true;
+      }
+    }
+    for (const captureTime of this.lastInputCaptureTimes.values()) {
+      if (now - captureTime < this.TYPING_COOLDOWN_MS) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * Find dropdown parent of an element (if it's inside a dropdown)
    */
   private findDropdownParent(element: Element): Element | null {
@@ -4107,6 +4176,16 @@ export class EventListener {
       try {
         const container = element.closest(selector);
         if (container) {
+          // Reject self-matches: if closest returns the element itself,
+          // it means a broad selector (e.g. [class*="suggest"]) matched the
+          // target element, not an ancestor container. Walk up from parent.
+          if (container === element) {
+            const parentContainer = element.parentElement?.closest(selector);
+            if (parentContainer && parentContainer !== element) {
+              return parentContainer;
+            }
+            continue;
+          }
           return container;
         }
       } catch {
@@ -4435,10 +4514,13 @@ export class EventListener {
       return;
     }
 
-    // Reset pointer drag state
-    this.pointerDragSource = target;
-    this.pointerDragStartCoords = { x: event.clientX, y: event.clientY };
-    this.pointerDragActive = false;
+    // Suppress drag tracking during active typing: pointerDragSource stays null,
+    // so onPointerMove/onPointerUp short-circuit naturally via their own null checks.
+    if (!this.isRecentlyTyping()) {
+      this.pointerDragSource = target;
+      this.pointerDragStartCoords = { x: event.clientX, y: event.clientY };
+      this.pointerDragActive = false;
+    }
 
     this.capturePendingDropdownSelection(event, target);
   }

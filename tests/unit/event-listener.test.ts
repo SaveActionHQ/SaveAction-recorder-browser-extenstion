@@ -947,7 +947,7 @@ describe('EventListener', () => {
       document.body.removeChild(button);
     });
 
-    it('should handle multiple rapid clicks on select correctly', () => {
+    it('should handle multiple rapid clicks on select correctly', async () => {
       const select = document.createElement('select');
       select.id = 'test-select';
 
@@ -978,25 +978,24 @@ describe('EventListener', () => {
       select.dispatchEvent(syntheticRightClick);
 
       // Wait a bit to avoid duplicate detection
-      setTimeout(() => {
-        select.dispatchEvent(userLeftClick);
-      }, 250);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      select.dispatchEvent(userLeftClick);
 
-      // Should eventually have 2 actions, both left-clicks
-      setTimeout(() => {
-        expect(capturedActions.length).toBeGreaterThanOrEqual(1);
+      // Wait for action processing
+      await new Promise((resolve) => setTimeout(resolve, 300));
 
-        const actions = capturedActions.filter(
-          (a) => a.type === 'click' && 'tagName' in a && a.tagName === 'select'
-        );
+      expect(capturedActions.length).toBeGreaterThanOrEqual(1);
 
-        // All select clicks should be left
-        actions.forEach((action) => {
-          if (action.type === 'click') {
-            expect(action.button).toBe('left');
-          }
-        });
-      }, 500);
+      const actions = capturedActions.filter(
+        (a) => a.type === 'click' && 'tagName' in a && a.tagName === 'select'
+      );
+
+      // All select clicks should be left
+      actions.forEach((action) => {
+        if (action.type === 'click') {
+          expect(action.button).toBe('left');
+        }
+      });
 
       document.body.removeChild(select);
     });
